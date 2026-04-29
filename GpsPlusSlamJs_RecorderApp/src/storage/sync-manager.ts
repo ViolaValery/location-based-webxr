@@ -29,7 +29,7 @@ export const DEFAULT_SYNC_INTERVAL_MS = 60_000;
 /**
  * Sync status for UI display and monitoring.
  */
-export interface SyncStatus {
+interface SyncStatus {
   /** Current state of the sync manager */
   state: 'idle' | 'active' | 'syncing';
   /** Timestamp of last successful sync (ms since epoch), or null if never synced */

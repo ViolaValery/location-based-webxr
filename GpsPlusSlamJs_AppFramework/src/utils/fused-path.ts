@@ -22,9 +22,6 @@ import {
 } from 'gps-plus-slam-js';
 import type { GpsCoord } from '../types/geo-types';
 
-// GpsCoord is imported from ../types/geo-types and re-exported
-export type { GpsCoord } from '../types/geo-types';
-
 /** Input data for computing the fused path */
 export interface FusedPathInput {
   /** Odometry positions in AR-local coordinates */

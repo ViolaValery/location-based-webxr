@@ -10,7 +10,6 @@ Redux Toolkit slice for recorder session management. Extracted from inline code 
 | ------------------------ | -------------- | ------------------------------------------------------------------------------------- |
 | `RecorderState`          | Type           | Shape of the `recorder` state slice                                                   |
 | `SessionMetadata`        | Type           | Session metadata: scenario name, session name, start time, etc.                       |
-| `initialRecorderState`   | Const          | Default state: not recording, no metadata, zero counters                              |
 | `recorderReducer`        | Reducer        | RTK slice reducer for `recorder/*` actions                                            |
 | `startSession`           | Action creator | `recorder/startSession` — sets `isRecording = true`, stores metadata, resets counters |
 | `endSession`             | Action creator | `recorder/endSession` — sets `isRecording = false`                                    |

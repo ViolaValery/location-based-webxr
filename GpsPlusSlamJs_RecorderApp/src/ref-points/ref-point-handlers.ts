@@ -61,7 +61,7 @@ export interface RefPointHandlersDeps {
   getCurrentSessionName: () => string;
 }
 
-export interface NearbyRefPointInfo {
+interface NearbyRefPointInfo {
   /** Display name of the nearby ref point. */
   readonly displayName: string;
   /** True when the user's H3 cell differs from the matched ref point's cell

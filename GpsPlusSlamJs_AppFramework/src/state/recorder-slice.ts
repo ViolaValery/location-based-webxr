@@ -47,7 +47,7 @@ export interface RecorderState {
 
 // --- Initial State ---
 
-export const initialRecorderState: RecorderState = {
+const initialRecorderState: RecorderState = {
   isRecording: false,
   sessionMetadata: null,
   actionCount: 0,

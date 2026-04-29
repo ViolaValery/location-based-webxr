@@ -27,12 +27,6 @@ const log = createLogger('SummaryMap');
 // Types
 // ============================================================================
 
-// GpsCoord and RefPointMarker are imported from ../types/geo-types and re-exported
-export type {
-  GpsCoord,
-  RefPointMarker,
-} from 'gps-plus-slam-app-framework/types/geo-types';
-
 /** Data required to render the summary map */
 export interface SummaryMapData {
   /** Raw GPS positions (yellow polyline) */

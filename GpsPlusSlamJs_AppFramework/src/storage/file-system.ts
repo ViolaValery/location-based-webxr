@@ -225,8 +225,6 @@ export async function writeSessionMetadata(
   await opfsWriteSessionMetadata(metadata);
 }
 
-export type { SessionMetadata } from './opfs-storage';
-
 /**
  * Shape of a parsed action file for type safety
  */

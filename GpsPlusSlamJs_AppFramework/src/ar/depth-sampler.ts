@@ -10,7 +10,7 @@
 import type { ARPose, DepthPoint, DepthSample } from '../types/ar-types';
 import { extractOdomPosition } from '../state/recording-coordinator';
 
-export type { DepthPoint, DepthSample } from '../types/ar-types';
+export type { DepthSample } from '../types/ar-types';
 
 /**
  * Configuration for depth sampling behavior.
