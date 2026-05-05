@@ -37,8 +37,9 @@ export default defineConfig(
       complexity: ['warn', 10],
       'max-depth': ['warn', 4],
       // App code must consume the closed-source core library only via the
-      // curated `gps-plus-slam-app-framework/core` re-export. See
-      // 2026-05-01-app-single-package-dep-analysis.md (Option C).
+      // curated `gps-plus-slam-app-framework` re-exports. RecorderApp no
+      // longer takes a direct dependency on `gps-plus-slam-js` â€” see
+      // GpsPlusSlamJs_Docs/docs/2026-05-05-recorder-app-drop-direct-core-dep-plan.md.
       'no-restricted-imports': [
         'error',
         {
@@ -46,7 +47,14 @@ export default defineConfig(
             {
               name: 'gps-plus-slam-js',
               message:
-                "Import core symbols from 'gps-plus-slam-app-framework/core' instead. The framework curates the public surface of gps-plus-slam-js for app consumers.",
+                "Import core symbols from 'gps-plus-slam-app-framework' (or a subpath like '/state' / '/licensing') instead. The framework curates the public surface of gps-plus-slam-js for app consumers.",
+            },
+          ],
+          patterns: [
+            {
+              group: ['gps-plus-slam-js/*'],
+              message:
+                "Import via 'gps-plus-slam-app-framework' subpaths instead of reaching into 'gps-plus-slam-js' submodules. RecorderApp does not take a direct dep on gps-plus-slam-js.",
             },
           ],
         },

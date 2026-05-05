@@ -12,15 +12,18 @@
  *
  * Iter 1 of the [AppFramework / RecorderApp boundary migration](../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-03-appframework-vs-recorderapp-boundary-analysis.md).
  *
- * NOTE: This module intentionally re-exports symbols from `gps-plus-slam-js`
- * directly so consumers have a single recorder-app import surface for both
- * library and framework symbols. The repo-wide `no-restricted-imports` rule
- * funnels app code through `gps-plus-slam-app-framework/core`; this file is
- * the recorder-app analogue of that curated barrel and is exempted below.
+ * NOTE: This module routes every core-library symbol through
+ * `gps-plus-slam-app-framework/state` (which itself re-exports the
+ * curated public surface of `gps-plus-slam-js`). The recorder app no
+ * longer takes a direct dependency on `gps-plus-slam-js` — see
+ * [2026-05-05-recorder-app-drop-direct-core-dep-plan.md](../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-05-recorder-app-drop-direct-core-dep-plan.md).
+ * The `RawDeviceOrientation` re-export deliberately uses the `state`
+ * subpath rather than the framework root barrel because the root
+ * barrel exposes a structurally different (nullable) sensor variant
+ * from `sensors/gps.ts`. See §2.2.1 of that plan.
  */
-/* eslint-disable no-restricted-imports -- recorder-app curated re-export surface; see file header */
 
-import { type RootState as LibraryRootState } from 'gps-plus-slam-js';
+import { type LibraryRootState } from 'gps-plus-slam-app-framework/core';
 import {
   createSlamAppStore,
   type SlamAppStore,
@@ -59,7 +62,7 @@ export {
   add2dImage,
   markReferencePoint,
   calcRelativeCoordsInMeters,
-} from 'gps-plus-slam-js';
+} from 'gps-plus-slam-app-framework/state';
 
 export type {
   LatLong,
@@ -68,7 +71,7 @@ export type {
   RawDeviceOrientation,
   RecordGpsEventPayload,
   MarkReferencePointPayload,
-} from 'gps-plus-slam-js';
+} from 'gps-plus-slam-app-framework/state';
 
 export { type RefPointMark } from '../storage/ref-point-loader';
 export type {

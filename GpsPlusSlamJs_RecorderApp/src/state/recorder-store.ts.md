@@ -14,6 +14,14 @@ Re-exports the same library / framework symbols the legacy
 `gps-plus-slam-app-framework/state/store` previously did, so consumer
 call sites only changed their import path, not the imported names.
 
+All core-library symbols are routed through `gps-plus-slam-app-framework`
+(no direct `gps-plus-slam-js` import). The `RawDeviceOrientation`
+re-export deliberately uses the `/state` subpath rather than the
+framework root barrel because the root barrel exposes a *different*,
+nullable variant from `sensors/gps.ts`. See
+[`2026-05-05-recorder-app-drop-direct-core-dep-plan.md`](../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-05-recorder-app-drop-direct-core-dep-plan.md)
+§2.2.1 for the type-identity rationale.
+
 ## Public API
 
 - `createRecorderStore(options?)` — produces a `RecorderStore`.
@@ -47,6 +55,12 @@ store.dispatch(navigateTo('ar'));
 - [recorder-store.test.ts](recorder-store.test.ts) — combined-store
   integration coverage (slices wired, persistence routing, license
   validation). Migrated from the framework's now-removed `store.test.ts`.
+- [recorder-store-types.test.ts](recorder-store-types.test.ts) —
+  type-identity regression tests asserting the re-exported library
+  types (`RawDeviceOrientation`, `RawGpsPoint`, `RecordGpsEventPayload`,
+  `MarkReferencePointPayload`) keep their library shape after routing
+  through the framework. Locks in §2.2.1 of the
+  [drop-direct-core-dep plan](../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-05-recorder-app-drop-direct-core-dep-plan.md).
 
 ## Related
 
