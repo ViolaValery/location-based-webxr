@@ -37,6 +37,9 @@ export {
 
   // Store factory (test/integration use)
   createGpsSlamStore,
+
+  // License activation (used by app tests that exercise licensed math)
+  validateLicenseKey,
 } from 'gps-plus-slam-js';
 
 export type {
@@ -47,6 +50,7 @@ export type {
 
   // GPS types
   LatLong,
+  LatLongAlt,
   GpsPoint,
 
   // Library root state (renamed to avoid collision with framework RootState)

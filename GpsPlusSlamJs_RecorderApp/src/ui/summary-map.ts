@@ -247,6 +247,21 @@ export function createSummaryMap(
 
     // --- Expand / collapse helpers ---
 
+    /**
+     * Schedule an `invalidateSize` + `fitBounds` after the CSS transition has
+     * settled. Shared by `doExpand` / `doCollapse` so the resize logic and the
+     * timeout-cancellation guard live in exactly one place.
+     */
+    function scheduleResizeRefit(): void {
+      if (expandResizeTimeoutId !== null) {
+        clearTimeout(expandResizeTimeoutId);
+      }
+      expandResizeTimeoutId = setTimeout(() => {
+        map.invalidateSize();
+        map.fitBounds(bounds, { padding: [20, 20] });
+      }, RESIZE_DELAY_MS);
+    }
+
     function doExpand(): void {
       if (destroyed || expanded) {
         return;
@@ -256,13 +271,7 @@ export function createSummaryMap(
       mapContainer.classList.add(...FULLSCREEN_CLASSES);
       expandBtn.classList.add('hidden');
       collapseBtn.classList.remove('hidden');
-      if (expandResizeTimeoutId !== null) {
-        clearTimeout(expandResizeTimeoutId);
-      }
-      expandResizeTimeoutId = setTimeout(() => {
-        map.invalidateSize();
-        map.fitBounds(bounds, { padding: [20, 20] });
-      }, RESIZE_DELAY_MS);
+      scheduleResizeRefit();
       log.debug('Summary map expanded to fullscreen');
     }
 
@@ -275,13 +284,7 @@ export function createSummaryMap(
       mapContainer.classList.add(...INLINE_CLASSES);
       collapseBtn.classList.add('hidden');
       expandBtn.classList.remove('hidden');
-      if (expandResizeTimeoutId !== null) {
-        clearTimeout(expandResizeTimeoutId);
-      }
-      expandResizeTimeoutId = setTimeout(() => {
-        map.invalidateSize();
-        map.fitBounds(bounds, { padding: [20, 20] });
-      }, RESIZE_DELAY_MS);
+      scheduleResizeRefit();
       log.debug('Summary map collapsed to inline');
     }
 

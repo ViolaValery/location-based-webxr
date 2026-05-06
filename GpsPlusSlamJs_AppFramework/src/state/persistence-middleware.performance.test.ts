@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Performance threshold guard for persistence middleware synchronous overhead.
  *
  * Why this test matters: The persistence middleware runs on EVERY Redux
@@ -92,6 +92,8 @@ describe('persistence middleware synchronous overhead', () => {
     { timeout: 15_000 },
     () => {
       const mockBackend: StorageBackend = {
+        createSession: vi.fn().mockResolvedValue({ sessionName: 'test' }),
+        listSessions: vi.fn().mockResolvedValue([]),
         writeAction: vi.fn().mockResolvedValue(undefined),
         writeFrame: vi.fn().mockResolvedValue(undefined),
         writeSessionMetadata: vi.fn().mockResolvedValue(undefined),
@@ -121,7 +123,6 @@ describe('persistence middleware synchronous overhead', () => {
       });
 
       if (process.env.DEBUG_PERF === '1') {
-        // eslint-disable-next-line no-console -- intentional debug output
         console.info(
           `[perf] persistence middleware per-dispatch avg ms: ${avgMs.toFixed(6)}`
         );
@@ -136,6 +137,8 @@ describe('persistence middleware synchronous overhead', () => {
     { timeout: 15_000 },
     () => {
       const mockBackend: StorageBackend = {
+        createSession: vi.fn().mockResolvedValue({ sessionName: 'test' }),
+        listSessions: vi.fn().mockResolvedValue([]),
         writeAction: vi.fn().mockResolvedValue(undefined),
         writeFrame: vi.fn().mockResolvedValue(undefined),
         writeSessionMetadata: vi.fn().mockResolvedValue(undefined),
@@ -163,7 +166,6 @@ describe('persistence middleware synchronous overhead', () => {
       });
 
       if (process.env.DEBUG_PERF === '1') {
-        // eslint-disable-next-line no-console -- intentional debug output
         console.info(
           `[perf] persistence middleware (not recording) per-dispatch avg ms: ${avgMs.toFixed(6)}`
         );

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Replay Handlers
  *
  * Encapsulates all replay-mode state and event handlers, extracted from
@@ -42,7 +42,7 @@ import {
   type PreviewMapInstance,
 } from '../ui/preview-map.js';
 import { createLogger } from 'gps-plus-slam-app-framework/utils/logger';
-import type { RecorderStore } from 'gps-plus-slam-app-framework/state/store';
+import type { RecorderStore } from '../state/recorder-store';
 
 const log = createLogger('ReplayHandlers');
 

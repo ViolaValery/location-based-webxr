@@ -1,11 +1,11 @@
-/**
+﻿/**
  * gps-plus-slam-app-framework
  *
  * Reusable AR+GPS app framework layer.
  *
  * RECOMMENDED: Import from subpaths for clarity and to avoid name conflicts:
  *   import { initAR } from 'gps-plus-slam-app-framework/ar';
- *   import { createRecorderStore } from 'gps-plus-slam-app-framework/state';
+ *   import { createSlamAppStore } from 'gps-plus-slam-app-framework/state';
  *
  * This root barrel re-exports conflict-free names for convenience.
  * Names that collide across submodules (StorageBackend, SessionMetadata,
@@ -16,36 +16,23 @@
 // Modules with no cross-barrel naming conflicts
 export * from './ar/index.js';
 export * from './sensors/index.js';
-export * from './ref-points/index.js';
+export * from './geo/index.js';
 export * from './utils/index.js';
 export * from './types/index.js';
 
 // Modules with potential name conflicts — selective re-exports
 // State: omit types also exported by storage/types (StorageBackend, DepthPoint, etc.)
 export {
-  type RecorderState,
-  type CombinedRootState,
-  type RecorderStore,
-  type RecorderStoreOptions,
-  type RootState,
-  type AppDispatch,
-  createRecorderStore,
+  type RecordingState,
   startSession,
   endSession,
   recordDepthSample,
   recordWriteFailure,
-  setCurrentScenarioName,
   setZeroPos,
   recordGpsEvent,
   add2dImage,
   markReferencePoint,
   calcRelativeCoordsInMeters,
-  setImportedRefPoints,
-  incrementRefPointUsage,
-  clearSessionRefPointUsage,
-  resetRefPointsState,
-  selectCachedKnownRefPoints,
-  type RecordingOptions,
   type RecordingCoordinatorConfig,
   updateDeviceOrientation,
   getLastDeviceOrientation,
@@ -71,10 +58,13 @@ export {
   resetRecordingOptions,
   cloneRecordingOptions,
   replayRecording,
-  refPointsReducer,
-  navigateTo,
-  type RoutingState,
-  type AppScreen,
+  recordingReducer,
+  createSlamAppStore,
+  type SlamAppStore,
+  type SlamAppStoreOptions,
+  type SlamAppRootState,
+  type SlamAppCombinedState,
+  type SlamAppMiddleware,
   DEFAULT_MAX_DELAY_MS,
   type ReplayState,
   type ProgressCallback,
@@ -92,16 +82,16 @@ export {
 // Storage: omit names that conflict with state (SessionMetadata)
 export {
   type StorageBackend,
+  type CreateSessionResult,
   NullStorageBackend,
   OpfsStorageBackend,
-  type CreateSessionResult,
   resetOpfsStorage,
   resetSessionHandles,
   initOpfsStorage,
   createSession,
   getSessionHandle,
-  getScenarioHandle,
-  getScenariosRootHandle,
+  getSessionsRootHandle,
+  getAppRootHandle,
   listSessions,
   checkStorageQuota,
   resetStorageState,
@@ -115,19 +105,10 @@ export {
   formatTimestamp,
   formatActionFilename,
   formatFrameFilename,
-  type ImportedRefPoint,
-  type RefPointImportResult,
-  importRefPointsFromFolder,
-  type RefPointObservation,
-  type RefPointDefinition,
-  loadAllRefPoints,
-  loadRefPoint,
-  saveRefPointObservation,
-  listRefPointIds,
-  type RefPointMark,
-  flattenRefPointsToMarks,
-  averageGpsPerRefPoint,
   type ZipExportResult,
+  type ZipExportContributor,
+  type ZipContributorAddFile,
+  type ExportSessionAsZipOptions,
   exportSessionAsZip,
   syncToExternalZip,
   downloadZip,
@@ -145,5 +126,5 @@ export {
 // Visualization: export from map-overlay (not leaflet-map-overlay) for DEFAULT_ZOOM etc.
 export * from './visualization/index.js';
 
-// Licensing: bundled community license key (default for createRecorderStore)
+// Licensing: bundled community license key (default for createSlamAppStore)
 export * from './licensing/index.js';

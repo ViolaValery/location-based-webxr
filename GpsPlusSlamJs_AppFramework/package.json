@@ -17,8 +17,8 @@
     "./state/*": "./dist/state/*.js",
     "./storage": "./dist/storage/index.js",
     "./storage/*": "./dist/storage/*.js",
-    "./ref-points": "./dist/ref-points/index.js",
-    "./ref-points/*": "./dist/ref-points/*.js",
+    "./geo": "./dist/geo/index.js",
+    "./geo/*": "./dist/geo/*.js",
     "./visualization": "./dist/visualization/index.js",
     "./visualization/*": "./dist/visualization/*.js",
     "./utils": "./dist/utils/index.js",
@@ -53,7 +53,7 @@
   "dependencies": {
     "@reduxjs/toolkit": "^2.11.2",
     "gl-matrix": "3.4.4",
-    "gps-plus-slam-js": "^1.0.4"
+    "gps-plus-slam-js": "^1.0.6"
   },
   "peerDependencies": {
     "@sentry/browser": ">=10.0.0",
@@ -106,7 +106,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cs-util-com/location-based-webxr.git",
+    "url": "https://github.com/cs-util-com/location-based-webxr.git",
     "directory": "GpsPlusSlamJs_AppFramework"
   },
   "homepage": "https://github.com/cs-util-com/location-based-webxr#readme",

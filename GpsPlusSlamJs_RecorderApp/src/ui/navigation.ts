@@ -44,11 +44,11 @@
  */
 
 import { createLogger } from 'gps-plus-slam-app-framework/utils/logger';
-import { navigateTo } from 'gps-plus-slam-app-framework/state';
-import type {
-  AppScreen,
-  RoutingState,
-} from 'gps-plus-slam-app-framework/state';
+import {
+  navigateTo,
+  type AppScreen,
+  type RoutingState,
+} from '../state/routing-slice';
 
 const log = createLogger('Navigation');
 

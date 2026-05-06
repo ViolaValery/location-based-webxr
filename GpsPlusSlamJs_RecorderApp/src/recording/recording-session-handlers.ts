@@ -15,13 +15,11 @@ import {
   resetCoordinatorState,
   createGpsPositionHandler,
   updateDeviceOrientation,
-} from 'gps-plus-slam-app-framework/state/recording-coordinator';
-import {
-  startSession,
-  endSession,
-} from 'gps-plus-slam-app-framework/state/store';
-import type { RecorderStore } from 'gps-plus-slam-app-framework/state/store';
+} from 'gps-plus-slam-app-framework/state/gps-event-coordinator';
+import { startSession, endSession } from '../state/recorder-store';
+import type { RecorderStore } from '../state/recorder-store';
 import { wireStoreSubscribers } from 'gps-plus-slam-app-framework/state/store-subscribers';
+import { wireRefPointSubscribers } from '../state/ref-point-subscribers';
 import type { RecordingOptions } from 'gps-plus-slam-app-framework/state/recording-options';
 import { formatTimestamp } from 'gps-plus-slam-app-framework/storage/file-system-utils';
 import {
@@ -39,6 +37,7 @@ import {
   exportSessionAsZip,
   type ZipExportResult,
 } from 'gps-plus-slam-app-framework/storage/zip-export';
+import { createRefPointsZipContributor } from '../storage/ref-points-zip-contributor';
 import {
   startGpsWatch,
   stopGpsWatch,
@@ -83,18 +82,25 @@ import {
   replaceScreenState,
 } from '../ui/navigation';
 import { gpsEventVisualizer } from 'gps-plus-slam-app-framework/visualization/gps-event-markers';
-import { refPointVisualizer } from 'gps-plus-slam-app-framework/visualization/reference-points';
+import { refPointVisualizer } from '../visualization/ref-point-visualizer';
 import { computeFusedPath } from 'gps-plus-slam-app-framework/utils/fused-path';
 import { createLogger } from 'gps-plus-slam-app-framework/utils/logger';
 import type { LatLong, Matrix4 } from 'gps-plus-slam-app-framework/core';
 import { calcGpsCoords } from 'gps-plus-slam-app-framework/core';
 import type { LeafletMapOverlay } from 'gps-plus-slam-app-framework/visualization/leaflet-map-overlay';
 import { getBuildInfo } from '../utils/build-info';
+import { DEFAULT_SCENARIO } from '../ui/session-browser';
 
 const log = createLogger('RecordingSession');
 
-/** Single fallback used everywhere a scenario name is needed but unavailable. */
-const FALLBACK_SCENARIO = 'Default Scenario';
+/**
+ * Single fallback used everywhere a scenario name is needed but unavailable.
+ * Re-exported from `session-browser.DEFAULT_SCENARIO` so that the recording
+ * pipeline and the replay browser's metadata-merge contract stay in sync
+ * (any divergence would silently break the "missing-metadata + Default
+ * Scenario" merge for newly-recorded zips).
+ */
+const FALLBACK_SCENARIO = DEFAULT_SCENARIO;
 
 function getSanitizedPageUrl(): string | undefined {
   const href = globalThis.location?.href;
@@ -202,6 +208,7 @@ export function createRecordingSessionHandlers(
   let lastSyncResult: ZipExportResult | null = null;
   let backDuringRecordingInProgress = false;
   let unsubscribeStore: (() => void) | null = null;
+  let unsubscribeRefPoints: (() => void) | null = null;
 
   // --- Internal helpers ---
 
@@ -261,7 +268,7 @@ export function createRecordingSessionHandlers(
     // The dropdown dispatches setCurrentScenarioName on the current store;
     // a fresh store would lose this selection (Issue #12).
     const scenarioName =
-      deps.getStore().getState().recorder.currentScenarioName ||
+      deps.getStore().getState().scenario.currentScenarioName ||
       FALLBACK_SCENARIO;
 
     // Create new store for this session
@@ -297,17 +304,17 @@ export function createRecordingSessionHandlers(
       addAlignmentSnapshot(lat: number, lon: number): void {
         deps.getMapOverlay()?.addAlignmentSnapshot(lat, lon);
       },
-      addRefPoint(lat: number, lon: number, name: string): void {
-        deps.getMapOverlay()?.addRefPoint(lat, lon, name);
+      addCurrentMarker(lat: number, lon: number, name: string): void {
+        deps.getMapOverlay()?.addCurrentMarker(lat, lon, name);
       },
     };
     unsubscribeStore = wireStoreSubscribers(store, {
       applyAlignmentMatrix: deps.applyAlignmentMatrix,
       gpsEventVisualizer,
       mapOverlay: mapOverlayProxy,
-      refPointVisualizer,
       onNewGpsLatLng: deps.onNewGpsLatLng,
     });
+    unsubscribeRefPoints = wireRefPointSubscribers(store, refPointVisualizer);
 
     // Initialize failure trackers
     writeFailureTracker = createWriteFailureTracker({ onWarning: showError });
@@ -381,7 +388,15 @@ export function createRecordingSessionHandlers(
           lastSyncResult = await syncToExternalZip(
             saveFileHandle,
             scenarioName,
-            currentSessionName
+            currentSessionName,
+            {
+              contributors: [
+                createRefPointsZipContributor(
+                  getCurrentScenarioHandle(),
+                  currentSessionName
+                ),
+              ],
+            }
           );
         },
         {
@@ -431,7 +446,7 @@ export function createRecordingSessionHandlers(
     // Get state before dispatch
     const store = deps.getStore();
     const state = store.getState();
-    const sessionMetadata = state.recorder.sessionMetadata;
+    const sessionMetadata = state.recording.sessionMetadata;
     const gpsEvents = state.gpsData?.gpsEvents;
     const refPoints = state.gpsData?.referencePoints ?? [];
     const gpsPositions = gpsEvents?.gpsPositions ?? [];
@@ -460,7 +475,7 @@ export function createRecordingSessionHandlers(
           ? new Date(sessionMetadata.startTime).toISOString()
           : new Date(endTime).toISOString(),
         endedAt: new Date(endTime).toISOString(),
-        scenarioName: sessionMetadata?.scenarioName ?? FALLBACK_SCENARIO,
+        contextTag: sessionMetadata?.scenarioName ?? FALLBACK_SCENARIO,
         actionCount: gpsPositions.length,
         frameCount: imageCount,
         userAgent: navigator.userAgent,
@@ -490,6 +505,10 @@ export function createRecordingSessionHandlers(
       unsubscribeStore();
       unsubscribeStore = null;
     }
+    if (unsubscribeRefPoints) {
+      unsubscribeRefPoints();
+      unsubscribeRefPoints = null;
+    }
 
     // Collect tracker errors before resetting
     const errors: string[] = [];
@@ -518,11 +537,19 @@ export function createRecordingSessionHandlers(
         log.info('No external save location — generating ZIP from OPFS...');
         updateStatus('Packaging session...');
         const scenarioName =
-          deps.getStore().getState().recorder.currentScenarioName ||
+          deps.getStore().getState().scenario.currentScenarioName ||
           FALLBACK_SCENARIO;
         const result = await exportSessionAsZip(
           scenarioName,
-          currentSessionName
+          currentSessionName,
+          {
+            contributors: [
+              createRefPointsZipContributor(
+                getCurrentScenarioHandle(),
+                currentSessionName
+              ),
+            ],
+          }
         );
         lastSyncResult = result;
         log.info(
@@ -578,7 +605,7 @@ export function createRecordingSessionHandlers(
         ? { lat: lastGps.latitude, lng: lastGps.longitude }
         : null,
       totalDistanceMeters,
-      failedWriteCount: state.recorder.failedWriteCount,
+      failedWriteCount: state.recording.failedWriteCount,
       rawGpsPath: gpsPositions.map((p) => ({
         lat: p.latitude,
         lng: p.longitude,
@@ -648,6 +675,10 @@ export function createRecordingSessionHandlers(
     if (unsubscribeStore) {
       unsubscribeStore();
       unsubscribeStore = null;
+    }
+    if (unsubscribeRefPoints) {
+      unsubscribeRefPoints();
+      unsubscribeRefPoints = null;
     }
 
     if (writeFailureTracker) {

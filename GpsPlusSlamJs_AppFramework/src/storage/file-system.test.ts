@@ -1,4 +1,4 @@
-/**
+﻿/**
  * File System Storage Module Tests
  *
  * Tests error handling, state management, and type guards.
@@ -17,10 +17,8 @@ import {
   startSession,
   writeAction,
   writeFrame,
-  loadScenarioRefPoints,
   getCurrentScenarioHandle,
   setCurrentScenario,
-  isRefPointAction,
   resetStorageState,
   initStorage,
 } from './file-system';
@@ -47,11 +45,6 @@ describe('File System Storage', () => {
       );
     });
 
-    it('loadScenarioRefPoints returns empty array when storage not initialized', async () => {
-      const result = await loadScenarioRefPoints('TestScenario');
-      expect(result).toEqual([]);
-    });
-
     it('setCurrentScenario returns null when storage not initialized', async () => {
       const result = await setCurrentScenario('TestScenario');
       expect(result).toBeNull();
@@ -71,56 +64,6 @@ describe('File System Storage', () => {
     it('writeFrame throws when no active session', async () => {
       const blob = new Blob(['test'], { type: 'image/jpeg' });
       await expect(writeFrame(blob, 0)).rejects.toThrow('No active session');
-    });
-  });
-
-  describe('isRefPointAction type guard', () => {
-    it('returns true for valid reference point action', () => {
-      const action = {
-        type: 'recorder/markRefPoint',
-        payload: {
-          id: 'ref-001',
-          gpsPosition: { lat: 48.8584, lon: 2.2945 },
-        },
-      };
-      expect(isRefPointAction(action)).toBe(true);
-    });
-
-    it('returns false for null', () => {
-      expect(isRefPointAction(null)).toBe(false);
-    });
-
-    it('returns false for undefined', () => {
-      expect(isRefPointAction(undefined)).toBe(false);
-    });
-
-    it('returns false for primitive values', () => {
-      expect(isRefPointAction('string')).toBe(false);
-      expect(isRefPointAction(123)).toBe(false);
-      expect(isRefPointAction(true)).toBe(false);
-    });
-
-    it('returns false for wrong action type', () => {
-      const action = {
-        type: 'recorder/startSession',
-        payload: { id: 'ref-001' },
-      };
-      expect(isRefPointAction(action)).toBe(false);
-    });
-
-    it('returns false when payload is missing', () => {
-      const action = { type: 'recorder/markRefPoint' };
-      expect(isRefPointAction(action)).toBe(false);
-    });
-
-    it('returns false when payload is null', () => {
-      const action = { type: 'recorder/markRefPoint', payload: null };
-      expect(isRefPointAction(action)).toBe(false);
-    });
-
-    it('returns false for array payload', () => {
-      const action = { type: 'recorder/markRefPoint', payload: [] };
-      expect(isRefPointAction(action)).toBe(false);
     });
   });
 });
@@ -257,7 +200,7 @@ describe('File System Storage - Integration with Mocks', () => {
      */
     it('writes action to JSON file with correct naming', async () => {
       const action = {
-        type: 'recorder/recordGpsEvent',
+        type: 'recording/recordGpsEvent',
         payload: { lat: 50.0, lon: 8.0 },
       };
 
@@ -354,64 +297,6 @@ describe('File System Storage - Integration with Mocks', () => {
       await startSession('MyScenario');
 
       expect(getCurrentScenarioHandle()).not.toBeNull();
-    });
-  });
-
-  describe('loadScenarioRefPoints with OPFS', () => {
-    beforeEach(async () => {
-      await initStorage();
-    });
-
-    /**
-     * Why this test matters:
-     * loadScenarioRefPoints should return empty for non-existent scenario.
-     */
-    it('returns empty array for non-existent scenario', async () => {
-      const refPoints = await loadScenarioRefPoints('NonExistent');
-
-      expect(refPoints).toEqual([]);
-    });
-
-    /**
-     * Why this test matters:
-     * loadScenarioRefPoints should return empty for scenario with sessions but no ref points.
-     * Note: Full ref point parsing with nested directory iteration is covered by E2E tests.
-     */
-    it('returns empty when sessions have no ref point actions', async () => {
-      // Create a session with a regular action (not a ref point)
-      await startSession('TestScenario');
-      await writeAction(
-        { type: 'recorder/recordGpsEvent', payload: { lat: 50.0, lon: 8.0 } },
-        1
-      );
-
-      const refPoints = await loadScenarioRefPoints('TestScenario');
-
-      // No ref point actions, so should be empty
-      expect(refPoints).toEqual([]);
-    });
-
-    /**
-     * Why this test matters:
-     * loadScenarioRefPoints should find ref points written during a session.
-     */
-    it('finds ref point actions written to session', async () => {
-      // Create a session with a ref point action
-      await startSession('RefPointScenario');
-      const refPointAction = {
-        type: 'recorder/markRefPoint',
-        payload: {
-          id: 'ref-001',
-          gpsPosition: { lat: 48.8584, lon: 2.2945 },
-        },
-      };
-      await writeAction(refPointAction, 1);
-
-      const refPoints = await loadScenarioRefPoints('RefPointScenario');
-
-      expect(refPoints).toHaveLength(1);
-      expect(refPoints[0].id).toBe('ref-001');
-      expect(refPoints[0].gpsPosition?.lat).toBe(48.8584);
     });
   });
 

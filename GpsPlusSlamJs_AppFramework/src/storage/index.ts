@@ -3,7 +3,10 @@
  */
 
 // --- storage-backend ---
-export { type StorageBackend } from './storage-backend.js';
+export {
+  type StorageBackend,
+  type CreateSessionResult,
+} from './storage-backend.js';
 
 // --- null-storage-backend ---
 export { NullStorageBackend } from './null-storage-backend.js';
@@ -14,14 +17,13 @@ export { OpfsStorageBackend } from './opfs-storage-backend.js';
 // --- opfs-storage ---
 export {
   type SessionMetadata,
-  type CreateSessionResult,
   resetOpfsStorage,
   resetSessionHandles,
   initOpfsStorage,
   createSession,
   getSessionHandle,
-  getScenarioHandle,
-  getScenariosRootHandle,
+  getSessionsRootHandle,
+  getAppRootHandle,
   listSessions,
   checkStorageQuota,
   writeSessionMetadata,
@@ -38,10 +40,10 @@ export {
   writeAction,
   writeFrame,
   writeSessionMetadata as writeSessionMeta,
-  isRefPointAction,
-  loadScenarioRefPoints,
   getCurrentScenarioHandle,
   setCurrentScenario,
+  ensureScenarioDirectory,
+  listSessions as listSessionsFromFileSystem,
 } from './file-system.js';
 
 // --- file-system-utils ---
@@ -51,29 +53,16 @@ export {
   formatFrameFilename,
 } from './file-system-utils.js';
 
-// --- ref-point-importer ---
-export {
-  type ImportedRefPoint,
-  type RefPointImportResult,
-  importRefPointsFromFolder,
-} from './ref-point-importer.js';
-
-// --- ref-point-loader ---
-export {
-  type RefPointObservation,
-  type RefPointDefinition,
-  loadAllRefPoints,
-  loadRefPoint,
-  saveRefPointObservation,
-  listRefPointIds,
-  type RefPointMark,
-  flattenRefPointsToMarks,
-  averageGpsPerRefPoint,
-} from './ref-point-loader.js';
+// --- ref-point-importer / ref-point-loader / ref-point-recovery —
+//     moved to recorder app in Iter 3 of the AppFramework / RecorderApp
+//     boundary migration. Recorder consumers import locally now. ---
 
 // --- zip-export ---
 export {
   type ZipExportResult,
+  type ZipExportContributor,
+  type ZipContributorAddFile,
+  type ExportSessionAsZipOptions,
   exportSessionAsZip,
   syncToExternalZip,
   downloadZip,
@@ -92,4 +81,6 @@ export {
   loadSessionMetadataFromBlob,
   type GpsPathCoord,
   loadGpsPathFromBlob,
+  type ZipSubdirEntry,
+  loadEntriesFromSubdir,
 } from './zip-reader.js';

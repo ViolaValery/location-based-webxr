@@ -38,6 +38,61 @@ export interface ZipExportResult {
   readonly fileCount: number;
 }
 
+/**
+ * Helper passed to a {@link ZipExportContributor.contribute} callback for
+ * appending blobs to the ZIP under a stable, contributor-owned subdirectory.
+ *
+ * The framework prepends the contributor's `subdir` to the supplied
+ * `relativePath` automatically, so contributors only think in terms of paths
+ * relative to their own subdir (e.g. `'42.json'`, not `'refPoints/42.json'`).
+ */
+export type ZipContributorAddFile = (
+  relativePath: string,
+  blob: Blob
+) => Promise<void>;
+
+/**
+ * Extension contributor that lets a consumer (typically the recorder)
+ * append app-specific files to a session ZIP without forking the
+ * framework's ZIP writer.
+ *
+ * Each contributor declares a top-level subdirectory it owns inside the
+ * ZIP (e.g. the recorder uses `refPoints/`). The framework calls
+ * {@link contribute} after writing all framework-owned sections.
+ *
+ * Contributors must:
+ *  - Only write files under their declared `subdir` (the framework enforces
+ *    this by routing every `addFile` call through the prefix).
+ *  - Tolerate an empty source (e.g. a session with no ref points) by
+ *    returning `0` instead of throwing.
+ *
+ * @see 2026-05-03-appframework-vs-recorderapp-boundary-analysis.md — Iter 2.
+ */
+export interface ZipExportContributor {
+  /** Top-level subdirectory inside the ZIP (no leading or trailing `/`). */
+  readonly subdir: string;
+  /**
+   * Append files for this contributor. Implementations call `addFile`
+   * once per file with a path relative to {@link subdir}.
+   *
+   * @returns Number of files added so the framework's `fileCount` total
+   *   stays accurate for download summaries.
+   */
+  contribute(addFile: ZipContributorAddFile): Promise<number>;
+}
+
+/**
+ * Options for {@link exportSessionAsZip}.
+ */
+export interface ExportSessionAsZipOptions {
+  /**
+   * Optional list of {@link ZipExportContributor}s. Each is invoked after
+   * framework-owned sections have been written. Order is preserved in the
+   * resulting ZIP central directory but has no semantic effect.
+   */
+  readonly contributors?: readonly ZipExportContributor[];
+}
+
 // ============================================================================
 // Internal Helpers
 // ============================================================================
@@ -45,11 +100,21 @@ export interface ZipExportResult {
 /**
  * Get the OPFS scenarios directory handle.
  * Re-acquires from navigator.storage to avoid holding stale references.
+ * Creates on demand so it works even when initOpfsStorage only creates sessions/.
  */
 async function getScenariosHandle(): Promise<FileSystemDirectoryHandle> {
   const opfsRoot = await navigator.storage.getDirectory();
-  const gpsRecorderDir = await opfsRoot.getDirectoryHandle('gps-recorder');
-  return gpsRecorderDir.getDirectoryHandle('scenarios');
+  const gpsPlusSlamDir = await opfsRoot.getDirectoryHandle('gps-plus-slam');
+  return gpsPlusSlamDir.getDirectoryHandle('scenarios', { create: true });
+}
+
+/**
+ * Get the OPFS sessions directory handle (flat layout).
+ */
+async function getSessionsHandle(): Promise<FileSystemDirectoryHandle> {
+  const opfsRoot = await navigator.storage.getDirectory();
+  const gpsPlusSlamDir = await opfsRoot.getDirectoryHandle('gps-plus-slam');
+  return gpsPlusSlamDir.getDirectoryHandle('sessions');
 }
 
 /**
@@ -87,63 +152,10 @@ async function streamDirectoryToZip(
   return count;
 }
 
-/**
- * Filter and stream per-session ref point observations into a ZipWriter.
- *
- * Reads each ref point JSON from the scenario-level refPoints/ directory,
- * keeps only observations where `sessionId` matches `sessionName`, and writes
- * the filtered definition into the ZIP under `refPoints/{h3}.json`.
- *
- * Ref points with no observations for the current session are skipped entirely.
- * If the refPoints/ directory doesn't exist yet (new scenario), returns 0.
- *
- * @returns Number of ref point files added
- */
-async function streamSessionRefPointsToZip(
-  scenarioHandle: FileSystemDirectoryHandle,
-  sessionName: string,
-  zipWriter: ZipWriter<Blob>
-): Promise<number> {
-  let count = 0;
-
-  let refPointsHandle: FileSystemDirectoryHandle;
-  try {
-    refPointsHandle = await scenarioHandle.getDirectoryHandle('refPoints');
-  } catch {
-    // No refPoints directory yet — nothing to include
-    return 0;
-  }
-
-  for await (const [name, handle] of refPointsHandle.entries()) {
-    if (handle.kind !== 'file' || !name.endsWith('.json')) continue;
-
-    try {
-      const file = await (handle as FileSystemFileHandle).getFile();
-      const text = await file.text();
-      const def = JSON.parse(text) as {
-        observations?: Array<{ sessionId?: string }>;
-      };
-
-      if (!Array.isArray(def.observations)) continue;
-
-      const sessionObs = def.observations.filter(
-        (o) => o.sessionId === sessionName
-      );
-      if (sessionObs.length === 0) continue;
-
-      const filtered = { ...def, observations: sessionObs };
-      const blob = new Blob([JSON.stringify(filtered, null, 2)], {
-        type: 'application/json',
-      });
-      await zipWriter.add(`refPoints/${name}`, new BlobReader(blob));
-      count++;
-    } catch (err) {
-      log.warn(`Failed to process ref point ${name}:`, err);
-    }
-  }
-
-  return count;
-}
+// Per-session ref-point ZIP filtering moved to the recorder app in Iter 3 of
+// the AppFramework / RecorderApp boundary cleanup. Recorder consumers now
+// register a `ZipExportContributor` via `exportSessionAsZip({ contributors })`.
+// See gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-03-appframework-vs-recorderapp-boundary-analysis.md
 
 // ============================================================================
 // Public API
@@ -156,59 +168,112 @@ async function streamSessionRefPointsToZip(
  * - session.json (at root)
  * - actions/000001.json, actions/000002.json, ...
  * - frames/frame-000001.jpg, frames/frame-000002.jpg, ...
- * - refPoints/{h3}.json (only observations from this session)
+ * - refPoints/{h3}.json (only observations from this session, scenario layout only)
  *
  * Uses "store" mode (compression level 0) for fast packaging.
  *
- * @param scenarioName - Name of the scenario
- * @param sessionName - Name of the session folder
+ * Supports both flat and scenario-based layouts:
+ * - `exportSessionAsZip(sessionName)` — flat layout (sessions/)
+ * - `exportSessionAsZip(scenarioName, sessionName)` — scenario layout (scenarios/{name}/)
+ *
  * @returns ZIP export result with blob and file count
- * @throws Error if scenario or session not found
+ * @throws Error if session not found
  */
 export async function exportSessionAsZip(
-  scenarioName: string,
-  sessionName: string
+  scenarioNameOrSessionName: string,
+  sessionName?: string,
+  options?: ExportSessionAsZipOptions
 ): Promise<ZipExportResult> {
-  log.info(`Exporting session: ${scenarioName}/${sessionName}`);
-
-  // Get scenario handle
-  const scenariosDir = await getScenariosHandle();
-  let scenarioHandle: FileSystemDirectoryHandle;
-  try {
-    scenarioHandle = await scenariosDir.getDirectoryHandle(scenarioName);
-  } catch {
-    throw new Error(`Scenario "${scenarioName}" not found in OPFS storage`);
-  }
-
-  // Get session handle
   let sessionHandle: FileSystemDirectoryHandle;
-  try {
-    sessionHandle = await scenarioHandle.getDirectoryHandle(sessionName);
-  } catch {
-    throw new Error(
-      `Session "${sessionName}" not found in scenario "${scenarioName}"`
-    );
+
+  if (sessionName) {
+    // Scenario-based layout: scenarios/{scenarioName}/{sessionName}
+    const scenarioName = scenarioNameOrSessionName;
+    log.info(`Exporting session: ${scenarioName}/${sessionName}`);
+
+    const scenariosDir = await getScenariosHandle();
+    let scenarioHandle: FileSystemDirectoryHandle;
+    try {
+      scenarioHandle = await scenariosDir.getDirectoryHandle(scenarioName);
+    } catch {
+      throw new Error(`Scenario "${scenarioName}" not found in OPFS storage`);
+    }
+
+    try {
+      sessionHandle = await scenarioHandle.getDirectoryHandle(sessionName);
+    } catch {
+      throw new Error(
+        `Session "${sessionName}" not found in scenario "${scenarioName}"`
+      );
+    }
+  } else {
+    // Flat layout: sessions/{sessionName}
+    log.info(`Exporting session: ${scenarioNameOrSessionName}`);
+
+    const sessionsDir = await getSessionsHandle();
+    try {
+      sessionHandle = await sessionsDir.getDirectoryHandle(
+        scenarioNameOrSessionName
+      );
+    } catch {
+      throw new Error(
+        `Session "${scenarioNameOrSessionName}" not found in OPFS storage`
+      );
+    }
   }
 
-  // Create ZIP using @zip.js/zip.js with store mode (level 0 = no compression)
-  // Files are streamed directly — read one, write one — to avoid OOM on
-  // large recordings with many frames.
   const blobWriter = new BlobWriter('application/zip');
   const zipWriter = new ZipWriter(blobWriter, { level: 0 });
 
   let fileCount = await streamDirectoryToZip(sessionHandle, zipWriter);
 
-  // Include per-session ref point observations from the scenario-level refPoints/ dir.
-  // Each ref point file is filtered to only contain observations where sessionId
-  // matches the current session. Ref points not observed in this session are skipped.
-  // This allows full reconstruction by merging refPoints/ from all session ZIPs.
-  fileCount += await streamSessionRefPointsToZip(
-    scenarioHandle,
-    sessionName,
-    zipWriter
-  );
+  // Caller-supplied extension contributors. Each owns a single top-level
+  // subdir; the framework prepends that subdir to every file path so the
+  // contributor cannot accidentally write outside its own namespace.
+  const contributors = options?.contributors ?? [];
+  const seenSubdirs = new Set<string>();
+  for (const contributor of contributors) {
+    const subdir = contributor.subdir;
+    if (!subdir || subdir.includes('/') || subdir.startsWith('.')) {
+      throw new Error(
+        `ZipExportContributor.subdir must be a non-empty single path segment, got: ${JSON.stringify(
+          subdir
+        )}`
+      );
+    }
+    if (seenSubdirs.has(subdir)) {
+      throw new Error(
+        `Duplicate ZipExportContributor.subdir registered: ${subdir}`
+      );
+    }
+    seenSubdirs.add(subdir);
 
-  // Close and get the blob
+    const addFile: ZipContributorAddFile = async (relativePath, blob) => {
+      if (relativePath.startsWith('/')) {
+        throw new Error(
+          `ZipExportContributor relative path must not start with '/' (got ${relativePath})`
+        );
+      }
+      // Defensive: reject backslashes (Windows-style separators) and any path
+      // traversal segments. Without this, a contributor could escape its
+      // declared subdir (e.g. `../actions/000001.json`) and overwrite
+      // framework-owned files inside the ZIP.
+      if (relativePath.includes('\\')) {
+        throw new Error(
+          `ZipExportContributor relative path must not contain '\\' (got ${relativePath})`
+        );
+      }
+      const segments = relativePath.split('/');
+      if (segments.some((s) => s === '..' || s === '.')) {
+        throw new Error(
+          `ZipExportContributor relative path must not contain '.' or '..' segments (got ${relativePath})`
+        );
+      }
+      await zipWriter.add(`${subdir}/${relativePath}`, new BlobReader(blob));
+    };
+    fileCount += await contributor.contribute(addFile);
+  }
+
   const blob = await zipWriter.close();
   log.info(`ZIP created: ${blob.size} bytes, ${fileCount} files`);
 
@@ -236,12 +301,13 @@ export async function exportSessionAsZip(
 export async function syncToExternalZip(
   fileHandle: FileSystemFileHandle,
   scenarioName: string,
-  sessionName: string
+  sessionName: string,
+  options?: ExportSessionAsZipOptions
 ): Promise<ZipExportResult> {
   log.info(`Syncing to external ZIP: ${scenarioName}/${sessionName}`);
 
   // Export session as blob
-  const result = await exportSessionAsZip(scenarioName, sessionName);
+  const result = await exportSessionAsZip(scenarioName, sessionName, options);
 
   // Write to external file handle
   const writable = await fileHandle.createWritable();

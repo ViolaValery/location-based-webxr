@@ -20,6 +20,7 @@ vi.mock('./replay/replay-mode', () => ({
   startReplayMode: vi.fn(),
 }));
 vi.mock('./ui/session-browser', () => ({
+  DEFAULT_SCENARIO: 'Default Scenario',
   listScenariosFromFolder: vi.fn(),
   extractScenarioNamesFromZips: vi.fn(),
   discoverScenariosFromZipMetadata: vi.fn(),
@@ -159,13 +160,13 @@ vi.mock('./storage/sync-manager', () => ({
 vi.mock('gps-plus-slam-app-framework/storage/zip-export', () => ({
   syncToExternalZip: vi.fn(),
 }));
-vi.mock('gps-plus-slam-app-framework/storage/ref-point-loader', () => ({
+vi.mock('./storage/ref-point-loader', () => ({
   loadAllRefPoints: vi.fn(),
   saveRefPointObservation: vi.fn(),
   flattenRefPointsToMarks: vi.fn(),
   listRefPointIds: vi.fn(),
 }));
-vi.mock('gps-plus-slam-app-framework/storage/ref-point-importer', () => ({
+vi.mock('./storage/ref-point-importer', () => ({
   importRefPointsFromFolder: vi.fn(),
 }));
 vi.mock('gps-plus-slam-app-framework/storage/file-system-utils', () => ({
@@ -174,7 +175,7 @@ vi.mock('gps-plus-slam-app-framework/storage/file-system-utils', () => ({
 vi.mock('gps-plus-slam-app-framework/utils/fused-path', () => ({
   computeFusedPath: vi.fn(),
 }));
-vi.mock('gps-plus-slam-app-framework/state/store', () => ({
+vi.mock('./state/recorder-store', () => ({
   createRecorderStore: vi.fn().mockReturnValue({
     dispatch: vi.fn(),
     getState: vi.fn().mockReturnValue({}),
@@ -200,7 +201,7 @@ vi.mock('gps-plus-slam-app-framework/sensors/permission-checker', () => ({
   checkAllPermissions: vi.fn(),
   requestAllPermissions: vi.fn(),
 }));
-vi.mock('gps-plus-slam-app-framework/state/recording-coordinator', () => ({
+vi.mock('gps-plus-slam-app-framework/state/gps-event-coordinator', () => ({
   createGpsPositionHandler: vi.fn(),
   updateDeviceOrientation: vi.fn(),
   resetCoordinatorState: vi.fn(),

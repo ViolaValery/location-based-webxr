@@ -6,9 +6,9 @@
  * compatibility (Android Chrome, iOS Safari, Desktop).
  *
  * Why these tests matter:
- * - OPFS is the foundation of the new storage strategy
+ * - OPFS is the foundation of the storage strategy
  * - Must verify atomic writes work correctly
- * - Must verify session/scenario organization
+ * - Must verify flat session layout (no scenario hierarchy)
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -19,7 +19,6 @@ import {
   createSession,
   writeAction,
   writeFrame,
-  listScenarios,
   listSessions,
   writeSessionMetadata,
   getSessionHandle,
@@ -43,21 +42,20 @@ describe('opfs-storage', () => {
   });
 
   describe('initOpfsStorage', () => {
-    it('creates gps-recorder directory structure in OPFS root', async () => {
-      // Why: OPFS storage must initialize with correct directory hierarchy
+    it('creates gps-plus-slam/sessions/ directory structure in OPFS root', async () => {
+      // Why: flat layout uses sessions/ directly under gps-plus-slam/
+      // (scenarios/ is recorder-only, handled by ScenarioWrappingStorageBackend)
       await initOpfsStorage();
 
-      // Verify gps-recorder directory was created
-      const gpsRecorderDir = await opfsRoot.getDirectoryHandle('gps-recorder');
-      expect(gpsRecorderDir).toBeDefined();
-      expect(gpsRecorderDir.name).toBe('gps-recorder');
+      const gpsPlusSlamDir = await opfsRoot.getDirectoryHandle('gps-plus-slam');
+      expect(gpsPlusSlamDir).toBeDefined();
+      expect(gpsPlusSlamDir.name).toBe('gps-plus-slam');
 
-      // Verify scenarios subdirectory was created
-      const scenariosDir = await (
-        gpsRecorderDir as unknown as MockOPFSDirectoryHandle
-      ).getDirectoryHandle('scenarios');
-      expect(scenariosDir).toBeDefined();
-      expect(scenariosDir.name).toBe('scenarios');
+      const sessionsDir = await (
+        gpsPlusSlamDir as unknown as MockOPFSDirectoryHandle
+      ).getDirectoryHandle('sessions');
+      expect(sessionsDir).toBeDefined();
+      expect(sessionsDir.name).toBe('sessions');
     });
 
     it('is idempotent - calling twice does not error', async () => {
@@ -69,8 +67,6 @@ describe('opfs-storage', () => {
     it('throws when OPFS is not supported', async () => {
       // Why: Must give clear error on unsupported browsers
       cleanup();
-      // Remove storage.getDirectory - use vi.stubGlobal because
-      // globalThis.navigator is a getter-only property in some environments.
       const existingNavigator =
         typeof navigator !== 'undefined' ? navigator : {};
       vi.stubGlobal('navigator', {
@@ -89,24 +85,23 @@ describe('opfs-storage', () => {
       await initOpfsStorage();
     });
 
-    it('creates scenario folder if it does not exist', async () => {
-      // Why: New scenarios should be created automatically
+    it('creates a flat session folder under sessions/', async () => {
+      // Why: framework uses flat sessions/{timestamp}/ layout; scenarios
+      // are layered on by the recorder's wrapping backend
       const timestamp = new Date('2026-01-26T10:30:00Z');
-      const result = await createSession('my-scenario', timestamp);
+      const result = await createSession(timestamp);
 
-      expect(result.scenarioName).toBe('my-scenario');
       expect(result.sessionName).toMatch(/^recording-2026-01-26_10-30-00utc$/);
     });
 
-    it('creates session folder with correct structure', async () => {
-      // Why: Session must have actions/ and frames/ subdirectories
+    it('creates session folder with actions/ and frames/ subdirectories', async () => {
+      // Why: Session must have actions/ and frames/ subdirectories for write ops
       const timestamp = new Date('2026-01-26T10:30:00Z');
-      await createSession('test-scenario', timestamp);
+      await createSession(timestamp);
 
       const sessionHandle = getSessionHandle();
       expect(sessionHandle).not.toBeNull();
 
-      // Verify subdirectories exist
       const actionsDir = await sessionHandle!.getDirectoryHandle('actions');
       expect(actionsDir).toBeDefined();
 
@@ -114,22 +109,30 @@ describe('opfs-storage', () => {
       expect(framesDir).toBeDefined();
     });
 
-    it('uses existing scenario folder when available', async () => {
-      // Why: Adding sessions to existing scenarios should not create duplicates
+    it('creates multiple sessions side by side', async () => {
+      // Why: flat layout allows multiple sessions without scenario grouping
       const timestamp1 = new Date('2026-01-26T10:00:00Z');
       const timestamp2 = new Date('2026-01-26T11:00:00Z');
 
-      await createSession('existing-scenario', timestamp1);
-      const result2 = await createSession('existing-scenario', timestamp2);
+      const result1 = await createSession(timestamp1);
+      const result2 = await createSession(timestamp2);
 
-      expect(result2.scenarioName).toBe('existing-scenario');
+      expect(result1.sessionName).toMatch(/^recording-2026-01-26_10-00-00utc$/);
       expect(result2.sessionName).toMatch(/^recording-2026-01-26_11-00-00utc$/);
+    });
+
+    it('stores contextTag in result when provided', async () => {
+      // Why: contextTag is passed through so callers can use it for metadata
+      const timestamp = new Date('2026-01-26T10:30:00Z');
+      const result = await createSession(timestamp, 'my-tag');
+
+      expect(result.sessionName).toMatch(/^recording-2026-01-26_10-30-00utc$/);
     });
 
     it('throws if initOpfsStorage was not called', async () => {
       // Why: Must enforce initialization order
       resetOpfsStorage();
-      await expect(createSession('test', new Date())).rejects.toThrow(
+      await expect(createSession(new Date())).rejects.toThrow(
         /not initialized/i
       );
     });
@@ -138,7 +141,7 @@ describe('opfs-storage', () => {
   describe('writeAction', () => {
     beforeEach(async () => {
       await initOpfsStorage();
-      await createSession('test-scenario', new Date('2026-01-26T10:00:00Z'));
+      await createSession(new Date('2026-01-26T10:00:00Z'));
     });
 
     it('writes action as JSON file with padded index', async () => {
@@ -201,12 +204,10 @@ describe('opfs-storage', () => {
         'actions'
       )) as unknown as MockOPFSDirectoryHandle;
 
-      // Get the file handle that will be created
       const fileHandle = await actionsDir.getFileHandle('000001.json', {
         create: true,
       });
 
-      // Create a writable that throws on write
       const mockWritable = {
         write: vi.fn().mockRejectedValue(new Error('Disk full')),
         close: vi.fn().mockResolvedValue(undefined),
@@ -216,12 +217,9 @@ describe('opfs-storage', () => {
         mockWritable as unknown as FileSystemWritableFileStream
       );
 
-      // Attempt write - should throw
       await expect(writeAction(action, 1)).rejects.toThrow('Disk full');
 
-      // Verify abort was called to clean up the writable
       expect(mockWritable.abort).toHaveBeenCalled();
-      // close should NOT be called when write fails
       expect(mockWritable.close).not.toHaveBeenCalled();
     });
   });
@@ -229,7 +227,7 @@ describe('opfs-storage', () => {
   describe('writeFrame', () => {
     beforeEach(async () => {
       await initOpfsStorage();
-      await createSession('test-scenario', new Date('2026-01-26T10:00:00Z'));
+      await createSession(new Date('2026-01-26T10:00:00Z'));
     });
 
     it('writes frame blob with padded index', async () => {
@@ -281,12 +279,10 @@ describe('opfs-storage', () => {
         'frames'
       )) as unknown as MockOPFSDirectoryHandle;
 
-      // Get the file handle that will be created
       const fileHandle = await framesDir.getFileHandle('frame-000001.jpg', {
         create: true,
       });
 
-      // Create a writable that throws on write
       const mockWritable = {
         write: vi.fn().mockRejectedValue(new Error('Storage quota exceeded')),
         close: vi.fn().mockResolvedValue(undefined),
@@ -296,12 +292,10 @@ describe('opfs-storage', () => {
         mockWritable as unknown as FileSystemWritableFileStream
       );
 
-      // Attempt write - should throw
       await expect(writeFrame(blob, 1)).rejects.toThrow(
         'Storage quota exceeded'
       );
 
-      // Verify abort was called to clean up the writable
       expect(mockWritable.abort).toHaveBeenCalled();
       expect(mockWritable.close).not.toHaveBeenCalled();
     });
@@ -310,7 +304,7 @@ describe('opfs-storage', () => {
   describe('writeSessionMetadata', () => {
     beforeEach(async () => {
       await initOpfsStorage();
-      await createSession('test-scenario', new Date('2026-01-26T10:00:00Z'));
+      await createSession(new Date('2026-01-26T10:00:00Z'));
     });
 
     it('writes session.json with metadata', async () => {
@@ -319,7 +313,6 @@ describe('opfs-storage', () => {
         version: 1,
         startedAt: '2026-01-26T10:00:00.000Z',
         endedAt: '2026-01-26T10:30:00.000Z',
-        scenarioName: 'test-scenario',
         actionCount: 42,
         frameCount: 21,
         userAgent: 'Test Browser',
@@ -336,13 +329,33 @@ describe('opfs-storage', () => {
       expect(parsed).toEqual(metadata);
     });
 
+    it('writes metadata with optional contextTag', async () => {
+      // Why: contextTag replaces the former required scenarioName
+      const metadata: SessionMetadata = {
+        version: 1,
+        startedAt: '2026-01-26T10:00:00.000Z',
+        endedAt: '2026-01-26T10:30:00.000Z',
+        contextTag: 'my-scenario',
+        actionCount: 42,
+        frameCount: 21,
+        userAgent: 'Test Browser',
+      };
+
+      await writeSessionMetadata(metadata);
+
+      const sessionHandle =
+        getSessionHandle() as unknown as MockOPFSDirectoryHandle;
+      const content = sessionHandle.getStoredContentAsString('session.json');
+      const parsed = JSON.parse(content!) as { contextTag?: string };
+      expect(parsed.contextTag).toBe('my-scenario');
+    });
+
     it('aborts writable and propagates error when write fails', async () => {
       // Why: Resource leak prevention - writable must be cleaned up even on errors
       const metadata: SessionMetadata = {
         version: 1,
         startedAt: '2026-01-26T10:00:00.000Z',
         endedAt: '2026-01-26T10:30:00.000Z',
-        scenarioName: 'test-scenario',
         actionCount: 42,
         frameCount: 21,
         userAgent: 'Test Browser',
@@ -351,12 +364,10 @@ describe('opfs-storage', () => {
       const sessionHandle =
         getSessionHandle() as unknown as MockOPFSDirectoryHandle;
 
-      // Get the file handle that will be created
       const fileHandle = await sessionHandle.getFileHandle('session.json', {
         create: true,
       });
 
-      // Create a writable that throws on write
       const mockWritable = {
         write: vi.fn().mockRejectedValue(new Error('Write failed')),
         close: vi.fn().mockResolvedValue(undefined),
@@ -366,37 +377,12 @@ describe('opfs-storage', () => {
         mockWritable as unknown as FileSystemWritableFileStream
       );
 
-      // Attempt write - should throw
       await expect(writeSessionMetadata(metadata)).rejects.toThrow(
         'Write failed'
       );
 
-      // Verify abort was called to clean up the writable
       expect(mockWritable.abort).toHaveBeenCalled();
       expect(mockWritable.close).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('listScenarios', () => {
-    beforeEach(async () => {
-      await initOpfsStorage();
-    });
-
-    it('returns empty array when no scenarios exist', async () => {
-      // Why: Fresh install should show no scenarios
-      const scenarios = await listScenarios();
-      expect(scenarios).toEqual([]);
-    });
-
-    it('returns all scenario names', async () => {
-      // Why: User needs to see existing scenarios for selection
-      await createSession('scenario-alpha', new Date('2026-01-26T10:00:00Z'));
-      await createSession('scenario-beta', new Date('2026-01-26T11:00:00Z'));
-
-      const scenarios = await listScenarios();
-      expect(scenarios).toContain('scenario-alpha');
-      expect(scenarios).toContain('scenario-beta');
-      expect(scenarios).toHaveLength(2);
     });
   });
 
@@ -405,18 +391,18 @@ describe('opfs-storage', () => {
       await initOpfsStorage();
     });
 
-    it('returns empty array for non-existent scenario', async () => {
-      // Why: Graceful handling of missing scenarios
-      const sessions = await listSessions('non-existent');
+    it('returns empty array when no sessions exist', async () => {
+      // Why: Fresh install should show no sessions
+      const sessions = await listSessions();
       expect(sessions).toEqual([]);
     });
 
-    it('returns all session names for a scenario', async () => {
-      // Why: User needs to see existing sessions for reference point loading
-      await createSession('my-scenario', new Date('2026-01-26T10:00:00Z'));
-      await createSession('my-scenario', new Date('2026-01-26T11:00:00Z'));
+    it('returns all session names', async () => {
+      // Why: callers need to enumerate available sessions for replay/export
+      await createSession(new Date('2026-01-26T10:00:00Z'));
+      await createSession(new Date('2026-01-26T11:00:00Z'));
 
-      const sessions = await listSessions('my-scenario');
+      const sessions = await listSessions();
       expect(sessions).toHaveLength(2);
       expect(sessions).toContain('recording-2026-01-26_10-00-00utc');
       expect(sessions).toContain('recording-2026-01-26_11-00-00utc');
@@ -428,10 +414,8 @@ describe('opfs-storage', () => {
       // Why: On unsupported platforms, checkStorageQuota should not throw but
       // return a safe fallback so callers can handle gracefully.
 
-      // Import dynamically to test after modifying navigator
       const { checkStorageQuota } = await import('./opfs-storage');
 
-      // Simulate missing API by temporarily removing estimate
       const originalEstimate = navigator.storage.estimate.bind(
         navigator.storage
       );
@@ -442,7 +426,6 @@ describe('opfs-storage', () => {
         const result = await checkStorageQuota();
         expect(result).toEqual({ available: 0, used: 0 });
       } finally {
-        // Restore
         navigator.storage.estimate = originalEstimate;
       }
     });

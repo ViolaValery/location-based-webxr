@@ -17,13 +17,13 @@ import type {
   GpsPoint,
 } from 'gps-plus-slam-app-framework/core';
 import type { ARPose } from 'gps-plus-slam-app-framework/types/ar-types';
-import type * as StoreModule from 'gps-plus-slam-app-framework/state/store';
-import type { RecorderStore } from 'gps-plus-slam-app-framework/state/store';
-import type { ImportedRefPoint } from 'gps-plus-slam-app-framework/storage/ref-point-importer';
+import type * as StoreModule from '../state/recorder-store';
+import type { RecorderStore } from '../state/recorder-store';
+import type { ImportedRefPoint } from '../storage/ref-point-importer';
 import type {
   RefPointObservation,
   RefPointMark,
-} from 'gps-plus-slam-app-framework/storage/ref-point-loader';
+} from '../storage/ref-point-loader';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────
 
@@ -74,7 +74,7 @@ const {
   mockShowToast: vi.fn(),
   mockIsRefPointPickerVisible: vi.fn<() => boolean>().mockReturnValue(false),
   mockMarkReferencePoint: vi.fn((payload: unknown) => ({
-    type: 'recorder/markReferencePoint',
+    type: 'recording/markReferencePoint',
     payload,
   })),
   mockCalcGpsCoords: vi.fn().mockReturnValue({ lat: 49.123, lon: 8.456 }),
@@ -95,9 +95,9 @@ vi.mock('gps-plus-slam-app-framework/utils/fused-path', () => ({
   fusedGpsFromOdom: mockFusedGpsFromOdom,
 }));
 
-vi.mock('gps-plus-slam-app-framework/state/store', async () => {
+vi.mock('../state/recorder-store', async () => {
   const actual: typeof StoreModule = await vi.importActual(
-    'gps-plus-slam-app-framework/state/store'
+    '../state/recorder-store'
   );
   return {
     ...actual,
@@ -105,7 +105,7 @@ vi.mock('gps-plus-slam-app-framework/state/store', async () => {
   };
 });
 
-vi.mock('gps-plus-slam-app-framework/storage/ref-point-loader', () => ({
+vi.mock('../storage/ref-point-loader', () => ({
   listRefPointIds: mockListRefPointIds,
   saveRefPointObservation: mockSaveRefPointObservation,
 }));
@@ -117,7 +117,7 @@ vi.mock('../ui/ref-point-picker', () => ({
   createRefPointPickerHtml: vi.fn(),
 }));
 
-vi.mock('gps-plus-slam-app-framework/state/recording-coordinator', () => ({
+vi.mock('gps-plus-slam-app-framework/state/gps-event-coordinator', () => ({
   extractOdomPosition: mockExtractOdomPosition,
   extractOdomRotation: mockExtractOdomRotation,
 }));
@@ -152,7 +152,7 @@ import {
   type RefPointHandlers,
   type RefPointHandlersDeps,
 } from './ref-point-handlers';
-import { refPointsReducer } from 'gps-plus-slam-app-framework/state/ref-points-slice';
+import { refPointsReducer } from '../state/ref-points-slice';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -1547,7 +1547,7 @@ describe('checkNearbyRefPoint — isNeighborCell', () => {
 
   // Why: When the user is in a neighbor cell (within gridDisk but different
   // center cell), isNeighborCell should be true. At H3 res-11, a shift of
-  // ~0.0003° (~33m) should land in a neighbor cell while still in the gridDisk.
+  // ~0.0003Â° (~33m) should land in a neighbor cell while still in the gridDisk.
   it('returns isNeighborCell=true when in a neighbor gridDisk cell', () => {
     handlers.setImportedRefPoints([
       {

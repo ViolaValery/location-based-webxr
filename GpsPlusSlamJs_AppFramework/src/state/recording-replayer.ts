@@ -15,7 +15,10 @@
 
 import { loadActionsFromZip, type RecordedAction } from '../storage/zip-reader';
 import { NullStorageBackend } from '../storage/null-storage-backend';
-import { createRecorderStore, type CombinedRootState } from './store';
+import { createSlamAppStore } from './create-slam-app-store';
+import type { CombinedRootState } from './combined-root-state';
+
+export type { CombinedRootState };
 
 /**
  * Options for replaying a recording.
@@ -47,7 +50,7 @@ export async function replayRecording(
   zipData: Uint8Array,
   options?: ReplayRecordingOptions
 ): Promise<CombinedRootState> {
-  const store = createRecorderStore({
+  const store = createSlamAppStore({
     storageBackend: new NullStorageBackend(),
   });
 

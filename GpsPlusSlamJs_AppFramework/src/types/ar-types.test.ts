@@ -20,12 +20,10 @@ import type {
   WebXRQuaternion,
 } from './ar-types';
 import type { ImageCaptureCallbacks } from '../ar/image-capture';
-import type { RefPointObservation } from '../storage/ref-point-loader';
-import type { RefPointRecord } from '../storage/file-system';
 import type {
   DepthSample as StoreDepthSample,
   DepthPoint as StoreDepthPoint,
-} from '../state/store';
+} from './ar-types';
 
 describe('AR Types', () => {
   describe('ARPose', () => {
@@ -127,9 +125,9 @@ describe('AR Types', () => {
       expect(depthSampler).toBeDefined();
     });
 
-    it('DepthPoint is re-exported from store', async () => {
-      const store = await import('../state/store');
-      expect(store).toBeDefined();
+    it('DepthPoint is re-exported from gps-plus-slam-js', async () => {
+      const lib = await import('gps-plus-slam-js');
+      expect(lib).toBeDefined();
     });
   });
 
@@ -192,10 +190,10 @@ describe('AR Types', () => {
      * end-to-end compatibility between the sampler and the store at runtime.
      */
     it('DepthSampler produces a sample compatible with the store', async () => {
-      const storeModule = await import('../state/store');
+      const recorderSlice = await import('../state/recording-slice');
       const { DepthSampler } = await import('../ar/depth-sampler');
 
-      expect(storeModule.recordDepthSample).toBeDefined();
+      expect(recorderSlice.recordDepthSample).toBeDefined();
 
       const capturedSamples: DepthSample[] = [];
       const sampler = new DepthSampler({
@@ -514,56 +512,7 @@ describe('AR Types', () => {
     });
   });
 
-  describe('Single-source-of-truth: ArPoseTuples in storage interfaces', () => {
-    /**
-     * Why this test matters:
-     * RefPointObservation.arPose, ParsedRefPointAction, and RefPointRecord
-     * previously defined { position: [n,n,n]; rotation: [n,n,n,n] } inline.
-     * These tests prove they now use the canonical ArPoseTuples type so any
-     * structural drift is caught at compile time + runtime.
-     *
-     * ParsedRefPointAction is intentionally not tested here because it is
-     * module-private to file-system.ts and already typed as ArPoseTuples,
-     * so the compiler enforces structural identity without an export.
-     */
-    it('RefPointObservation.arPose is structurally ArPoseTuples', () => {
-      const obs: RefPointObservation = {
-        sessionId: 'test-session',
-        timestamp: 1000,
-        arPose: { position: [1, 2, 3], rotation: [0, 0, 0, 1] },
-        gpsPoint: {
-          id: 'gps-1',
-          zeroRef: { lat: 50, lon: 8 },
-          latitude: 50,
-          longitude: 8,
-          altitude: 100,
-          coordinates: [0, 0, 0],
-          weight: 1,
-          timestamp: 1000,
-        },
-      };
-
-      // Compile-time: arPose must satisfy ArPoseTuples
-      const arPose: ArPoseTuples = obs.arPose;
-      expect(arPose.position).toEqual([1, 2, 3]);
-      expect(arPose.rotation).toEqual([0, 0, 0, 1]);
-    });
-
-    it('RefPointRecord.arPose is structurally ArPoseTuples when present', () => {
-      const record: RefPointRecord = {
-        id: 'point-a',
-        sessionName: 'session-1',
-        arPose: { position: [4, 5, 6], rotation: [0.1, 0.2, 0.3, 0.9] },
-      };
-
-      // Compile-time: arPose must satisfy ArPoseTuples
-      const arPose: ArPoseTuples = record.arPose!;
-      expect(arPose.position).toEqual([4, 5, 6]);
-      expect(arPose.rotation).toEqual([0.1, 0.2, 0.3, 0.9]);
-    });
-  });
-
-  // ──────────────────────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────
   // Inline tuple → Vector3/Quaternion migration guards (Finding #1)
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -600,7 +549,7 @@ describe('AR Types', () => {
     });
   });
 
-  describe('recording-coordinator returns library tuple types', () => {
+  describe('gps-event-coordinator returns library tuple types', () => {
     /**
      * Why this test matters:
      * extractOdomPosition previously returned mutable [number, number, number].
@@ -609,7 +558,7 @@ describe('AR Types', () => {
      */
     it('extractOdomPosition returns Vector3', async () => {
       const { extractOdomPosition } =
-        await import('../state/recording-coordinator');
+        await import('../state/gps-event-coordinator');
       const pose: ARPose = {
         position: { x: 1, y: 2, z: 3 },
         orientation: { x: 0, y: 0, z: 0, w: 1 },
@@ -628,7 +577,7 @@ describe('AR Types', () => {
      */
     it('extractOdomRotation returns Quaternion', async () => {
       const { extractOdomRotation } =
-        await import('../state/recording-coordinator');
+        await import('../state/gps-event-coordinator');
       const pose: ARPose = {
         position: { x: 0, y: 0, z: 0 },
         orientation: { x: 0.1, y: 0.2, z: 0.3, w: 0.9 },
@@ -645,7 +594,7 @@ describe('AR Types', () => {
      */
     it('eulerToQuaternion returns Quaternion', async () => {
       const { eulerToQuaternion } =
-        await import('../state/recording-coordinator');
+        await import('../state/gps-event-coordinator');
       const result = eulerToQuaternion(0, 0, 0);
       expectTypeOf(result).toEqualTypeOf<Quaternion>();
       expect(result).toHaveLength(4);

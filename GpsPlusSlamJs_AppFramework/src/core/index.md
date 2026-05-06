@@ -16,9 +16,11 @@ Re-exports from `gps-plus-slam-js`:
 | `isIdentityMatrix4`         | function | Framework + RecorderApp tests                                       |
 | `odometryTrackingRestarted` | action   | RecorderApp `main.ts`                                               |
 | `createGpsSlamStore`        | factory  | RecorderApp `recording-replay.integration.test.ts`                  |
+| `validateLicenseKey`        | function | RecorderApp tests that exercise licensed math (e.g. visualization)  |
 | `Vector3`, `Quaternion`     | type     | RecorderApp ref-point handlers + tests                              |
 | `Matrix4`                   | type     | RecorderApp recording-session handlers                              |
 | `LatLong`                   | type     | RecorderApp main.ts, recording-session handlers, action-schema test |
+| `LatLongAlt`                | type     | RecorderApp `ref-point-loader.ts` (altitude-bearing GPS shape)      |
 | `GpsPoint`                  | type     | RecorderApp ref-point-handlers test                                 |
 | `RootState`                 | type     | Library root state — also re-exported as `LibraryRootState`         |
 | `LibraryRootState`          | type     | Alias of library `RootState` for collision-free imports             |

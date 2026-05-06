@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Recording Options Integration Tests
  *
  * Tests that verify recording options are properly applied
@@ -22,7 +22,7 @@ import {
   recordDepthSample,
   add2dImage,
   type RecorderStore,
-} from 'gps-plus-slam-app-framework/state/store';
+} from './recorder-store';
 
 // Mock file system to avoid actual file operations
 vi.mock('gps-plus-slam-app-framework/storage/file-system', () => ({
@@ -55,7 +55,7 @@ describe('Recording Options Integration', () => {
         })
       );
 
-      const state = store.getState().recorder;
+      const state = store.getState().recording;
       // recordingOptions may be undefined if not explicitly passed
       expect(state.sessionMetadata?.scenarioName).toBe('Test');
     });
@@ -81,7 +81,7 @@ describe('Recording Options Integration', () => {
         })
       );
 
-      const state = store.getState().recorder;
+      const state = store.getState().recording;
       expect(state.sessionMetadata?.recordingOptions).toEqual(customOptions);
     });
 
@@ -106,7 +106,8 @@ describe('Recording Options Integration', () => {
         })
       );
 
-      const saved = store.getState().recorder.sessionMetadata?.recordingOptions;
+      const saved =
+        store.getState().recording.sessionMetadata?.recordingOptions;
       expect(saved?.depth.intervalMs).toBe(1500);
       expect(saved?.depth.gridSize).toBe(7);
       expect(saved?.images.enabled).toBe(false);
@@ -167,7 +168,7 @@ describe('Recording Options Integration', () => {
 
       // Verify no depth sample was dispatched
       const depthActions = dispatchedActions.filter(
-        (a) => a.type === 'recorder/recordDepthSample'
+        (a) => a.type === 'recording/recordDepthSample'
       );
       expect(depthActions.length).toBe(0);
     });
@@ -198,7 +199,7 @@ describe('Recording Options Integration', () => {
       }
 
       const depthActions = dispatchedActions.filter(
-        (a) => a.type === 'recorder/recordDepthSample'
+        (a) => a.type === 'recording/recordDepthSample'
       );
       expect(depthActions.length).toBe(1);
     });
@@ -341,7 +342,7 @@ describe('Recording Options Integration', () => {
       }
 
       const depthActions = dispatchedActions.filter(
-        (a) => a.type === 'recorder/recordDepthSample'
+        (a) => a.type === 'recording/recordDepthSample'
       );
       const imageActions = dispatchedActions.filter(
         (a) => a.type === 'gpsData/add2dImage'
@@ -396,7 +397,7 @@ describe('Recording Options Integration', () => {
       }
 
       const depthActions = dispatchedActions.filter(
-        (a) => a.type === 'recorder/recordDepthSample'
+        (a) => a.type === 'recording/recordDepthSample'
       );
       const imageActions = dispatchedActions.filter(
         (a) => a.type === 'gpsData/add2dImage'
@@ -451,7 +452,7 @@ describe('Recording Options Integration', () => {
       }
 
       const depthActions = dispatchedActions.filter(
-        (a) => a.type === 'recorder/recordDepthSample'
+        (a) => a.type === 'recording/recordDepthSample'
       );
       const imageActions = dispatchedActions.filter(
         (a) => a.type === 'gpsData/add2dImage'

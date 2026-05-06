@@ -29,8 +29,7 @@ import {
   type NavigationCallbacks,
   type NavigationStore,
 } from './navigation';
-import { routingReducer } from 'gps-plus-slam-app-framework/state';
-import type { AppScreen } from 'gps-plus-slam-app-framework/state';
+import { routingReducer, type AppScreen } from '../state/routing-slice';
 
 describe('Navigation Module', () => {
   let pushStateSpy: ReturnType<typeof vi.spyOn>;

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Recording Migration Tests
  *
  * Why these tests matter:
@@ -366,7 +366,7 @@ describe('recording-migration', () => {
         const metadata: Era2Metadata = { odomCoordVersion: 2 };
         const actions: RecordedAction[] = [
           {
-            type: 'recorder/recordDepthSample',
+            type: 'recording/recordDepthSample',
             payload: {
               cameraPos: [-3, 2, 1], // NUE
               cameraRot: [0, 0, 0, 1],
@@ -415,8 +415,8 @@ describe('recording-migration', () => {
       it('leaves non-position actions untouched', () => {
         const metadata: Era2Metadata = { odomCoordVersion: 2 };
         const actions: RecordedAction[] = [
-          { type: 'recorder/startSession', payload: { scenarioName: 'test' } },
-          { type: 'recorder/stopSession', payload: undefined },
+          { type: 'recording/startSession', payload: { scenarioName: 'test' } },
+          { type: 'recording/stopSession', payload: undefined },
         ];
 
         const result = migrateActionsIfNeeded(actions, metadata);
@@ -633,18 +633,18 @@ describe('recording-migration', () => {
       it('leaves non-position actions untouched (startSession, stopSession)', () => {
         const metadata: Era1Metadata = {};
         const actions: RecordedAction[] = [
-          { type: 'recorder/startSession', payload: { scenarioName: 'test' } },
-          { type: 'recorder/stopSession', payload: undefined },
+          { type: 'recording/startSession', payload: { scenarioName: 'test' } },
+          { type: 'recording/stopSession', payload: undefined },
         ];
 
         const result = migrateActionsIfNeeded(actions, metadata);
 
         expect(result[0]).toEqual({
-          type: 'recorder/startSession',
+          type: 'recording/startSession',
           payload: { scenarioName: 'test' },
         });
         expect(result[1]).toEqual({
-          type: 'recorder/stopSession',
+          type: 'recording/stopSession',
           payload: undefined,
         });
       });

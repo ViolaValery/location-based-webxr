@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Replay Engine
  *
  * Controls timed playback of recorded sessions by dispatching actions
@@ -14,7 +14,11 @@
  * @see docs/2026-02-19-replay-mode.md Issue 2 (Option D), Issue 3
  */
 
-import type { RecorderStore } from './store';
+import type { ReducersMapObject } from '@reduxjs/toolkit';
+import type { SlamAppStore } from './create-slam-app-store';
+
+/** Minimal store contract used by the replay engine: dispatches plain actions. */
+type RecorderStore = SlamAppStore<ReducersMapObject>;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -80,7 +84,7 @@ export function extractActionTimestamp(action: ReplayAction): number | null {
       return null;
     }
 
-    case 'recorder/startSession': {
+    case 'recording/startSession': {
       // payload.startTime — epoch ms
       if (typeof payload.startTime === 'number') {
         return payload.startTime;
@@ -107,12 +111,12 @@ export function extractActionTimestamp(action: ReplayAction): number | null {
       return null;
     }
 
-    case 'recorder/recordDepthSample':
+    case 'recording/recordDepthSample':
       // EXPLICITLY null — uses performance.now() (relative), NOT epoch ms.
       // Mixing clock domains in delay calculation produces garbage. (Risk R4)
       return null;
 
-    case 'recorder/endSession':
+    case 'recording/endSession':
       // No timestamp in payload
       return null;
 

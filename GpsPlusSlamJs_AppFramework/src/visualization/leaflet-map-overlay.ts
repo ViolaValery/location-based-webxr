@@ -122,7 +122,10 @@ export class LeafletMapOverlay {
   private rawGpsPoints: L.LatLngExpression[] = [];
   private fusedPoints: L.LatLngExpression[] = [];
   private snapshotPoints: L.LatLngExpression[] = [];
-  private refPoints: Array<{
+  // Generic named markers (e.g., recorder ref-point markers). Buffered so
+  // entries added before `show()` are still rendered when the Leaflet map
+  // is created. `isPrior` selects color + label decoration.
+  private namedMarkers: Array<{
     lat: number;
     lng: number;
     name: string;
@@ -259,32 +262,40 @@ export class LeafletMapOverlay {
     }
   }
 
-  addRefPoint(lat: number, lon: number, name: string): void {
+  // -------------------------------------------------------------------------
+  // Generic named markers (generic, app-defined: e.g., recorder ref-points)
+  // -------------------------------------------------------------------------
+
+  /** Add a "current" named marker (red). Buffered if map is not yet shown. */
+  addCurrentMarker(lat: number, lon: number, name: string): void {
     const marker = this.leafletMap
-      ? this.createRefPointMarker(lat, lon, name, false)
+      ? this.createNamedMarker(lat, lon, name, false)
       : null;
-    this.refPoints.push({ lat, lng: lon, name, isPrior: false, marker });
+    this.namedMarkers.push({ lat, lng: lon, name, isPrior: false, marker });
   }
 
-  addPriorRefPoint(lat: number, lon: number, name: string): void {
+  /** Add a "prior" named marker (green, decorated). Buffered if not shown. */
+  addPriorMarker(lat: number, lon: number, name: string): void {
     const marker = this.leafletMap
-      ? this.createRefPointMarker(lat, lon, name, true)
+      ? this.createNamedMarker(lat, lon, name, true)
       : null;
-    this.refPoints.push({ lat, lng: lon, name, isPrior: true, marker });
+    this.namedMarkers.push({ lat, lng: lon, name, isPrior: true, marker });
   }
 
-  addPriorRefPoints(
-    refPoints: Array<{ lat: number; lon: number; name: string }>
+  /** Bulk add prior markers. */
+  addPriorMarkers(
+    markers: Array<{ lat: number; lon: number; name: string }>
   ): void {
-    for (const rp of refPoints) {
-      this.addPriorRefPoint(rp.lat, rp.lon, rp.name);
+    for (const m of markers) {
+      this.addPriorMarker(m.lat, m.lon, m.name);
     }
   }
 
-  clearPriorRefPoints(): void {
-    this.refPoints = this.refPoints.filter((rp) => {
-      if (rp.isPrior) {
-        rp.marker?.remove();
+  /** Remove all prior markers; current markers are unaffected. */
+  clearPriorMarkers(): void {
+    this.namedMarkers = this.namedMarkers.filter((m) => {
+      if (m.isPrior) {
+        m.marker?.remove();
         return false;
       }
       return true;
@@ -358,7 +369,7 @@ export class LeafletMapOverlay {
     this.rawGpsPoints = [];
     this.fusedPoints = [];
     this.snapshotPoints = [];
-    this.refPoints = [];
+    this.namedMarkers = [];
 
     this.cssObject = null;
 
@@ -418,9 +429,9 @@ export class LeafletMapOverlay {
     this.fusedPolyline = null;
     this.snapshotPolyline?.remove();
     this.snapshotPolyline = null;
-    for (const rp of this.refPoints) {
-      rp.marker?.remove();
-      rp.marker = null;
+    for (const m of this.namedMarkers) {
+      m.marker?.remove();
+      m.marker = null;
     }
 
     // Destroy Leaflet map
@@ -523,15 +534,10 @@ export class LeafletMapOverlay {
       }).addTo(this.leafletMap);
     }
 
-    // Reference points — only create markers for entries that don't have one
-    for (const rp of this.refPoints) {
-      if (!rp.marker) {
-        rp.marker = this.createRefPointMarker(
-          rp.lat,
-          rp.lng,
-          rp.name,
-          rp.isPrior
-        );
+    // Named markers — only create markers for entries that don't have one
+    for (const m of this.namedMarkers) {
+      if (!m.marker) {
+        m.marker = this.createNamedMarker(m.lat, m.lng, m.name, m.isPrior);
       }
     }
   }
@@ -555,7 +561,7 @@ export class LeafletMapOverlay {
     }
   }
 
-  private createRefPointMarker(
+  private createNamedMarker(
     lat: number,
     lon: number,
     name: string,

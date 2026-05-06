@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Unit tests for zip-reader.ts
  *
  * Why these tests matter: The zip-reader module provides production-ready
@@ -96,7 +96,7 @@ describe('zip-reader', () => {
 
     it('first action is recorder/startSession', () => {
       // Why: recordings must start with a startSession action
-      expect(actions[0].action.type).toBe('recorder/startSession');
+      expect(actions[0].action.type).toBe('recording/startSession');
     });
 
     it('preserves action payloads', () => {
@@ -123,7 +123,7 @@ describe('zip-reader', () => {
       // Why: the round-trip zip includes session.json with full metadata
       // (post-F2-fix behavior); the reader must parse it correctly
       expect(sessionMetadata).not.toBeNull();
-      expect(sessionMetadata!.scenarioName).toBe(testZip.scenarioName);
+      expect(sessionMetadata!.contextTag).toBe(testZip.scenarioName);
       expect(sessionMetadata!.version).toBe(1);
       expect(sessionMetadata!.actionCount).toBe(testZip.totalActionCount);
       expect(sessionMetadata!.frameCount).toBe(testZip.frameCount);
@@ -203,7 +203,7 @@ describe('zip-reader', () => {
       const data = await createZipWithActions([
         {
           name: 'actions/000001.json',
-          content: '{"type":"recorder/startSession"}',
+          content: '{"type":"recording/startSession"}',
         },
         {
           name: 'actions/my-notes.json',
@@ -233,7 +233,7 @@ describe('zip-reader', () => {
       const data = await createZipWithActions([
         {
           name: 'actions/000001.json',
-          content: '{"type":"recorder/startSession"}',
+          content: '{"type":"recording/startSession"}',
         },
         {
           name: 'actions/readme.json',
@@ -241,7 +241,7 @@ describe('zip-reader', () => {
         },
         {
           name: 'actions/000002.json',
-          content: '{"type":"recorder/stopSession"}',
+          content: '{"type":"recording/stopSession"}',
         },
       ]);
 
@@ -260,11 +260,11 @@ describe('zip-reader', () => {
       const data = await createZipWithActions([
         {
           name: 'actions/000001.json',
-          content: '{"type":"recorder/startSession"}',
+          content: '{"type":"recording/startSession"}',
         },
         {
           name: 'actions/000002.json',
-          content: '{"type":"recorder/gps"}',
+          content: '{"type":"recording/gps"}',
         },
       ]);
 
@@ -315,7 +315,7 @@ describe('zip-reader', () => {
         { name: 'actions/000002.json', content: '{ INVALID JSON !!!' },
         {
           name: 'actions/000003.json',
-          content: '{"type":"recorder/endSession"}',
+          content: '{"type":"recording/endSession"}',
         },
       ]);
 
@@ -323,7 +323,7 @@ describe('zip-reader', () => {
 
       expect(result).toHaveLength(2);
       expect(result[0]!.action.type).toBe('gpsData/setZeroPos');
-      expect(result[1]!.action.type).toBe('recorder/endSession');
+      expect(result[1]!.action.type).toBe('recording/endSession');
     });
 
     it('logs a warning for each skipped malformed entry', async () => {
@@ -334,7 +334,7 @@ describe('zip-reader', () => {
       const data = await createZipWithActions([
         {
           name: 'actions/000001.json',
-          content: '{"type":"recorder/startSession"}',
+          content: '{"type":"recording/startSession"}',
         },
         { name: 'actions/000002.json', content: 'not json at all' },
         { name: 'actions/000003.json', content: '{truncated' },
@@ -402,20 +402,20 @@ describe('zip-reader', () => {
         const data = await createZipWithActions([
           {
             name: 'actions/000001.json',
-            content: '{"type":"recorder/startSession"}',
+            content: '{"type":"recording/startSession"}',
           },
           { name: 'actions/000002.json', content },
           {
             name: 'actions/000003.json',
-            content: '{"type":"recorder/endSession"}',
+            content: '{"type":"recording/endSession"}',
           },
         ]);
 
         const result = await loadActionsFromZip(data);
 
         expect(result).toHaveLength(2);
-        expect(result[0]!.action.type).toBe('recorder/startSession');
-        expect(result[1]!.action.type).toBe('recorder/endSession');
+        expect(result[0]!.action.type).toBe('recording/startSession');
+        expect(result[1]!.action.type).toBe('recording/endSession');
       }
     );
 
@@ -425,7 +425,7 @@ describe('zip-reader', () => {
       const data = await createZipWithActions([
         {
           name: 'actions/000001.json',
-          content: '{"type":"recorder/startSession"}',
+          content: '{"type":"recording/startSession"}',
         },
         {
           name: 'actions/000002.json',
@@ -436,7 +436,7 @@ describe('zip-reader', () => {
       const result = await loadActionsFromZip(data);
 
       expect(result).toHaveLength(1);
-      expect(result[0]!.action.type).toBe('recorder/startSession');
+      expect(result[0]!.action.type).toBe('recording/startSession');
     });
 
     it('skips an object with a non-string type property', async () => {
@@ -445,7 +445,7 @@ describe('zip-reader', () => {
       const data = await createZipWithActions([
         {
           name: 'actions/000001.json',
-          content: '{"type":"recorder/startSession"}',
+          content: '{"type":"recording/startSession"}',
         },
         { name: 'actions/000002.json', content: '{"type":123}' },
       ]);
@@ -453,7 +453,7 @@ describe('zip-reader', () => {
       const result = await loadActionsFromZip(data);
 
       expect(result).toHaveLength(1);
-      expect(result[0]!.action.type).toBe('recorder/startSession');
+      expect(result[0]!.action.type).toBe('recording/startSession');
     });
 
     it('logs warnings for each skipped invalid-shape entry', async () => {
@@ -465,7 +465,7 @@ describe('zip-reader', () => {
         { name: 'actions/000002.json', content: '{"payload":"no type"}' },
         {
           name: 'actions/000003.json',
-          content: '{"type":"recorder/ok"}',
+          content: '{"type":"recording/ok"}',
         },
       ]);
 
@@ -513,13 +513,13 @@ describe('loadSessionMetadataFromBlob', () => {
   });
 
   it('returns session metadata with scenarioName from a Blob', async () => {
-    // Why: Basic functionality check — read scenarioName from session.json
-    // inside a zip provided as a Blob.
+    // Why: Basic functionality check — read scenarioName (now carried in
+    // contextTag) from session.json inside a zip provided as a Blob.
     const blob = new Blob([testZip.zipData as BlobPart]);
     const metadata = await loadSessionMetadataFromBlob(blob);
 
     expect(metadata).not.toBeNull();
-    expect(metadata!.scenarioName).toBe(testZip.scenarioName);
+    expect(metadata!.contextTag).toBe(testZip.scenarioName);
     expect(metadata!.version).toBe(1);
   });
 
@@ -530,7 +530,7 @@ describe('loadSessionMetadataFromBlob', () => {
     const zipWriter = new ZipWriter(new Uint8ArrayWriter());
     await zipWriter.add(
       'actions/000001.json',
-      new TextReader('{"type":"recorder/startSession"}')
+      new TextReader('{"type":"recording/startSession"}')
     );
     const zipBytes = await zipWriter.close();
     const blob = new Blob([zipBytes]);
@@ -563,7 +563,7 @@ describe('loadSessionMetadataFromBlob', () => {
     const metadata = await loadSessionMetadataFromBlob(file);
 
     expect(metadata).not.toBeNull();
-    expect(metadata!.scenarioName).toBe(testZip.scenarioName);
+    expect(metadata!.contextTag).toBe(testZip.scenarioName);
   });
 });
 

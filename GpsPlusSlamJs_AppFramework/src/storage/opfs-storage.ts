@@ -5,20 +5,21 @@
  * OPFS works consistently on Desktop Chrome, Android Chrome, and iOS Safari,
  * unlike showDirectoryPicker which has write restrictions on Android.
  *
- * Directory structure:
- * /gps-recorder/
- *   └── scenarios/
- *       ├── {scenario-name}/
- *       │   ├── recording-YYYY-MM-DD_HH-MM-SSutc/
- *       │   │   ├── session.json
- *       │   │   ├── actions/
- *       │   │   │   ├── 000001.json
- *       │   │   │   └── ...
- *       │   │   └── frames/
- *       │   │       ├── frame-000001.jpg
- *       │   │       └── ...
- *       │   └── ...
+ * Directory structure (flat sessions — no scenario hierarchy):
+ * /gps-plus-slam/
+ *   └── sessions/
+ *       ├── recording-YYYY-MM-DD_HH-MM-SSutc/
+ *       │   ├── session.json
+ *       │   ├── actions/
+ *       │   │   ├── 000001.json
+ *       │   │   └── ...
+ *       │   └── frames/
+ *       │       ├── frame-000001.jpg
+ *       │       └── ...
  *       └── ...
+ *
+ * Scenario grouping (scenarios/{name}/recording-…) is a recorder-only concern,
+ * handled by ScenarioWrappingStorageBackend in the recorder app.
  */
 
 import { createLogger } from '../utils/logger';
@@ -59,8 +60,12 @@ export interface SessionMetadata {
   startedAt: string;
   /** ISO 8601 timestamp when recording ended */
   endedAt: string;
-  /** Name of the scenario this session belongs to */
-  scenarioName: string;
+  /**
+   * Opaque tag the framework does not interpret. Consumers (e.g. the recorder)
+   * use it to carry application-specific grouping info such as a scenario name.
+   * Replaces the former required `scenarioName` field.
+   */
+  contextTag?: string;
   /** Total number of actions recorded */
   actionCount: number;
   /** Total number of frames captured */
@@ -90,7 +95,6 @@ export interface SessionMetadata {
  * Result from createSession.
  */
 export interface CreateSessionResult {
-  scenarioName: string;
   sessionName: string;
 }
 
@@ -99,9 +103,8 @@ export interface CreateSessionResult {
 // ============================================================================
 
 let opfsRoot: FileSystemDirectoryHandle | null = null;
-let gpsRecorderDir: FileSystemDirectoryHandle | null = null;
-let scenariosDir: FileSystemDirectoryHandle | null = null;
-let currentScenarioHandle: FileSystemDirectoryHandle | null = null;
+let gpsPlusSlamDir: FileSystemDirectoryHandle | null = null;
+let sessionsDir: FileSystemDirectoryHandle | null = null;
 let currentSessionHandle: FileSystemDirectoryHandle | null = null;
 let actionsHandle: FileSystemDirectoryHandle | null = null;
 let framesHandle: FileSystemDirectoryHandle | null = null;
@@ -112,9 +115,8 @@ let framesHandle: FileSystemDirectoryHandle | null = null;
  */
 export function resetOpfsStorage(): void {
   opfsRoot = null;
-  gpsRecorderDir = null;
-  scenariosDir = null;
-  currentScenarioHandle = null;
+  gpsPlusSlamDir = null;
+  sessionsDir = null;
   currentSessionHandle = null;
   actionsHandle = null;
   framesHandle = null;
@@ -123,14 +125,11 @@ export function resetOpfsStorage(): void {
 /**
  * Reset session-level handles only.
  *
- * Preserves opfsRoot/gpsRecorderDir/scenariosDir (OPFS stays initialized)
- * but clears current scenario/session/actions/frames handles so a new
- * session can be started fresh.
- *
- * Used during soft reset for new recordings (Issue 4, 2026-02-06 user feedback).
+ * Preserves opfsRoot/gpsPlusSlamDir/sessionsDir (OPFS stays initialized)
+ * but clears current session/actions/frames handles so a new session can
+ * be started fresh.
  */
 export function resetSessionHandles(): void {
-  currentScenarioHandle = null;
   currentSessionHandle = null;
   actionsHandle = null;
   framesHandle = null;
@@ -144,15 +143,14 @@ export function resetSessionHandles(): void {
  * Initialize OPFS storage by creating the required directory structure.
  *
  * Creates:
- * - /gps-recorder/
- * - /gps-recorder/scenarios/
+ * - /gps-plus-slam/
+ * - /gps-plus-slam/sessions/
  *
  * This is idempotent - calling multiple times is safe.
  *
  * @throws Error if OPFS is not supported
  */
 export async function initOpfsStorage(): Promise<void> {
-  // Check for OPFS support
   if (
     typeof navigator === 'undefined' ||
     !navigator.storage ||
@@ -164,19 +162,33 @@ export async function initOpfsStorage(): Promise<void> {
     );
   }
 
-  // Get OPFS root
   opfsRoot = await navigator.storage.getDirectory();
   log.info('OPFS root obtained');
 
-  // Create app directory structure
-  gpsRecorderDir = await opfsRoot.getDirectoryHandle('gps-recorder', {
+  gpsPlusSlamDir = await opfsRoot.getDirectoryHandle('gps-plus-slam', {
     create: true,
   });
-  scenariosDir = await gpsRecorderDir.getDirectoryHandle('scenarios', {
+  sessionsDir = await gpsPlusSlamDir.getDirectoryHandle('sessions', {
     create: true,
   });
 
   log.info('OPFS storage initialized');
+}
+
+/**
+ * Get the sessions root directory handle.
+ * Used by consumers that need direct OPFS access (e.g. ZIP export).
+ */
+export function getSessionsRootHandle(): FileSystemDirectoryHandle | null {
+  return sessionsDir;
+}
+
+/**
+ * Get the app root directory handle (gps-plus-slam/).
+ * Used by consumers that need to create additional directories alongside sessions/.
+ */
+export function getAppRootHandle(): FileSystemDirectoryHandle | null {
+  return gpsPlusSlamDir;
 }
 
 // ============================================================================
@@ -184,41 +196,34 @@ export async function initOpfsStorage(): Promise<void> {
 // ============================================================================
 
 /**
- * Create a new recording session within a scenario.
+ * Create a new recording session.
  *
  * Creates the directory structure:
- * - /gps-recorder/scenarios/{scenarioName}/recording-{timestamp}/
- * - /gps-recorder/scenarios/{scenarioName}/recording-{timestamp}/actions/
- * - /gps-recorder/scenarios/{scenarioName}/recording-{timestamp}/frames/
+ * - /gps-plus-slam/sessions/recording-{timestamp}/
+ * - /gps-plus-slam/sessions/recording-{timestamp}/actions/
+ * - /gps-plus-slam/sessions/recording-{timestamp}/frames/
  *
- * @param scenarioName - Name of the scenario (creates if doesn't exist)
  * @param timestamp - Session start time (used for folder naming)
+ * @param _contextTag - Opaque tag; not used by the flat layout but accepted
+ *   for interface compatibility with wrapping backends
  * @returns Session information
  * @throws Error if storage not initialized
  */
 export async function createSession(
-  scenarioName: string,
-  timestamp: Date
+  timestamp: Date,
+  _contextTag?: string
 ): Promise<CreateSessionResult> {
-  if (!scenariosDir) {
+  if (!sessionsDir) {
     throw new Error(
       'OPFS storage not initialized. Call initOpfsStorage first.'
     );
   }
 
-  // Get or create scenario folder
-  currentScenarioHandle = await scenariosDir.getDirectoryHandle(scenarioName, {
+  const sessionName = `recording-${formatTimestamp(timestamp)}`;
+  currentSessionHandle = await sessionsDir.getDirectoryHandle(sessionName, {
     create: true,
   });
 
-  // Create session folder with timestamp
-  const sessionName = `recording-${formatTimestamp(timestamp)}`;
-  currentSessionHandle = await currentScenarioHandle.getDirectoryHandle(
-    sessionName,
-    { create: true }
-  );
-
-  // Create subdirectories
   actionsHandle = await currentSessionHandle.getDirectoryHandle('actions', {
     create: true,
   });
@@ -226,17 +231,13 @@ export async function createSession(
     create: true,
   });
 
-  log.info('Session created:', `${scenarioName}/${sessionName}`);
+  log.info('Session created:', sessionName);
 
-  return {
-    scenarioName,
-    sessionName,
-  };
+  return { sessionName };
 }
 
 /**
  * Get the current session directory handle.
- * Useful for test assertions.
  * @internal
  */
 export function getSessionHandle(): FileSystemDirectoryHandle | null {
@@ -244,18 +245,23 @@ export function getSessionHandle(): FileSystemDirectoryHandle | null {
 }
 
 /**
- * Get the current scenario directory handle.
+ * Set the active session handles externally.
+ *
+ * Used by file-system.ts's scenario-based path to reuse opfs-storage's
+ * write infrastructure for sessions created outside the flat layout.
+ * This is a temporary bridge until the recorder migrates to
+ * ScenarioWrappingStorageBackend.
+ *
+ * @internal
  */
-export function getScenarioHandle(): FileSystemDirectoryHandle | null {
-  return currentScenarioHandle;
-}
-
-/**
- * Get the scenarios root directory handle.
- * Used for loading reference points across scenarios.
- */
-export function getScenariosRootHandle(): FileSystemDirectoryHandle | null {
-  return scenariosDir;
+export function setSessionHandles(
+  session: FileSystemDirectoryHandle,
+  actions: FileSystemDirectoryHandle,
+  frames: FileSystemDirectoryHandle
+): void {
+  currentSessionHandle = session;
+  actionsHandle = actions;
+  framesHandle = frames;
 }
 
 // ============================================================================
@@ -267,9 +273,6 @@ export function getScenariosRootHandle(): FileSystemDirectoryHandle | null {
  *
  * Uses try/finally to ensure the writable stream is always cleaned up,
  * calling abort() on errors to prevent resource leaks and file locks.
- *
- * @param fileHandle - The file handle to write to
- * @param data - The data to write (string or Blob)
  */
 async function safeWriteToFile(
   fileHandle: FileSystemFileHandle,
@@ -284,8 +287,6 @@ async function safeWriteToFile(
     writeError = error;
   } finally {
     if (writeError !== null) {
-      // Attempt to abort the stream to release resources; ignore abort failures
-      // so they don't mask the original write/close error.
       try {
         await writable.abort();
       } catch {
@@ -297,7 +298,6 @@ async function safeWriteToFile(
     if (writeError instanceof Error) {
       throw writeError;
     }
-    // Convert unknown error to Error with safe message extraction
     const message =
       typeof writeError === 'string' ? writeError : 'File write failed';
     throw new Error(message);
@@ -376,59 +376,27 @@ export async function writeSessionMetadata(
 // ============================================================================
 
 /**
- * List all scenario names in OPFS storage.
+ * List all session names in OPFS storage.
  *
- * @returns Array of scenario folder names
- */
-export async function listScenarios(): Promise<string[]> {
-  if (!scenariosDir) {
-    return [];
-  }
-
-  const scenarios: string[] = [];
-  for await (const entry of scenariosDir.values()) {
-    if (entry.kind === 'directory') {
-      scenarios.push(entry.name);
-    }
-  }
-
-  return scenarios;
-}
-
-/**
- * List all session names within a scenario.
- *
- * @param scenarioName - Name of the scenario
  * @returns Array of session folder names
  */
-export async function listSessions(scenarioName: string): Promise<string[]> {
-  if (!scenariosDir) {
+export async function listSessions(): Promise<string[]> {
+  if (!sessionsDir) {
     return [];
   }
 
-  try {
-    const scenarioHandle = await scenariosDir.getDirectoryHandle(scenarioName);
-    const sessions: string[] = [];
-
-    for await (const entry of scenarioHandle.values()) {
-      if (entry.kind === 'directory') {
-        sessions.push(entry.name);
-      }
+  const sessions: string[] = [];
+  for await (const entry of sessionsDir.values()) {
+    if (entry.kind === 'directory') {
+      sessions.push(entry.name);
     }
-
-    return sessions;
-  } catch {
-    // Scenario doesn't exist
-    return [];
   }
+
+  return sessions;
 }
 
 /**
  * Check storage quota.
- *
- * Note: Prefer calling `initOpfsStorage()` before this function to ensure
- * the Storage API is available. If the Storage Manager API is not supported,
- * returns a safe default of `{ available: 0, used: 0 }`.
  *
  * @returns Available and used storage in bytes
  */
@@ -436,7 +404,6 @@ export async function checkStorageQuota(): Promise<{
   available: number;
   used: number;
 }> {
-  // Guard: Storage Manager API may not be available on all platforms
   if (
     typeof navigator === 'undefined' ||
     !navigator.storage ||

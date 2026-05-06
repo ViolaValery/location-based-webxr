@@ -11,6 +11,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { StorageBackend } from './storage-backend';
+import type { SessionMetadata } from './opfs-storage';
 import { NullStorageBackend } from './null-storage-backend';
 import { OpfsStorageBackend } from './opfs-storage-backend';
 
@@ -69,6 +70,54 @@ describe('NullStorageBackend', () => {
     // If we get here without error, the backend is stateless
     expect(true).toBe(true);
   });
+
+  it('createSession resolves with a session name', async () => {
+    // Why: session lifecycle is promoted onto the StorageBackend interface
+    // so wrapping backends (e.g. ScenarioWrappingStorageBackend) can intercept it.
+    // NullStorageBackend must satisfy the contract with a plausible no-op result.
+    const backend: StorageBackend = new NullStorageBackend();
+    const result = await backend.createSession(
+      new Date('2026-05-03T12:00:00Z')
+    );
+    expect(result).toHaveProperty('sessionName');
+    expect(typeof result.sessionName).toBe('string');
+    expect(result.sessionName.length).toBeGreaterThan(0);
+  });
+
+  it('createSession accepts an optional contextTag', async () => {
+    // Why: contextTag is an opaque string the framework doesn't interpret.
+    // The recorder uses it to carry scenario name. NullStorageBackend must accept it.
+    const backend: StorageBackend = new NullStorageBackend();
+    const result = await backend.createSession(
+      new Date('2026-05-03T12:00:00Z'),
+      'my-scenario'
+    );
+    expect(result).toHaveProperty('sessionName');
+  });
+
+  it('listSessions resolves with an empty array', async () => {
+    // Why: NullStorageBackend has no storage, so listing returns empty.
+    const backend: StorageBackend = new NullStorageBackend();
+    const sessions = await backend.listSessions();
+    expect(sessions).toEqual([]);
+  });
+
+  it('writeSessionMetadata accepts metadata without scenarioName', async () => {
+    // Why: SessionMetadata.scenarioName is replaced by optional contextTag;
+    // framework metadata must not require scenario-specific fields.
+    const backend = new NullStorageBackend();
+    const metadata: SessionMetadata = {
+      version: 1,
+      startedAt: '2026-01-01T00:00:00Z',
+      endedAt: '2026-01-01T01:00:00Z',
+      actionCount: 10,
+      frameCount: 5,
+      userAgent: 'test-agent',
+    };
+    await expect(
+      backend.writeSessionMetadata(metadata)
+    ).resolves.toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -80,6 +129,11 @@ vi.mock('./file-system', () => ({
   writeAction: vi.fn().mockResolvedValue(undefined),
   writeFrame: vi.fn().mockResolvedValue(undefined),
   writeSessionMetadata: vi.fn().mockResolvedValue(undefined),
+  startSession: vi.fn().mockResolvedValue({
+    scenarioPath: '',
+    sessionPath: 'recording-2026-01-01_00-00-00utc',
+  }),
+  listSessions: vi.fn().mockResolvedValue([]),
 }));
 
 describe('OpfsStorageBackend', () => {
@@ -142,5 +196,41 @@ describe('OpfsStorageBackend', () => {
     await expect(backend.writeAction({ type: 'test' }, 1)).rejects.toThrow(
       'OPFS full'
     );
+  });
+
+  it('createSession delegates to file-system startSession', async () => {
+    // Why: OpfsStorageBackend must forward createSession to the underlying
+    // file-system module for OPFS directory creation
+    const { startSession } = await import('./file-system');
+    vi.mocked(startSession).mockResolvedValueOnce({
+      scenarioPath: '',
+      sessionPath: 'recording-2026-05-03_12-00-00utc',
+    });
+    const backend = new OpfsStorageBackend();
+
+    const result = await backend.createSession(
+      new Date('2026-05-03T12:00:00Z')
+    );
+
+    expect(startSession).toHaveBeenCalled();
+    expect(result.sessionName).toBe('recording-2026-05-03_12-00-00utc');
+  });
+
+  it('listSessions delegates to file-system listSessions', async () => {
+    // Why: OpfsStorageBackend must forward listSessions to file-system module
+    const { listSessions } = await import('./file-system');
+    vi.mocked(listSessions).mockResolvedValueOnce([
+      'recording-2026-05-03_12-00-00utc',
+      'recording-2026-05-03_13-00-00utc',
+    ]);
+    const backend = new OpfsStorageBackend();
+
+    const sessions = await backend.listSessions();
+
+    expect(listSessions).toHaveBeenCalled();
+    expect(sessions).toEqual([
+      'recording-2026-05-03_12-00-00utc',
+      'recording-2026-05-03_13-00-00utc',
+    ]);
   });
 });

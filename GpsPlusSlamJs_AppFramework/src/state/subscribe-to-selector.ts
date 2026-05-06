@@ -8,7 +8,7 @@
  * @see docs/2026-04-07-architecture-observations-consolidated.md §1
  */
 
-import type { CombinedRootState } from './store';
+import type { CombinedRootState } from './combined-root-state';
 
 // ---------------------------------------------------------------------------
 // Public types

@@ -24,7 +24,7 @@ import {
 
 // Minimal recorder-like slice for testing
 const testRecorderSlice = createSlice({
-  name: 'recorder',
+  name: 'recording',
   initialState: { isRecording: false, failedWriteCount: 0 },
   reducers: {
     startSession(state) {
@@ -54,7 +54,7 @@ const testGpsDataSlice = createSlice({
 function createTestStore(options: PersistenceMiddlewareOptions) {
   return configureStore({
     reducer: {
-      recorder: testRecorderSlice.reducer,
+      recording: testRecorderSlice.reducer,
       gpsData: testGpsDataSlice.reducer,
     },
     middleware: (getDefaultMiddleware) =>
@@ -68,10 +68,14 @@ function createTestStore(options: PersistenceMiddlewareOptions) {
 describe('Persistence Middleware', () => {
   function createMockBackend() {
     return {
+      createSession: vi.fn().mockResolvedValue({ sessionName: 'test' }),
+      listSessions: vi.fn().mockResolvedValue([]),
       writeAction: vi.fn().mockResolvedValue(undefined),
       writeFrame: vi.fn().mockResolvedValue(undefined),
       writeSessionMetadata: vi.fn().mockResolvedValue(undefined),
     } as StorageBackend & {
+      createSession: ReturnType<typeof vi.fn>;
+      listSessions: ReturnType<typeof vi.fn>;
       writeAction: ReturnType<typeof vi.fn>;
       writeFrame: ReturnType<typeof vi.fn>;
       writeSessionMetadata: ReturnType<typeof vi.fn>;
@@ -98,7 +102,7 @@ describe('Persistence Middleware', () => {
     const store = createTestStore({ storageBackend: mockBackend });
     store.dispatch(testRecorderSlice.actions.startSession());
     expect(mockBackend.writeAction).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'recorder/startSession' }),
+      expect.objectContaining({ type: 'recording/startSession' }),
       1
     );
   });
@@ -121,7 +125,7 @@ describe('Persistence Middleware', () => {
     const store = createTestStore({ storageBackend: mockBackend });
     store.dispatch(testRecorderSlice.actions.startSession());
     expect(mockBackend.writeAction).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'recorder/startSession' }),
+      expect.objectContaining({ type: 'recording/startSession' }),
       1
     );
   });
@@ -151,7 +155,7 @@ describe('Persistence Middleware', () => {
 
     const store = configureStore({
       reducer: {
-        recorder: testRecorderSlice.reducer,
+        recording: testRecorderSlice.reducer,
         gpsData: testGpsDataSlice.reducer,
         routing: routingSlice.reducer,
       },
@@ -188,7 +192,7 @@ describe('Persistence Middleware', () => {
 
     expect(mockBackend.writeAction).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ type: 'recorder/startSession' }),
+      expect.objectContaining({ type: 'recording/startSession' }),
       1
     );
     expect(mockBackend.writeAction).toHaveBeenNthCalledWith(
@@ -238,7 +242,7 @@ describe('Persistence Middleware', () => {
     store.dispatch(testRecorderSlice.actions.startSession());
 
     await vi.waitFor(() => {
-      expect(store.getState().recorder.failedWriteCount).toBe(1);
+      expect(store.getState().recording.failedWriteCount).toBe(1);
     });
   });
 
@@ -279,6 +283,8 @@ describe('Persistence Middleware', () => {
     const writePromises: Array<() => void> = [];
 
     const slowBackend: StorageBackend = {
+      createSession: vi.fn().mockResolvedValue({ sessionName: 'test' }),
+      listSessions: vi.fn().mockResolvedValue([]),
       writeAction: vi.fn(async () => {
         pendingWrites++;
         maxPendingWrites = Math.max(maxPendingWrites, pendingWrites);
@@ -337,7 +343,7 @@ describe('Persistence Middleware', () => {
     store.dispatch(testGpsDataSlice.actions.setZeroPos({ lat: 2, lon: 2 }));
 
     expect(mockBackend.writeAction).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'recorder/startSession' }),
+      expect.objectContaining({ type: 'recording/startSession' }),
       1
     );
     expect(mockBackend.writeAction).toHaveBeenCalledWith(
@@ -359,7 +365,7 @@ describe('Persistence Middleware', () => {
     store.dispatch(testRecorderSlice.actions.endSession());
 
     expect(mockBackend.writeAction).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'recorder/endSession' }),
+      expect.objectContaining({ type: 'recording/endSession' }),
       2 // index 2: startSession was 1
     );
   });

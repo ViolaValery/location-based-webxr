@@ -7,6 +7,10 @@
 // introduced this file. Each test below comments the "why this matters"
 // note required by AGENTS.md.
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 import * as fc from 'fast-check';
 
@@ -15,6 +19,11 @@ import {
   decodeJwtPayload,
   evaluateLifetime,
 } from './verify-community-key-lifetime.mjs';
+
+const SCRIPT_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  'verify-community-key-lifetime.mjs'
+);
 
 // A real-shape token (payload base64url-decodes to {"type":"community","exp":1809247058}).
 // Picked from the production gps-plus-slam-js@1.0.4 dist so tests are
@@ -83,6 +92,24 @@ describe('extractTokenLiteral — bundler output shape compatibility', () => {
     // tests for malformed multi-token files do not flake across V8s.
     const dist = `const a='AAA.BBB';const b='CCC.DDD';`;
     expect(extractTokenLiteral(dist)).toBe('AAA.BBB');
+  });
+
+  it('source contains no useless escapes inside regex character classes', () => {
+    // Why: regression for app-framework@1.0.4 publish failure. The
+    // extractor regex previously used `[A-Za-z0-9_\-]` — functionally
+    // identical to `[A-Za-z0-9_-]` (a trailing `-` in a character class
+    // is literal), so every behavioral test above still passed. Only
+    // ESLint's `no-useless-escape` flagged it, and that error blocked
+    // `pnpm run test:core` in CI. This test surfaces the same failure
+    // in the unit-test layer so it is caught locally without waiting
+    // for the lint stage. If a future contributor reintroduces `\-`
+    // inside `[...]`, this fires immediately with a clear reason.
+    const source = readFileSync(SCRIPT_PATH, 'utf8');
+    // Match `\-` only when it appears inside a `[...]` character class.
+    // The pattern looks for `[` followed by any non-`]` characters,
+    // a `\-`, then more non-`]` characters and a closing `]`.
+    const uselessEscapeInClass = /\[[^\]]*\\-[^\]]*\]/;
+    expect(source).not.toMatch(uselessEscapeInClass);
   });
 });
 

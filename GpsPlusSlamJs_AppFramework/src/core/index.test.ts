@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import * as core from './index.js';
+import type { LatLongAlt } from './index.js';
 import * as lib from 'gps-plus-slam-js';
 
 describe('core re-export surface', () => {
@@ -26,5 +27,19 @@ describe('core re-export surface', () => {
     expect(core.odometryTrackingRestarted).toBe(lib.odometryTrackingRestarted);
     // Factory
     expect(core.createGpsSlamStore).toBe(lib.createGpsSlamStore);
+    // License activation (used by app tests that exercise licensed math)
+    expect(core.validateLicenseKey).toBe(lib.validateLicenseKey);
+  });
+
+  it('re-exports the type aliases apps depend on (compile-time check)', () => {
+    // These assignments are the actual test: if `LatLongAlt` (or any other
+    // re-exported type) is dropped from `core/index.ts`, this file fails to
+    // typecheck. The runtime `expect` is just to keep vitest happy.
+    const sample: LatLongAlt = {
+      lat: 0,
+      lon: 0,
+      altitude: 0,
+    };
+    expect(sample.altitude).toBe(0);
   });
 });

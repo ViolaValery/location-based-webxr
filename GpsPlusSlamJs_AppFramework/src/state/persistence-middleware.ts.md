@@ -1,4 +1,4 @@
-# persistence-middleware.ts
+﻿# persistence-middleware.ts
 
 ## Purpose
 
@@ -69,5 +69,5 @@ configureStore({
 ## Related
 
 - [store.ts](store.ts.md) — factory that wires this middleware into `configureStore`
-- [recorder-slice.ts](recorder-slice.ts.md) — provides `recordWriteFailure` action creator
+- [recording-slice.ts](recording-slice.ts.md) — provides `recordWriteFailure` action creator
 - [storage-backend.ts](../storage/storage-backend.ts.md) — `StorageBackend` interface

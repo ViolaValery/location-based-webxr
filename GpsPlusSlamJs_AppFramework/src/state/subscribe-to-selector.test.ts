@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import type { CombinedRootState } from './store';
+import type { CombinedRootState } from './combined-root-state';
 import {
   subscribeToSelector,
   type SubscribableStore,
@@ -29,9 +29,7 @@ function makeState(
     gpsData: null,
     gpsElements: {} as CombinedRootState['gpsElements'],
     arElements: {} as CombinedRootState['arElements'],
-    recorder: {} as CombinedRootState['recorder'],
-    refPoints: {} as CombinedRootState['refPoints'],
-    routing: {} as CombinedRootState['routing'],
+    recording: {} as CombinedRootState['recording'],
     ...overrides,
   };
 }

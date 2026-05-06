@@ -1,4 +1,4 @@
-/**
+﻿/**
  * LeafletMapOverlay Tests
  *
  * TDD tests for the new Leaflet-in-CSS3DRenderer map overlay that replaces
@@ -499,26 +499,6 @@ describe('LeafletMapOverlay', () => {
       overlay.dispose();
     });
 
-    // Why: Reference points shown as colored markers with label popups
-    it('should add reference point marker with label', () => {
-      const { overlay } = createOverlay();
-      overlay.setGpsPosition(50.0, 8.0);
-      overlay.show();
-
-      overlay.addRefPoint(50.001, 8.001, 'TestPoint');
-
-      const map = overlay.getLeafletMap()!;
-      let markerCount = 0;
-      map.eachLayer((layer) => {
-        if ('getLatLng' in layer) {
-          markerCount++;
-        }
-      });
-      // User position + ref point
-      expect(markerCount).toBeGreaterThanOrEqual(2);
-      overlay.dispose();
-    });
-
     // Why: Points added before show() should appear when the map is shown
     it('should buffer overlay data added before show()', () => {
       const { overlay } = createOverlay();
@@ -529,7 +509,6 @@ describe('LeafletMapOverlay', () => {
       overlay.addRawGpsPoint(50.001, 8.001);
       overlay.addFusedPoint(50.0, 8.0);
       overlay.addAlignmentSnapshot(50.001, 8.001);
-      overlay.addRefPoint(50.002, 8.002, 'Pre-show point');
 
       overlay.show();
 
@@ -537,8 +516,8 @@ describe('LeafletMapOverlay', () => {
       let layerCount = 0;
       map.eachLayer(() => layerCount++);
       // Tile layer + user marker + raw polyline + fused polyline +
-      // snapshot polyline + ref point marker = at least 6 layers
-      expect(layerCount).toBeGreaterThanOrEqual(5);
+      // snapshot polyline = at least 5 layers
+      expect(layerCount).toBeGreaterThanOrEqual(4);
       overlay.dispose();
     });
 
@@ -584,7 +563,7 @@ describe('LeafletMapOverlay', () => {
       overlay.dispose();
     });
 
-    // Why: Map must face up (XZ plane) — rotation -90° on X
+    // Why: Map must face up (XZ plane) — rotation -90Â° on X
     it('should rotate the CSS3DObject to face up', () => {
       const { overlay, camera } = createOverlay();
       overlay.setGpsPosition(50.0, 8.0);
@@ -851,182 +830,6 @@ describe('LeafletMapOverlay', () => {
       expect(mapContainer!.style.position).not.toBe('fixed');
       expect(mapContainer!.style.left).not.toBe('-9999px');
       expect(mapContainer!.style.top).not.toBe('-9999px');
-
-      overlay.dispose();
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // 8. Prior reference points
-  // ---------------------------------------------------------------------------
-
-  describe('prior reference points', () => {
-    // Why: Prior ref points must be buffered before show() like current ones
-    it('should buffer prior ref point data added before show()', () => {
-      const { overlay } = createOverlay();
-      overlay.setGpsPosition(50.0, 8.0);
-
-      overlay.addPriorRefPoint(50.001, 8.001, 'PriorA');
-      overlay.addPriorRefPoint(50.002, 8.002, 'PriorB');
-
-      overlay.show();
-
-      // User marker + 2 prior markers = at least 3 markers
-      expect(markerInstances.length).toBeGreaterThanOrEqual(3);
-      overlay.dispose();
-    });
-
-    // Why: Prior ref points must create markers immediately when map is live
-    it('should create marker immediately when map is already shown', () => {
-      const { overlay } = createOverlay();
-      overlay.setGpsPosition(50.0, 8.0);
-      overlay.show();
-
-      const markersBefore = markerInstances.length;
-      overlay.addPriorRefPoint(50.001, 8.001, 'LivePrior');
-      expect(markerInstances.length).toBe(markersBefore + 1);
-      overlay.dispose();
-    });
-
-    // Why: Bulk add should be equivalent to multiple individual adds
-    it('should support bulk addPriorRefPoints()', () => {
-      const { overlay } = createOverlay();
-      overlay.setGpsPosition(50.0, 8.0);
-      overlay.show();
-
-      const markersBefore = markerInstances.length;
-      overlay.addPriorRefPoints([
-        { lat: 50.001, lon: 8.001, name: 'Bulk1' },
-        { lat: 50.002, lon: 8.002, name: 'Bulk2' },
-        { lat: 50.003, lon: 8.003, name: 'Bulk3' },
-      ]);
-      expect(markerInstances.length).toBe(markersBefore + 3);
-      overlay.dispose();
-    });
-
-    // Why: clearPriorRefPoints must remove prior markers but keep current-session ones
-    it('should clear only prior markers, keeping current-session markers', () => {
-      const { overlay } = createOverlay();
-      overlay.setGpsPosition(50.0, 8.0);
-      overlay.show();
-
-      // Add current + prior markers
-      overlay.addRefPoint(50.001, 8.001, 'CurrentA');
-      overlay.addPriorRefPoint(50.002, 8.002, 'PriorA');
-      overlay.addPriorRefPoint(50.003, 8.003, 'PriorB');
-
-      // Prior markers should have .remove() called on them
-      const priorMarker1 = markerInstances[markerInstances.length - 2]; // PriorA
-      const priorMarker2 = markerInstances[markerInstances.length - 1]; // PriorB
-
-      overlay.clearPriorRefPoints();
-
-      expect(priorMarker1.remove).toHaveBeenCalled();
-      expect(priorMarker2.remove).toHaveBeenCalled();
-      overlay.dispose();
-    });
-
-    // Why: Prior markers use green (VIS_COLORS.PRIOR_REF_POINT), current markers use red
-    it('should use PRIOR_REF_POINT color for prior markers', async () => {
-      const { overlay } = createOverlay();
-      overlay.setGpsPosition(50.0, 8.0);
-      overlay.show();
-
-      overlay.addPriorRefPoint(50.001, 8.001, 'PriorTest');
-
-      // L.divIcon is called with html containing the prior ref point color
-      const L = (await import('leaflet')).default;
-      const divIconCalls = vi.mocked(L.divIcon).mock.calls;
-      const lastCall = divIconCalls[divIconCalls.length - 1][0] as {
-        html: string;
-      };
-      expect(lastCall.html).toContain('#00ff00'); // VIS_COLORS.PRIOR_REF_POINT.css
-      overlay.dispose();
-    });
-
-    // Why: Prior markers should show "(prior)" in popup for visual distinction
-    it('should include "(prior)" label in popup for prior markers', () => {
-      const { overlay } = createOverlay();
-      overlay.setGpsPosition(50.0, 8.0);
-      overlay.show();
-
-      overlay.addPriorRefPoint(50.001, 8.001, 'BenchCorner');
-
-      const lastMarker = markerInstances[markerInstances.length - 1];
-      expect(lastMarker.bindPopup).toHaveBeenCalledWith(
-        expect.stringContaining('(prior)')
-      );
-      overlay.dispose();
-    });
-
-    // Why: dispose() must clear prior ref point data
-    it('should clear prior ref point data on dispose', () => {
-      const { overlay } = createOverlay();
-      overlay.setGpsPosition(50.0, 8.0);
-
-      overlay.addPriorRefPoint(50.001, 8.001, 'PriorDispose');
-      overlay.dispose();
-
-      // After dispose, show should not create prior markers
-      overlay.setGpsPosition(50.0, 8.0);
-      overlay.show();
-      // Only user marker should exist (no prior markers survive dispose)
-      expect(markerInstances.length).toBeLessThanOrEqual(1);
-      overlay.dispose();
-    });
-
-    // Why: clearPriorRefPoints() before show() should clear buffered prior data
-    it('should clear buffered prior ref points before show', () => {
-      const { overlay } = createOverlay();
-      overlay.setGpsPosition(50.0, 8.0);
-
-      overlay.addPriorRefPoint(50.001, 8.001, 'Buffered');
-      overlay.clearPriorRefPoints();
-      overlay.show();
-
-      // Only user marker, no prior markers
-      const refPointMarkers = markerInstances.filter((m) =>
-        m.bindPopup.mock.calls.some(
-          (call: unknown[]) =>
-            typeof call[0] === 'string' && call[0].includes('prior')
-        )
-      );
-      expect(refPointMarkers).toHaveLength(0);
-      overlay.dispose();
-    });
-
-    // Why: After a hide/show cycle, applyBufferedOverlays re-runs and can
-    // duplicate entries in the internal markers array while refPointData stays
-    // the same size. clearPriorRefPoints must still remove ALL prior markers
-    // — including duplicates — without leaving orphaned layers on the map.
-    // This test exposes the parallel-array desync that the old two-array
-    // design suffers from when show() is called more than once.
-    it('should remove all prior markers after a hide/show cycle', () => {
-      const { overlay } = createOverlay();
-      overlay.setGpsPosition(50.0, 8.0);
-      overlay.show();
-
-      overlay.addPriorRefPoint(50.001, 8.001, 'PriorX');
-      overlay.addRefPoint(50.002, 8.002, 'CurrentY');
-
-      // Hide then show triggers applyBufferedOverlays again, which can
-      // create duplicate marker instances for each refPointData entry.
-      overlay.hide();
-      overlay.show();
-
-      overlay.clearPriorRefPoints();
-
-      // Every marker created with a "prior" label must have been removed.
-      const priorMarkers = markerInstances.filter((m) =>
-        m.bindPopup.mock.calls.some(
-          (call: unknown[]) =>
-            typeof call[0] === 'string' && String(call[0]).includes('prior')
-        )
-      );
-      expect(priorMarkers.length).toBeGreaterThanOrEqual(1);
-      for (const pm of priorMarkers) {
-        expect(pm.remove).toHaveBeenCalled();
-      }
 
       overlay.dispose();
     });

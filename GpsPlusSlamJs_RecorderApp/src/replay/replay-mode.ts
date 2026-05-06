@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Replay Mode Orchestrator
  *
  * Wires together all replay building blocks from Iterations 1-5 into
@@ -21,7 +21,7 @@ import {
 import {
   createRecorderStore,
   type RecorderStore,
-} from 'gps-plus-slam-app-framework/state/store';
+} from '../state/recorder-store';
 import { NullStorageBackend } from 'gps-plus-slam-app-framework/storage/null-storage-backend';
 import {
   ReplayEngine,
@@ -35,8 +35,9 @@ import {
   getAlignmentLerper,
 } from 'gps-plus-slam-app-framework/ar/replay-scene';
 import { wireStoreSubscribers } from 'gps-plus-slam-app-framework/state/store-subscribers';
+import { wireRefPointSubscribers } from '../state/ref-point-subscribers';
 import { gpsEventVisualizer } from 'gps-plus-slam-app-framework/visualization/gps-event-markers';
-import { refPointVisualizer } from 'gps-plus-slam-app-framework/visualization/reference-points';
+import { refPointVisualizer } from '../visualization/ref-point-visualizer';
 import {
   getArPose,
   nuePositionToWebXR,
@@ -63,6 +64,19 @@ interface ReplayModeConfig {
   onError: (actionIndex: number, error: Error) => void;
 }
 
+/**
+ * Subset of the recorder's `LeafletMapOverlay` API that replay mode forwards
+ * GPS / marker updates to. Declared structurally (instead of importing the
+ * concrete type) so replay mode stays decoupled from the live recorder map.
+ */
+interface ReplayMapOverlay {
+  setGpsPosition: (lat: number, lon: number) => void;
+  addRawGpsPoint?: (lat: number, lon: number) => void;
+  addFusedPoint?: (lat: number, lon: number) => void;
+  addAlignmentSnapshot?: (lat: number, lon: number) => void;
+  addCurrentMarker?: (lat: number, lon: number, name: string) => void;
+}
+
 export interface ReplayModeController {
   /** Start dispatching actions at the given speed factor */
   play(speedFactor: number): Promise<void>;
@@ -81,15 +95,7 @@ export interface ReplayModeController {
   /** Get the total number of loaded actions */
   getActionCount(): number;
   /** Set or clear the map overlay for GPS position updates via store subscribers */
-  setMapOverlay(
-    overlay: {
-      setGpsPosition: (lat: number, lon: number) => void;
-      addRawGpsPoint?: (lat: number, lon: number) => void;
-      addFusedPoint?: (lat: number, lon: number) => void;
-      addAlignmentSnapshot?: (lat: number, lon: number) => void;
-      addRefPoint?: (lat: number, lon: number, name: string) => void;
-    } | null
-  ): void;
+  setMapOverlay(overlay: ReplayMapOverlay | null): void;
   /** Dispose all resources (scene, engine, subscribers) */
   dispose(): void;
 }
@@ -140,13 +146,7 @@ export async function startReplayMode(
 
   // Map overlay proxy — delegates to a late-bound real overlay so the
   // store subscriber can update the map even though it is created later.
-  let mapOverlayTarget: {
-    setGpsPosition: (lat: number, lon: number) => void;
-    addRawGpsPoint?: (lat: number, lon: number) => void;
-    addFusedPoint?: (lat: number, lon: number) => void;
-    addAlignmentSnapshot?: (lat: number, lon: number) => void;
-    addRefPoint?: (lat: number, lon: number, name: string) => void;
-  } | null = null;
+  let mapOverlayTarget: ReplayMapOverlay | null = null;
   const mapOverlayProxy = {
     setGpsPosition(lat: number, lon: number): void {
       mapOverlayTarget?.setGpsPosition(lat, lon);
@@ -160,8 +160,8 @@ export async function startReplayMode(
     addAlignmentSnapshot(lat: number, lon: number): void {
       mapOverlayTarget?.addAlignmentSnapshot?.(lat, lon);
     },
-    addRefPoint(lat: number, lon: number, name: string): void {
-      mapOverlayTarget?.addRefPoint?.(lat, lon, name);
+    addCurrentMarker(lat: number, lon: number, name: string): void {
+      mapOverlayTarget?.addCurrentMarker?.(lat, lon, name);
     },
   };
 
@@ -177,7 +177,6 @@ export async function startReplayMode(
     applyAlignmentMatrix: (matrix) => alignmentLerper?.setTarget(matrix),
     gpsEventVisualizer,
     mapOverlay: mapOverlayProxy, // Proxy delegates to real overlay once set via setMapOverlay()
-    refPointVisualizer,
     // 6.2: Update arpose Object3D with recorded odom pose during replay.
     // The arpose node sits between arWorldGroup and camera; writing the
     // recorded pose here makes the camera follow the recorded trajectory
@@ -211,6 +210,10 @@ export async function startReplayMode(
       };
     })(),
   });
+  const unsubscribeRefPoints = wireRefPointSubscribers(
+    store,
+    refPointVisualizer
+  );
 
   // Create and configure the replay engine
   const engine = new ReplayEngine();
@@ -256,15 +259,7 @@ export async function startReplayMode(
       return actions.length;
     },
 
-    setMapOverlay(
-      overlay: {
-        setGpsPosition: (lat: number, lon: number) => void;
-        addRawGpsPoint?: (lat: number, lon: number) => void;
-        addFusedPoint?: (lat: number, lon: number) => void;
-        addAlignmentSnapshot?: (lat: number, lon: number) => void;
-        addRefPoint?: (lat: number, lon: number, name: string) => void;
-      } | null
-    ): void {
+    setMapOverlay(overlay: ReplayMapOverlay | null): void {
       mapOverlayTarget = overlay;
     },
 
@@ -276,6 +271,7 @@ export async function startReplayMode(
 
       engine.dispose();
       unsubscribe();
+      unsubscribeRefPoints();
       disposeReplayScene();
       log.info('Replay mode disposed');
     },

@@ -86,7 +86,7 @@ import {
 import { createRecordingSessionHandlers } from './recording/recording-session-handlers';
 import { createFolderManager } from './storage/folder-manager';
 
-import { type ImportedRefPoint } from 'gps-plus-slam-app-framework/storage/ref-point-importer';
+import { type ImportedRefPoint } from './storage/ref-point-importer';
 
 import {
   showRefPointPicker,
@@ -103,7 +103,7 @@ import {
   createRecorderStore,
   add2dImage,
   recordDepthSample,
-} from 'gps-plus-slam-app-framework/state/store';
+} from './state/recorder-store';
 import {
   startGpsWatch,
   stopGpsWatch,

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Recording Migration
  *
  * Migrates recorded Redux actions from older coordinate conventions to the
@@ -165,53 +165,43 @@ function migrateGpsPointField(action: RecordedAction): RecordedAction {
 // Era 2 migration: reverse NUE positions → raw WebXR
 // ---------------------------------------------------------------------------
 
+/**
+ * Replace a single Vec3 field on `action.payload` by passing it through
+ * `nueToWebxr`. Returns the action unchanged if the payload is missing,
+ * non-object, or the field isn't a Vec3 — i.e. each `reverseEra2` branch
+ * preserves its existing "unrecognized payload shape ⇒ pass through"
+ * behaviour without repeating the parse / type-check / spread boilerplate.
+ */
+function reverseEra2Vec3Field(
+  action: RecordedAction,
+  field: string
+): RecordedAction {
+  const payload = action.payload as Record<string, unknown> | undefined;
+  if (!payload || typeof payload !== 'object') return action;
+
+  const value = payload[field];
+  if (!isVec3(value)) return action;
+
+  return {
+    ...action,
+    payload: {
+      ...payload,
+      [field]: nueToWebxr(value),
+    },
+  };
+}
+
 function reverseEra2(action: RecordedAction): RecordedAction {
   if (action.type === 'gpsData/recordGpsEvent') {
-    const payload = action.payload as Record<string, unknown> | undefined;
-    if (!payload || typeof payload !== 'object') return action;
-
-    const odomPosition = payload['odomPosition'];
-    if (!isVec3(odomPosition)) return action;
-
-    return {
-      ...action,
-      payload: {
-        ...payload,
-        odomPosition: nueToWebxr(odomPosition),
-      },
-    };
+    return reverseEra2Vec3Field(action, 'odomPosition');
   }
 
   if (action.type === 'gpsData/markReferencePoint') {
-    const payload = action.payload as Record<string, unknown> | undefined;
-    if (!payload || typeof payload !== 'object') return action;
-
-    const position = payload['position'];
-    if (!isVec3(position)) return action;
-
-    return {
-      ...action,
-      payload: {
-        ...payload,
-        position: nueToWebxr(position),
-      },
-    };
+    return reverseEra2Vec3Field(action, 'position');
   }
 
   if (action.type === 'gpsData/add2dImage') {
-    const payload = action.payload as Record<string, unknown> | undefined;
-    if (!payload || typeof payload !== 'object') return action;
-
-    const position = payload['position'];
-    if (!isVec3(position)) return action;
-
-    return {
-      ...action,
-      payload: {
-        ...payload,
-        position: nueToWebxr(position),
-      },
-    };
+    return reverseEra2Vec3Field(action, 'position');
   }
 
   if (action.type === 'gpsData/odometryTrackingRestarted') {
@@ -234,20 +224,8 @@ function reverseEra2(action: RecordedAction): RecordedAction {
     return { ...action, payload: migrated };
   }
 
-  if (action.type === 'recorder/recordDepthSample') {
-    const payload = action.payload as Record<string, unknown> | undefined;
-    if (!payload || typeof payload !== 'object') return action;
-
-    const cameraPos = payload['cameraPos'];
-    if (!isVec3(cameraPos)) return action;
-
-    return {
-      ...action,
-      payload: {
-        ...payload,
-        cameraPos: nueToWebxr(cameraPos),
-      },
-    };
+  if (action.type === 'recording/recordDepthSample') {
+    return reverseEra2Vec3Field(action, 'cameraPos');
   }
 
   if (action.type === 'gpsData/arLoopClosureDetected') {

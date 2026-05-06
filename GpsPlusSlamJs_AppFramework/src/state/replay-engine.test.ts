@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Replay Engine — Unit Tests
  *
  * Why these tests matter: They verify the core replay engine that controls
@@ -20,8 +20,14 @@ import {
   ReplayEngine,
   DEFAULT_MAX_DELAY_MS,
 } from './replay-engine';
-import { createRecorderStore } from './store';
+import { createSlamAppStore } from './create-slam-app-store';
 import { NullStorageBackend } from '../storage/null-storage-backend';
+import type { StorageBackend } from '../storage/storage-backend';
+
+const createRecorderStore = (opts?: { storageBackend?: StorageBackend }) =>
+  createSlamAppStore({
+    storageBackend: opts?.storageBackend ?? new NullStorageBackend(),
+  });
 
 // ---------------------------------------------------------------------------
 // Synthetic action fixtures — explicitly encode timestamp assumptions
@@ -67,7 +73,7 @@ function makeGpsActionOldFormat(timestamp: number) {
 /** startSession action with epoch timestamp in payload.startTime */
 function makeStartSessionAction(startTime: number) {
   return {
-    type: 'recorder/startSession' as const,
+    type: 'recording/startSession' as const,
     payload: {
       scenarioName: 'Test Scenario',
       sessionName: 'test-session',
@@ -79,7 +85,7 @@ function makeStartSessionAction(startTime: number) {
 /** endSession action — no usable timestamp */
 function makeEndSessionAction() {
   return {
-    type: 'recorder/endSession' as const,
+    type: 'recording/endSession' as const,
   };
 }
 
@@ -90,7 +96,7 @@ function makeEndSessionAction() {
  */
 function makeDepthSampleAction(relativeTimestamp: number) {
   return {
-    type: 'recorder/recordDepthSample' as const,
+    type: 'recording/recordDepthSample' as const,
     payload: {
       timestamp: relativeTimestamp,
       cameraPos: [0, 0, 0] as Vector3,
@@ -613,7 +619,7 @@ describe('ReplayEngine', () => {
     await playPromise;
 
     expect(completeCallback).toHaveBeenCalledTimes(1);
-    expect(store.getState().recorder.isRecording).toBe(false);
+    expect(store.getState().recording.isRecording).toBe(false);
   });
 
   it('handles single action', async () => {
@@ -913,7 +919,7 @@ describe('abortableDelay listener cleanup', () => {
     // Only actionsB should have been dispatched (2 items), not leftover actionsA
     const dispatched = dispatchSpy.mock.calls.map((call) => call[0].type);
     expect(dispatched).toEqual([
-      'recorder/startSession',
+      'recording/startSession',
       'gpsData/recordGpsEvent',
     ]);
   });

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Replay Handlers Tests
  *
  * Why these tests matter:
@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ReplayModeController } from './replay-mode';
 import type { SessionEntry, ScenarioSessionMap } from '../ui/session-browser';
-import type { RecorderStore } from 'gps-plus-slam-app-framework/state/store';
+import type { RecorderStore } from '../state/recorder-store';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────
 
@@ -175,7 +175,7 @@ import {
 } from 'gps-plus-slam-app-framework/ar/replay-scene';
 import type { ReplaySceneState } from 'gps-plus-slam-app-framework/ar/replay-scene';
 import type { Object3D } from 'three';
-import type { CombinedRootState } from 'gps-plus-slam-app-framework/state/store';
+import type { CombinedRootState } from '../state/recorder-store';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -642,7 +642,9 @@ describe('handleStartReplay', () => {
 
     await handlers.handleStartReplay(1);
 
-    expect(showError).toHaveBeenCalledWith('Failed to start replay — see logs');
+    expect(showError).toHaveBeenCalledWith(
+      'Failed to start replay — see logs'
+    );
   });
 });
 

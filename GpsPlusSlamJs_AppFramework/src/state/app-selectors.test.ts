@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { CombinedRootState } from './store';
+import type { CombinedRootState } from './combined-root-state';
 import type { GpsModel } from 'gps-plus-slam-js';
 import {
   selectAlignmentMatrix,
@@ -39,9 +39,7 @@ function makeState(
     gpsData,
     gpsElements: {} as CombinedRootState['gpsElements'],
     arElements: {} as CombinedRootState['arElements'],
-    recorder: {} as CombinedRootState['recorder'],
-    refPoints: {} as CombinedRootState['refPoints'],
-    routing: {} as CombinedRootState['routing'],
+    recording: {} as CombinedRootState['recording'],
   };
 }
 

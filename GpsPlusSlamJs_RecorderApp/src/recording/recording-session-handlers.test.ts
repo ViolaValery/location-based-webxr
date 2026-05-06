@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { RecorderStore } from 'gps-plus-slam-app-framework/state/store';
+import type { RecorderStore } from '../state/recorder-store';
 import {
   DEFAULT_RECORDING_OPTIONS,
   type RecordingOptions,
@@ -121,10 +121,10 @@ const {
       .fn()
       .mockReturnValue(mockCaptureFailureTrackerInstance),
     mockStartSession: vi.fn((payload: unknown) => ({
-      type: 'recorder/startSession',
+      type: 'recording/startSession',
       payload,
     })),
-    mockEndSession: vi.fn(() => ({ type: 'recorder/endSession' })),
+    mockEndSession: vi.fn(() => ({ type: 'recording/endSession' })),
     mockStartImageCapture: vi.fn(),
     mockStopImageCapture: vi.fn(),
     mockStartDepthCapture: vi.fn(),
@@ -188,7 +188,7 @@ const {
 
 // ── Module mocks ───────────────────────────────────────────────────────
 
-vi.mock('gps-plus-slam-app-framework/state/recording-coordinator', () => ({
+vi.mock('gps-plus-slam-app-framework/state/gps-event-coordinator', () => ({
   resetCoordinatorState: mockResetCoordinatorState,
   createGpsPositionHandler: mockCreateGpsPositionHandler,
   updateDeviceOrientation: mockUpdateDeviceOrientation,
@@ -214,7 +214,7 @@ vi.mock('gps-plus-slam-app-framework/state/store-subscribers', () => ({
   wireStoreSubscribers: mockWireStoreSubscribers,
 }));
 
-vi.mock('gps-plus-slam-app-framework/state/store', () => ({
+vi.mock('../state/recorder-store', () => ({
   startSession: mockStartSession,
   endSession: mockEndSession,
 }));
@@ -330,13 +330,15 @@ function createMockStore(): RecorderStore {
         },
         referencePoints: [],
       },
-      recorder: {
+      recording: {
         sessionMetadata: {
           scenarioName: 'TestScenario',
           sessionName: 'test-session',
           startTime: 1000000,
         },
         failedWriteCount: 0,
+      },
+      scenario: {
         currentScenarioName: 'TestScenario',
       },
     }),
@@ -495,7 +497,7 @@ describe('handleStartRecording', () => {
       addRawGpsPoint: vi.fn(),
       addFusedPoint: vi.fn(),
       addAlignmentSnapshot: vi.fn(),
-      addRefPoint: vi.fn(),
+      addCurrentMarker: vi.fn(),
     };
     // getMapOverlay returns null initially
     const getMapOverlay = vi.fn().mockReturnValue(null);
@@ -509,7 +511,7 @@ describe('handleStartRecording', () => {
     const subscriberDeps = wireCall[1] as StoreSubscriberDeps;
     const mapProxy = subscriberDeps.mapOverlay as Required<
       NonNullable<StoreSubscriberDeps['mapOverlay']>
-    >;
+    > & { addCurrentMarker: (lat: number, lon: number, name: string) => void };
 
     // Proxy must be a non-null object (not the captured null)
     expect(mapProxy).not.toBeNull();
@@ -520,7 +522,7 @@ describe('handleStartRecording', () => {
     expect(() => mapProxy.addRawGpsPoint(50, 8)).not.toThrow();
     expect(() => mapProxy.addFusedPoint(50, 8)).not.toThrow();
     expect(() => mapProxy.addAlignmentSnapshot(50, 8)).not.toThrow();
-    expect(() => mapProxy.addRefPoint(50, 8, 'RP1')).not.toThrow();
+    expect(() => mapProxy.addCurrentMarker(50, 8, 'RP1')).not.toThrow();
 
     // Now simulate the overlay being created (user tapped map button)
     getMapOverlay.mockReturnValue(mockOverlay);
@@ -538,8 +540,8 @@ describe('handleStartRecording', () => {
     mapProxy.addAlignmentSnapshot(51.3, 9.3);
     expect(mockOverlay.addAlignmentSnapshot).toHaveBeenCalledWith(51.3, 9.3);
 
-    mapProxy.addRefPoint(51.4, 9.4, 'RP2');
-    expect(mockOverlay.addRefPoint).toHaveBeenCalledWith(51.4, 9.4, 'RP2');
+    mapProxy.addCurrentMarker(51.4, 9.4, 'RP2');
+    expect(mockOverlay.addCurrentMarker).toHaveBeenCalledWith(51.4, 9.4, 'RP2');
   });
 
   it('should create write and capture failure trackers', async () => {
@@ -708,8 +710,8 @@ describe('handleStartRecording', () => {
     const emptyScenarioStore = createMockStore();
     vi.mocked(emptyScenarioStore.getState).mockReturnValue({
       ...emptyScenarioStore.getState(),
-      recorder: {
-        ...emptyScenarioStore.getState().recorder,
+      scenario: {
+        ...emptyScenarioStore.getState().scenario,
         currentScenarioName: '',
       },
     });
@@ -728,8 +730,8 @@ describe('handleStartRecording', () => {
     const oldStore = createMockStore();
     vi.mocked(oldStore.getState).mockReturnValue({
       ...oldStore.getState(),
-      recorder: {
-        ...oldStore.getState().recorder,
+      scenario: {
+        ...oldStore.getState().scenario,
         currentScenarioName: 'Paris',
       },
     });
@@ -738,8 +740,8 @@ describe('handleStartRecording', () => {
     const newStore = createMockStore();
     vi.mocked(newStore.getState).mockReturnValue({
       ...newStore.getState(),
-      recorder: {
-        ...newStore.getState().recorder,
+      scenario: {
+        ...newStore.getState().scenario,
         currentScenarioName: '',
       },
     });
@@ -811,7 +813,7 @@ describe('handleStopRecording', () => {
       expect.objectContaining({
         version: 1,
         odomCoordVersion: 5,
-        scenarioName: 'TestScenario',
+        contextTag: 'TestScenario',
       })
     );
   });
@@ -876,7 +878,8 @@ describe('handleStopRecording', () => {
     // exportSessionAsZip is called directly (not via a Worker)
     expect(mockExportSessionAsZip).toHaveBeenCalledWith(
       expect.any(String), // scenarioName
-      expect.any(String) // sessionName
+      expect.any(String), // sessionName
+      expect.any(Object) // options { contributors }
     );
   });
 
@@ -1004,7 +1007,7 @@ describe('handleStopRecording', () => {
     expect(mockStore.writeSessionMetadata).toHaveBeenCalledWith(
       expect.objectContaining({
         version: 1,
-        scenarioName: 'TestScenario',
+        contextTag: 'TestScenario',
       })
     );
 
@@ -1044,13 +1047,15 @@ describe('handleStopRecording', () => {
         },
         referencePoints: [],
       },
-      recorder: {
+      recording: {
         sessionMetadata: {
           scenarioName: 'Test',
           sessionName: 'test-session',
           startTime: Date.now() - 60000,
         },
         failedWriteCount: 0,
+      },
+      scenario: {
         currentScenarioName: 'Test',
       },
     });

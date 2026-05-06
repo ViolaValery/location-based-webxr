@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { GpsCoord } from 'gps-plus-slam-app-framework/types/geo-types';
-import type * as StoreModule from 'gps-plus-slam-app-framework/state/store';
+import type * as StoreModule from './state/recorder-store';
 
 // Use vi.hoisted to define mock state that can be used inside vi.mock factory
 const {
@@ -37,12 +37,14 @@ const {
         }>;
       };
     };
-    recorder?: {
+    recording?: {
       sessionMetadata?: {
         scenarioName?: string;
         sessionName?: string;
         startTime?: number;
       };
+    };
+    scenario?: {
       currentScenarioName?: string;
     };
     refPoints?: {
@@ -56,12 +58,14 @@ const {
       sessionRefPointUsage?: Record<string, number>;
     };
   } = {
-    recorder: {
+    recording: {
       sessionMetadata: {
         scenarioName: 'TestScenario',
         sessionName: 'recording-test',
         startTime: Date.now(),
       },
+    },
+    scenario: {
       currentScenarioName: '',
     },
     refPoints: {
@@ -108,9 +112,9 @@ const {
             sessionRefPointUsage: {},
           };
         }
-      } else if (action?.type === 'recorder/setCurrentScenarioName') {
-        mockState.recorder = {
-          ...mockState.recorder,
+      } else if (action?.type === 'scenario/setCurrentScenarioName') {
+        mockState.scenario = {
+          ...mockState.scenario,
           currentScenarioName: action.payload as string,
         };
       }
@@ -154,28 +158,28 @@ const {
   };
 });
 
-vi.mock('gps-plus-slam-app-framework/state/store', async () => {
+vi.mock('./state/recorder-store', async () => {
   const actual: typeof StoreModule = await vi.importActual(
-    'gps-plus-slam-app-framework/state/store'
+    './state/recorder-store'
   );
   return {
     createRecorderStore: () => mockStore,
     store: mockStore,
     startSession: vi.fn((payload: unknown) => ({
-      type: 'recorder/startSession',
+      type: 'recording/startSession',
       payload,
     })),
-    endSession: vi.fn(() => ({ type: 'recorder/endSession' })),
+    endSession: vi.fn(() => ({ type: 'recording/endSession' })),
     add2dImage: vi.fn((payload: unknown) => ({
-      type: 'recorder/add2dImage',
+      type: 'recording/add2dImage',
       payload,
     })),
     recordDepthSample: vi.fn((payload: unknown) => ({
-      type: 'recorder/recordDepthSample',
+      type: 'recording/recordDepthSample',
       payload,
     })),
     markReferencePoint: vi.fn((payload: unknown) => ({
-      type: 'recorder/markReferencePoint',
+      type: 'recording/markReferencePoint',
       payload,
     })),
     setImportedRefPoints: actual.setImportedRefPoints,
@@ -244,7 +248,7 @@ vi.mock('./ui/ref-point-picker', () => ({
   isRefPointPickerVisible: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock('gps-plus-slam-app-framework/storage/ref-point-loader', () => ({
+vi.mock('./storage/ref-point-loader', () => ({
   loadAllRefPoints: vi.fn().mockResolvedValue([]),
   saveRefPointObservation: vi.fn().mockResolvedValue(undefined),
   flattenRefPointsToMarks: vi.fn().mockReturnValue([]),
@@ -300,6 +304,7 @@ vi.mock('./ui/hud', () => ({
 
 // Mock session-browser for handleOpenFolder tests (Issue 1 — 2026-02-27 + 2026-03-01)
 vi.mock('./ui/session-browser', () => ({
+  DEFAULT_SCENARIO: 'Default Scenario',
   listScenariosFromFolder: vi.fn().mockResolvedValue([]),
   extractScenarioNamesFromZips: vi.fn().mockResolvedValue([]),
   listSessionZipsInScenario: vi.fn().mockResolvedValue([]),
@@ -310,7 +315,7 @@ vi.mock('./ui/session-browser', () => ({
 }));
 
 // Mock ref-point-importer for handleOpenFolder tests (Issue 1 — 2026-02-27)
-vi.mock('gps-plus-slam-app-framework/storage/ref-point-importer', () => ({
+vi.mock('./storage/ref-point-importer', () => ({
   importRefPointsFromFolder: vi.fn().mockResolvedValue({
     success: true,
     refPoints: [],
@@ -377,7 +382,7 @@ vi.mock('gps-plus-slam-app-framework/sensors/permission-checker', () => ({
   }),
 }));
 
-vi.mock('gps-plus-slam-app-framework/state/recording-coordinator', () => ({
+vi.mock('gps-plus-slam-app-framework/state/gps-event-coordinator', () => ({
   createGpsPositionHandler: vi.fn().mockReturnValue(() => {}),
   updateDeviceOrientation: vi.fn(),
   resetCoordinatorState: vi.fn(),
@@ -490,7 +495,7 @@ import {
   listSessionZipsInScenario,
   discoverScenariosFromZipMetadata,
 } from './ui/session-browser';
-import { importRefPointsFromFolder } from 'gps-plus-slam-app-framework/storage/ref-point-importer';
+import { importRefPointsFromFolder } from './storage/ref-point-importer';
 import { showConfirmDialog } from './ui/confirm-dialog';
 import { pushScreenState } from './ui/navigation';
 
@@ -1091,7 +1096,7 @@ describe('AR Tracking Restart Callbacks (Phase 1+2)', () => {
 
   /**
    * Why this test matters:
-   * Regression: Case 2 (origin reset) must clear the "⚠️ LOST" UI indicator,
+   * Regression: Case 2 (origin reset) must clear the "LOST" UI indicator,
    * just like Case 1 (seamless recovery). Without this, the LOST warning
    * persists after a successful Case 2 relocalization.
    */
@@ -1408,7 +1413,7 @@ describe('Session Metadata Persistence (F1)', () => {
     expect(mockWriteSessionMetadata).toHaveBeenCalledTimes(1);
     const metadata = mockWriteSessionMetadata.mock.calls[0][0] as {
       version: number;
-      scenarioName: string;
+      contextTag?: string;
       startedAt: string;
       endedAt: string;
       actionCount: number;
@@ -1418,8 +1423,8 @@ describe('Session Metadata Persistence (F1)', () => {
 
     // Must have version field for forward compatibility
     expect(metadata.version).toBe(1);
-    // Must have scenario name from store state
-    expect(metadata.scenarioName).toBe('TestScenario');
+    // Must have scenario name from store state (recorded as opaque contextTag)
+    expect(metadata.contextTag).toBe('TestScenario');
     // Must have timestamps
     expect(typeof metadata.startedAt).toBe('string');
     expect(typeof metadata.endedAt).toBe('string');
@@ -1872,8 +1877,7 @@ describe('resetForNewRecording (soft reset)', () => {
   // redundant call was removed.
   it('does not dispatch clearSessionRefPointUsage to old store', async () => {
     // Get the mock store and spy on dispatch
-    const { createRecorderStore } =
-      await import('gps-plus-slam-app-framework/state/store');
+    const { createRecorderStore } = await import('./state/recorder-store');
     const store = createRecorderStore();
     const dispatchSpy = vi.spyOn(store, 'dispatch');
 
@@ -2016,7 +2020,7 @@ describe('loadAndDisplayRefPoints', () => {
    */
   it('should load, flatten, and display ref points from a scenario handle', async () => {
     const { loadAllRefPoints, flattenRefPointsToMarks } =
-      await import('gps-plus-slam-app-framework/storage/ref-point-loader');
+      await import('./storage/ref-point-loader');
 
     const mockHandle = { name: 'TestScenario' } as FileSystemDirectoryHandle;
     const mockDefs = [{ id: 'pt-A' }, { id: 'pt-B' }];
@@ -2050,7 +2054,7 @@ describe('loadAndDisplayRefPoints', () => {
    */
   it('should return zero counts for empty scenario', async () => {
     const { loadAllRefPoints, flattenRefPointsToMarks } =
-      await import('gps-plus-slam-app-framework/storage/ref-point-loader');
+      await import('./storage/ref-point-loader');
 
     const mockHandle = { name: 'EmptyScenario' } as FileSystemDirectoryHandle;
 

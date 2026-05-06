@@ -18,7 +18,7 @@ import {
   selectSaveFile,
   getReadFolderHandle,
 } from './external-file-storage';
-import type { ImportedRefPoint } from 'gps-plus-slam-app-framework/storage/ref-point-importer';
+import type { ImportedRefPoint } from '../storage/ref-point-importer';
 import {
   setCurrentScenario,
   ensureScenarioDirectory,
@@ -29,14 +29,14 @@ import {
   averageGpsPerRefPoint,
   writeRefPointDefinition,
   type RefPointDefinition,
-} from 'gps-plus-slam-app-framework/storage/ref-point-loader';
-import { recoverRefPointDefinitionsFromZips } from 'gps-plus-slam-app-framework/storage/ref-point-recovery';
+} from '../storage/ref-point-loader';
+import { recoverRefPointDefinitionsFromZips } from '../storage/ref-point-recovery';
 import { createLogger } from 'gps-plus-slam-app-framework/utils/logger';
 import {
   setCurrentScenarioName,
   setPriorRefPointMarks,
-} from 'gps-plus-slam-app-framework/state/store';
-import type { RecorderStore } from 'gps-plus-slam-app-framework/state/store';
+} from '../state/recorder-store';
+import type { RecorderStore } from '../state/recorder-store';
 
 const log = createLogger('FolderManager');
 
@@ -95,10 +95,10 @@ export interface FolderManagerDeps {
   updateSaveStatus: (text: string) => void;
   /** Optional map overlay for displaying prior ref points on the 2D map. */
   mapOverlay?: {
-    addPriorRefPoints: (
-      refPoints: Array<{ lat: number; lon: number; name: string }>
+    addPriorMarkers: (
+      markers: Array<{ lat: number; lon: number; name: string }>
     ) => void;
-    clearPriorRefPoints: () => void;
+    clearPriorMarkers: () => void;
   };
 }
 
@@ -342,8 +342,8 @@ export function createFolderManager(deps: FolderManagerDeps): FolderManager {
 
     // 2D map display
     if (deps.mapOverlay) {
-      deps.mapOverlay.clearPriorRefPoints();
-      deps.mapOverlay.addPriorRefPoints(
+      deps.mapOverlay.clearPriorMarkers();
+      deps.mapOverlay.addPriorMarkers(
         averaged.map((rp) => ({ lat: rp.lat, lon: rp.lon, name: rp.name }))
       );
     }
@@ -365,7 +365,7 @@ export function createFolderManager(deps: FolderManagerDeps): FolderManager {
     handleScenarioChange,
     loadAndDisplayRefPoints,
     getCurrentScenarioName: () =>
-      deps.getStore().getState().recorder.currentScenarioName,
+      deps.getStore().getState().scenario.currentScenarioName,
     setCurrentScenarioName: (name: string) => {
       deps.getStore().dispatch(setCurrentScenarioName(name));
     },

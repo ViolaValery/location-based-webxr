@@ -2,58 +2,44 @@
  * State module — Combined store factory, recording coordinator, replay engine, store subscribers.
  */
 
-// --- store ---
+// --- recording-slice (recorder session state, lives in framework so persistence
+//     middleware can read it; the store factory itself is in the recorder app). ---
 export {
-  type RecorderState,
-  type CombinedRootState,
-  type RecorderStore,
-  type RecorderStoreOptions,
-  type RootState,
-  type AppDispatch,
-  createRecorderStore,
+  type RecordingState,
+  type SessionMetadata,
   startSession,
   endSession,
   recordDepthSample,
   recordWriteFailure,
-  setCurrentScenarioName,
-  // Re-exports from gps-plus-slam-js
+  recordingReducer,
+} from './recording-slice.js';
+
+// --- ref-points-slice — moved to recorder app in Iter 3 of the
+//     AppFramework / RecorderApp boundary migration. Recorder consumers
+//     import these from their own local slice now. ---
+
+// --- library re-exports (kept here for backwards-compat with existing
+//     `gps-plus-slam-app-framework/state` imports). ---
+export {
   setZeroPos,
   recordGpsEvent,
   add2dImage,
   markReferencePoint,
   calcRelativeCoordsInMeters,
-  // Re-exports from ref-points-slice
-  setImportedRefPoints,
-  incrementRefPointUsage,
-  clearSessionRefPointUsage,
-  setPriorRefPointMarks,
-  addCurrentRefPointMark,
-  clearCurrentRefPointMarks,
-  resetRefPointsState,
-  selectCachedKnownRefPoints,
-} from './store.js';
-
+} from 'gps-plus-slam-js';
 export type {
-  RecordingOptions,
-  /** Store-level session metadata (scenario name, session name, timing). */
-  SessionMetadata,
-  // Type re-exports from gps-plus-slam-js
   LatLong,
   GpsPoint,
   RawGpsPoint,
   RawDeviceOrientation,
   RecordGpsEventPayload,
   MarkReferencePointPayload,
-  // Type re-exports from other modules (also available from their home barrels)
-  RefPointMark,
-  DepthPoint,
-  DepthSample,
-  RefPointsState,
-  StorageBackend,
-  OpfsSessionMetadata,
-} from './store.js';
+} from 'gps-plus-slam-js';
+export type { DepthPoint, DepthSample } from '../types/ar-types.js';
+export type { StorageBackend } from '../storage/storage-backend.js';
+export type { SessionMetadata as OpfsSessionMetadata } from '../storage/opfs-storage.js';
 
-// --- recording-coordinator ---
+// --- gps-event-coordinator ---
 export {
   type RecordingCoordinatorConfig,
   updateDeviceOrientation,
@@ -65,7 +51,15 @@ export {
   buildRawGpsPoint,
   buildRecordGpsEventPayload,
   createGpsPositionHandler,
-} from './recording-coordinator.js';
+} from './gps-event-coordinator.js';
+
+// --- gps-ar-pose-sampler ---
+export {
+  type GpsAnchorSample,
+  type GpsAnchorSampleGpsPoint,
+  type CaptureGpsAnchorSampleOptions,
+  captureGpsAnchorSample,
+} from './gps-ar-pose-sampler.js';
 
 // --- recording-options ---
 export {
@@ -89,25 +83,21 @@ export {
 export { replayRecording } from './recording-replayer.js';
 export type { ReplayRecordingOptions } from './recording-replayer.js';
 
-// --- ref-points-slice ---
-export { refPointsReducer } from './ref-points-slice.js';
-
-// --- recorder-slice ---
-export { recorderReducer } from './recorder-slice.js';
-
 // --- persistence-middleware ---
 export {
   createPersistenceMiddleware,
   type PersistenceMiddlewareOptions,
 } from './persistence-middleware.js';
 
-// --- routing-slice ---
+// --- create-slam-app-store ---
 export {
-  routingReducer,
-  navigateTo,
-  type RoutingState,
-  type AppScreen,
-} from './routing-slice.js';
+  createSlamAppStore,
+  type SlamAppStore,
+  type SlamAppStoreOptions,
+  type SlamAppRootState,
+  type SlamAppCombinedState,
+  type SlamAppMiddleware,
+} from './create-slam-app-store.js';
 
 // --- replay-engine ---
 export {
