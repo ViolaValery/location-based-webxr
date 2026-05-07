@@ -16,6 +16,13 @@ import { createLogger } from 'gps-plus-slam-app-framework/utils/logger';
 import { VIS_COLORS } from 'gps-plus-slam-app-framework/visualization/vis-colors';
 import type { GpsPathCoord } from 'gps-plus-slam-app-framework/storage/zip-reader';
 import { addAccuracyCircles } from './accuracy-circles';
+import {
+  addOsmTileLayer,
+  PATH_POLYLINE_WEIGHT,
+  PATH_POLYLINE_OPACITY,
+  INITIAL_ZOOM,
+  FIT_BOUNDS_PADDING,
+} from './map-osm-base';
 
 const log = createLogger('PreviewMap');
 
@@ -34,12 +41,7 @@ export interface PreviewMapInstance {
 // ============================================================================
 
 const RAW_GPS_COLOR = VIS_COLORS.RAW_GPS.css;
-const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const OSM_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-const POLYLINE_WEIGHT = 3;
-const POLYLINE_OPACITY = 0.8;
 const RESIZE_DELAY_MS = 200;
 
 // ============================================================================
@@ -69,12 +71,12 @@ export function createPreviewMap(
 
   try {
     const firstPoint = gpsPath[0]!;
-    const map = L.map(container).setView([firstPoint.lat, firstPoint.lng], 15);
+    const map = L.map(container).setView(
+      [firstPoint.lat, firstPoint.lng],
+      INITIAL_ZOOM
+    );
 
-    L.tileLayer(OSM_TILE_URL, {
-      attribution: OSM_ATTRIBUTION,
-      maxZoom: 19,
-    }).addTo(map);
+    addOsmTileLayer(map);
 
     const latLngs = gpsPath.map((p) => [p.lat, p.lng] as L.LatLngTuple);
 
@@ -84,8 +86,8 @@ export function createPreviewMap(
 
     L.polyline(latLngs, {
       color: RAW_GPS_COLOR,
-      weight: POLYLINE_WEIGHT,
-      opacity: POLYLINE_OPACITY,
+      weight: PATH_POLYLINE_WEIGHT,
+      opacity: PATH_POLYLINE_OPACITY,
     }).addTo(map);
 
     const bounds = L.latLngBounds([]);
@@ -93,7 +95,7 @@ export function createPreviewMap(
       bounds.extend(ll);
     }
     if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [20, 20] });
+      map.fitBounds(bounds, { padding: FIT_BOUNDS_PADDING });
     }
 
     const resizeTimeoutId = setTimeout(

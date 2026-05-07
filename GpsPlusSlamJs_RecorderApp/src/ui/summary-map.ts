@@ -22,6 +22,13 @@ import type {
 } from 'gps-plus-slam-app-framework/types/geo-types';
 import { VIS_COLORS } from 'gps-plus-slam-app-framework/visualization/vis-colors';
 import { addAccuracyCircles } from './accuracy-circles';
+import {
+  addOsmTileLayer,
+  PATH_POLYLINE_WEIGHT,
+  PATH_POLYLINE_OPACITY,
+  INITIAL_ZOOM,
+  FIT_BOUNDS_PADDING,
+} from './map-osm-base';
 
 const log = createLogger('SummaryMap');
 
@@ -67,21 +74,12 @@ export const FUSED_PATH_COLOR = VIS_COLORS.FUSED_VIO.css;
 export const REF_POINT_COLOR = VIS_COLORS.CURRENT_REF_POINT.css;
 export const ALIGNMENT_SNAPSHOT_COLOR = VIS_COLORS.ALIGNMENT_SNAPSHOT.css;
 
-/** OpenStreetMap tile URL */
-const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const OSM_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-
 /** CSS classes added in fullscreen mode */
 const FULLSCREEN_CLASSES = ['fixed', 'inset-0', 'z-[60]'];
 /** CSS classes removed in fullscreen mode (restored on collapse) */
 const INLINE_CLASSES = ['h-48', 'rounded-lg'];
 /** Delay (ms) before calling invalidateSize after a resize transition */
 const RESIZE_DELAY_MS = 300;
-
-/** Polyline style settings */
-const POLYLINE_WEIGHT = 3;
-const POLYLINE_OPACITY = 0.8;
 
 // ============================================================================
 // Implementation
@@ -118,14 +116,11 @@ export function createSummaryMap(
     const firstPoint = data.rawGpsPath[0] ?? data.fusedPath[0]!;
     const map = L.map(mapContainer).setView(
       [firstPoint.lat, firstPoint.lng],
-      15
+      INITIAL_ZOOM
     );
 
     // Add OSM tile layer
-    const tileLayer = L.tileLayer(OSM_TILE_URL, {
-      attribution: OSM_ATTRIBUTION,
-      maxZoom: 19,
-    }).addTo(map);
+    const tileLayer = addOsmTileLayer(map);
 
     // Track all layers for cleanup
     const layers: L.Layer[] = [tileLayer];
@@ -147,8 +142,8 @@ export function createSummaryMap(
 
       const rawPolyline = L.polyline(rawLatLngs, {
         color: RAW_GPS_COLOR,
-        weight: POLYLINE_WEIGHT,
-        opacity: POLYLINE_OPACITY,
+        weight: PATH_POLYLINE_WEIGHT,
+        opacity: PATH_POLYLINE_OPACITY,
       }).addTo(map);
       layers.push(rawPolyline);
 
@@ -165,8 +160,8 @@ export function createSummaryMap(
       );
       const fusedPolyline = L.polyline(fusedLatLngs, {
         color: FUSED_PATH_COLOR,
-        weight: POLYLINE_WEIGHT,
-        opacity: POLYLINE_OPACITY,
+        weight: PATH_POLYLINE_WEIGHT,
+        opacity: PATH_POLYLINE_OPACITY,
       }).addTo(map);
       layers.push(fusedPolyline);
 
@@ -204,8 +199,8 @@ export function createSummaryMap(
       );
       const snapshotPolyline = L.polyline(snapshotLatLngs, {
         color: ALIGNMENT_SNAPSHOT_COLOR,
-        weight: POLYLINE_WEIGHT,
-        opacity: POLYLINE_OPACITY,
+        weight: PATH_POLYLINE_WEIGHT,
+        opacity: PATH_POLYLINE_OPACITY,
       }).addTo(map);
       layers.push(snapshotPolyline);
 
@@ -216,7 +211,7 @@ export function createSummaryMap(
 
     // Fit bounds if we have valid bounds
     if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [20, 20] });
+      map.fitBounds(bounds, { padding: FIT_BOUNDS_PADDING });
     }
 
     // Force a resize in case container wasn't visible initially
@@ -271,7 +266,7 @@ export function createSummaryMap(
       }
       expandResizeTimeoutId = setTimeout(() => {
         map.invalidateSize();
-        map.fitBounds(bounds, { padding: [20, 20] });
+        map.fitBounds(bounds, { padding: FIT_BOUNDS_PADDING });
       }, RESIZE_DELAY_MS);
     }
 
