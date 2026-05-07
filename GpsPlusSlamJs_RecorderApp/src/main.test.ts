@@ -201,6 +201,18 @@ vi.mock('gps-plus-slam-app-framework/storage/file-system', () => ({
   initStorage: vi.fn().mockResolvedValue([]),
   startSession: mockStorageStartSession,
   resetForNewSession: vi.fn(),
+  clearRefPointsCacheForAllScenarios: vi
+    .fn()
+    .mockResolvedValue({ scenariosCleared: 0, errors: [] }),
+}));
+
+// Mock toast module — handleClearRefPointCache and other handlers call
+// showToast(); the real implementation requires initToast() to have been
+// called and an attached DOM container. Mocking keeps tests deterministic.
+vi.mock('./ui/toast', () => ({
+  initToast: vi.fn(),
+  showToast: vi.fn(),
+  TOAST_DURATION_ERROR: 8000,
 }));
 
 // Mock external-file-storage for sync manager integration tests
@@ -2071,6 +2083,182 @@ describe('loadAndDisplayRefPoints', () => {
       })
     );
     expect(result).toEqual({ refPointCount: 0, observationCount: 0 });
+  });
+});
+
+// ============================================================================
+// handleClearRefPointCache — settings-modal "Clear Reference Point Cache"
+// ============================================================================
+//
+// Why these tests matter:
+// handleClearRefPointCache has three branches that each touch user-visible
+// state (in-memory imported ref points, toast/error UI). A regression in any
+// one of them silently leaves stale ref-point data in proximity checks. The
+// failure-path test specifically pins down a bug fix: when the re-import
+// after cache clear throws, the in-memory imported ref points must be
+// cleared so future proximity checks don't see stale entries.
+
+describe('handleClearRefPointCache', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    resetMainState();
+  });
+
+  /**
+   * Why this test matters (regression pin):
+   * Previously the inner catch only logged the warning, so a failed re-import
+   * left the previously-imported ref points in memory. Subsequent proximity
+   * checks then matched against stale entries that no longer existed in the
+   * (now cleared) OPFS cache. The catch must also dispatch
+   * `setImportedRefPoints([])`.
+   */
+  it('clears stale imported ref points when re-import after cache clear fails', async () => {
+    const { handleClearRefPointCache } = await import('./main');
+    const {
+      getCurrentScenarioHandle,
+      clearRefPointsCacheForAllScenarios,
+    } = await import('gps-plus-slam-app-framework/storage/file-system');
+    const { loadAllRefPoints } = await import('./storage/ref-point-loader');
+
+    setImportedRefPointsForTesting([
+      {
+        id: 'stale-pt',
+        lat: 0,
+        lon: 0,
+        sourceZipName: 'old.zip',
+      } as never,
+    ]);
+
+    const mockHandle = { name: 'TestScenario' } as FileSystemDirectoryHandle;
+    vi.mocked(getCurrentScenarioHandle).mockReturnValue(mockHandle);
+    vi.mocked(clearRefPointsCacheForAllScenarios).mockResolvedValue({
+      scenariosCleared: 1,
+      errors: [],
+    });
+    vi.mocked(loadAllRefPoints).mockRejectedValue(
+      new Error('disk read failed')
+    );
+
+    const dispatchSpy = vi.spyOn(mockStore, 'dispatch');
+
+    await handleClearRefPointCache();
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'refPoints/setImportedRefPoints',
+        payload: [],
+      })
+    );
+  });
+
+  /**
+   * Why this test matters:
+   * When no scenario is currently selected the handler must still clear the
+   * in-memory imported ref points unconditionally — otherwise stale entries
+   * imported earlier in the session would remain after the OPFS cache wipe.
+   */
+  it('clears in-memory imported ref points when no scenario is currently selected', async () => {
+    const { handleClearRefPointCache } = await import('./main');
+    const {
+      getCurrentScenarioHandle,
+      clearRefPointsCacheForAllScenarios,
+    } = await import('gps-plus-slam-app-framework/storage/file-system');
+
+    setImportedRefPointsForTesting([
+      {
+        id: 'stale-pt',
+        lat: 0,
+        lon: 0,
+        sourceZipName: 'old.zip',
+      } as never,
+    ]);
+
+    vi.mocked(getCurrentScenarioHandle).mockReturnValue(null);
+    vi.mocked(clearRefPointsCacheForAllScenarios).mockResolvedValue({
+      scenariosCleared: 0,
+      errors: [],
+    });
+
+    const dispatchSpy = vi.spyOn(mockStore, 'dispatch');
+
+    await handleClearRefPointCache();
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'refPoints/setImportedRefPoints',
+        payload: [],
+      })
+    );
+  });
+
+  /**
+   * Why this test matters:
+   * If the cache-clear operation itself rejects, the user must be informed
+   * via the existing error channel rather than silently swallowing the
+   * failure. Pins down the outer catch path.
+   */
+  it('shows an error when the cache-clear operation itself fails', async () => {
+    const { handleClearRefPointCache } = await import('./main');
+    const { clearRefPointsCacheForAllScenarios } = await import(
+      'gps-plus-slam-app-framework/storage/file-system'
+    );
+    const { showError } = await import('./ui/hud');
+
+    vi.mocked(clearRefPointsCacheForAllScenarios).mockRejectedValue(
+      new Error('OPFS unavailable')
+    );
+
+    await handleClearRefPointCache();
+
+    expect(showError).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to clear ref-point cache')
+    );
+  });
+
+  /**
+   * Why this test matters:
+   * Happy path — when an active scenario exists and the re-import succeeds,
+   * the cleared cache must be repopulated by dispatching
+   * `setPriorRefPointMarks` (via folderManager.loadAndDisplayRefPoints) so
+   * the visualizer reflects the post-clear state immediately.
+   */
+  it('re-imports ref points for the active scenario after a successful clear', async () => {
+    const { handleClearRefPointCache } = await import('./main');
+    const {
+      getCurrentScenarioHandle,
+      clearRefPointsCacheForAllScenarios,
+    } = await import('gps-plus-slam-app-framework/storage/file-system');
+    const { loadAllRefPoints, flattenRefPointsToMarks } = await import(
+      './storage/ref-point-loader'
+    );
+
+    const mockHandle = { name: 'TestScenario' } as FileSystemDirectoryHandle;
+    vi.mocked(getCurrentScenarioHandle).mockReturnValue(mockHandle);
+    vi.mocked(clearRefPointsCacheForAllScenarios).mockResolvedValue({
+      scenariosCleared: 2,
+      errors: [],
+    });
+    vi.mocked(loadAllRefPoints).mockResolvedValue([
+      { id: 'pt-A' } as never,
+    ]);
+    vi.mocked(flattenRefPointsToMarks).mockReturnValue([
+      { id: 'pt-A' } as never,
+    ]);
+
+    const dispatchSpy = vi.spyOn(mockStore, 'dispatch');
+
+    await handleClearRefPointCache();
+
+    expect(loadAllRefPoints).toHaveBeenCalledWith(mockHandle);
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'refPoints/setPriorRefPointMarks',
+        payload: [{ id: 'pt-A' }],
+      })
+    );
   });
 });
 
