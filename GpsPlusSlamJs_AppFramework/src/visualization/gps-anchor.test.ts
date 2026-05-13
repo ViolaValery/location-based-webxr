@@ -290,9 +290,9 @@ describe('createGpsAnchor — steady state (snap-every-tick)', () => {
     anchor.__tickForTests(1, 1);
     const { calcRelativeCoordsInMeters } = await import('../core/index.js');
     const expected = calcRelativeCoordsInMeters(zero, target);
-    expect(env.object3D.position.x).toBeCloseTo(expected[0]!, 3);
-    expect(env.object3D.position.y).toBeCloseTo(expected[1]!, 3);
-    expect(env.object3D.position.z).toBeCloseTo(expected[2]!, 3);
+    expect(env.object3D.position.x).toBeCloseTo(expected[0], 3);
+    expect(env.object3D.position.y).toBeCloseTo(expected[1], 3);
+    expect(env.object3D.position.z).toBeCloseTo(expected[2], 3);
     anchor.dispose();
   });
 
@@ -337,7 +337,7 @@ describe('createGpsAnchor — steady state (snap-every-tick)', () => {
     anchor.__tickForTests(1, 2);
     const { calcRelativeCoordsInMeters } = await import('../core/index.js');
     const expected = calcRelativeCoordsInMeters(zero, newTarget);
-    expect(env.object3D.position.x).toBeCloseTo(expected[0]!, 2);
+    expect(env.object3D.position.x).toBeCloseTo(expected[0], 2);
     anchor.dispose();
   });
 
@@ -714,7 +714,7 @@ describe('createGpsAnchor — re-bootstrap on external move', () => {
     anchor.__tickForTests(1, 12);
     const { calcRelativeCoordsInMeters } = await import('../core/index.js');
     const expected = calcRelativeCoordsInMeters(zero, anchor.gpsPoint);
-    expect(env.object3D.position.x).toBeCloseTo(expected[0]!, 2);
+    expect(env.object3D.position.x).toBeCloseTo(expected[0], 2);
     anchor.dispose();
   });
 

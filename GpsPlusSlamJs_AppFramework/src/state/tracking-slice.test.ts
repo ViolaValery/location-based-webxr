@@ -29,6 +29,7 @@ import {
   selectLostFrameCount,
   selectLastRestartedPayload,
   type DeviceOrientation,
+  type TrackingSliceState,
 } from './tracking-slice';
 import type { ARPose } from '../types/ar-types';
 
@@ -365,7 +366,7 @@ describe('trackingSlice — Case 2: relocalization', () => {
           originResetDuringLoss: true,
           resetTransform: undefined,
           lastRestartedPayload: null,
-        },
+        } satisfies TrackingSliceState,
       },
     });
     store.dispatch(
@@ -396,7 +397,7 @@ describe('trackingSlice — Case 2: relocalization', () => {
           originResetDuringLoss: true,
           resetTransform: undefined,
           lastRestartedPayload: null,
-        },
+        } satisfies TrackingSliceState,
       },
     });
     store.dispatch(

@@ -166,8 +166,8 @@ export function createGpsAnchor(options: GpsAnchorOptions): GpsAnchor {
     curr: readonly number[] | null
   ): boolean => {
     if (prev === null || curr === null) return false;
-    scratchPrevMatrix.fromArray(prev as number[]);
-    scratchCurrMatrix.fromArray(curr as number[]);
+    scratchPrevMatrix.fromArray(prev);
+    scratchCurrMatrix.fromArray(curr);
     scratchPrevTrans.setFromMatrixPosition(scratchPrevMatrix);
     scratchCurrTrans.setFromMatrixPosition(scratchCurrMatrix);
     const dTrans = scratchPrevTrans.distanceTo(scratchCurrTrans);
@@ -227,7 +227,7 @@ export function createGpsAnchor(options: GpsAnchorOptions): GpsAnchor {
         ? gpsPoint.altitude
         : 0;
     const nue = calcRelativeCoordsInMeters(zero, gpsPoint, targetAlt, 0);
-    scratchTarget.set(nue[0]!, nue[1]!, nue[2]!);
+    scratchTarget.set(nue[0], nue[1], nue[2]);
 
     // Distance-scaled threshold: `scale = 1 + 10 × distanceFromCamera/100`.
     options.camera.getWorldPosition(scratchCamWorld);

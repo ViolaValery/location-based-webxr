@@ -191,10 +191,16 @@ const trackingSlice = createSlice({
         state,
         action: PayloadAction<ResetTransformData | null | undefined>
       ) {
-        if (state.phase === 'lost') {
-          state.originResetDuringLoss = true;
-          state.resetTransform = action.payload;
-        }
+        if (state.phase !== 'lost') return state;
+        // Return a new state instead of mutating the draft: immer's
+        // `WritableDraft` rejects the `readonly` tuples inside
+        // `ResetTransformData` (`Vector3`/`Quaternion`). Returning a new
+        // object skips draft assignment entirely.
+        return {
+          ...state,
+          originResetDuringLoss: true,
+          resetTransform: action.payload,
+        };
       },
       prepare(transform?: ResetTransformData | null) {
         return { payload: transform };

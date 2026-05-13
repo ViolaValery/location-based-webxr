@@ -40,6 +40,7 @@ function makeState(
     gpsElements: {} as CombinedRootState['gpsElements'],
     arElements: {} as CombinedRootState['arElements'],
     recording: {} as CombinedRootState['recording'],
+    tracking: {} as CombinedRootState['tracking'],
   };
 }
 
