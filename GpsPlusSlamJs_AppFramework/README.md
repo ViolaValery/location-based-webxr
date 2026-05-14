@@ -14,6 +14,16 @@ This package gives you the four big concrete capabilities every location-based A
 - **OPFS + ZIP record & replay** with a `StorageBackend` interface you can swap.
 - A **composable Redux store factory** (`createSlamAppStore`) that combines the core library's reducers with your own slices.
 
+## Why use GPS+SLAM? (Visual Stability Beyond Raw GPS)
+
+Raw GPS is useful for getting near a place, but it still jitters by meters and altitude is usually the hardest channel to trust. Many location-based AR apps hide that with broad proximity zones, floating beacons, or oversized highlights.
+
+This framework lets you build a more spatially specific experience. It combines GPS observations with AR odometry so user movement produces a stable local alignment, then gives you placement helpers for objects that should stay tied to real-world coordinates:
+
+- **Alignment improves with motion:** After roughly 15+ seconds of walking in representative outdoor conditions, the solver has enough baseline to make visible drift much smaller than raw GPS alone. Systematic investigation tests and manual QA have validated that this can be visually stable in real use, while still depending on device, environment, and recording quality.
+- **Anchors handle residual corrections:** `createGpsAnchor` bootstraps from median GPS samples, keeps a Three.js object positioned from its GPS target inside `arWorldGroup`, and can defer small corrections until the object is off-screen. Large alignment jumps still force a correction so content does not remain in a stale location.
+- **Use exact paths and POIs, not only blobs:** Proximity zones remain a good UX for letting users enter an experience from any direction, but they do not have to be the only interaction model. The framework is designed for route-following cues, authored POI objects, precise areas of interest, and other content that benefits from being visibly tied to a real-world path or location.
+
 ## Architecture
 
 ```
@@ -186,9 +196,9 @@ When the alignment solver produces a new matrix, the framework writes it to `arW
 
 1. **Add it to `scene`** (with NUE-meter coordinates from `calcRelativeCoordsInMeters(zeroRef, …)`). The object's world pose stays at the correct latitude/longitude/altitude forever, but every time the alignment matrix is corrected the camera shifts inside `arWorldGroup`, so from the user's AR view the object visually "floats". Cheap and correct, but ugly during corrections — fine for small markers (e.g. ref-point spheres), not great for richer GPS-anchored content.
 2. **Add it to `arWorldGroup`** with a fixed local transform. The object is frozen relative to AR-tracked content and never visually moves — but its world / GPS pose drifts every time alignment is corrected. Only useful for content that is logically tied to AR features rather than to a GPS coordinate (e.g. a hit-test reticle, an indicator stuck to a detected plane).
-3. **Add it to `arWorldGroup` and re-derive its local pose on every alignment update** so the resulting world pose stays at the target GPS coordinate. This is the visually-best way to keep an object "at its GPS position": the object never floats, and re-snaps to the new local coordinates inside `arWorldGroup` each time alignment changes. The C# Unity stack ships a dedicated `GpsAnchor` component for exactly this pattern; the JS framework has the underlying primitives (`captureGpsAnchorSample`, `calcRelativeCoordsInMeters`, the alignment matrix on `arWorldGroup`) and a generic `GpsAnchor` Three.js port is on the roadmap. Until then, callers can implement the snap themselves in their alignment subscriber.
+3. **Use `createGpsAnchor` for objects that should stay visually stable at a GPS target.** The anchor owns a single `Object3D` inside `arWorldGroup`, bootstraps from median GPS samples unless `skipBootstrap` is set, and re-derives the object's local pose from the current GPS target and alignment state. In the default `snap-when-offscreen` mode, small corrections are committed while the object is outside the camera frustum; larger alignment jumps bypass that gate so the object does not stay in a stale location. Use `snap-every-tick` when correctness is more important than hiding visible position changes.
 
-A pure-function `syncGpsAnchoredMeshes` reconciler (option 1, bulk markers) is shipped by the RecorderApp; the framework only exposes the math primitive `calcRelativeCoordsInMeters` so other consumers can write their own placement helpers.
+A pure-function `syncGpsAnchoredMeshes` reconciler (option 1, bulk markers) is shipped by the RecorderApp. Use `createGpsAnchor` when a single visible object, route cue, or POI needs the more careful bootstrap and correction policy.
 
 ## Modules
 
@@ -269,17 +279,18 @@ H3-based proximity matching for GPS-anchored points (renamed from `ref-points/` 
 
 ### `visualization/` — Three.js & Maps
 
-| Export                         | Description                                          |
-| ------------------------------ | ---------------------------------------------------- |
-| `LeafletMapOverlay`            | 2D Leaflet map integrated via CSS3D into a 3D scene. |
-| `MapOverlay`                   | Tile-based 3D map overlay (no Leaflet dependency).   |
-| `GpsEventVisualizer`           | Three.js spheres for GPS event positions.            |
-| `createAlignmentLerper()`      | Smooth alignment matrix interpolation.               |
-| `createCameraFollower()`       | Camera that tracks a moving target.                  |
-| `createCss3dRendererManager()` | CSS3D renderer for HTML-in-3D overlays.              |
-| `createGpsCompassCubes()`      | Cardinal direction indicator cubes.                  |
-| `VIS_COLORS`                   | Consistent color palette for visualizations.         |
-| `disposeObject3D(obj)`         | Safe Three.js object disposal.                       |
+| Export                         | Description                                            |
+| ------------------------------ | ------------------------------------------------------ |
+| `LeafletMapOverlay`            | 2D Leaflet map integrated via CSS3D into a 3D scene.   |
+| `MapOverlay`                   | Tile-based 3D map overlay (no Leaflet dependency).     |
+| `GpsEventVisualizer`           | Three.js spheres for GPS event positions.              |
+| `createAlignmentLerper()`      | Smooth alignment matrix interpolation.                 |
+| `createCameraFollower()`       | Camera that tracks a moving target.                    |
+| `createCss3dRendererManager()` | CSS3D renderer for HTML-in-3D overlays.                |
+| `createGpsCompassCubes()`      | Cardinal direction indicator cubes.                    |
+| `createGpsAnchor()`            | GPS-anchored placement helper for one Three.js object. |
+| `VIS_COLORS`                   | Consistent color palette for visualizations.           |
+| `disposeObject3D(obj)`         | Safe Three.js object disposal.                         |
 
 ### `utils/` — Logging & Helpers
 
