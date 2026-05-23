@@ -138,6 +138,15 @@ export interface RecordingSessionDeps {
   getStore: () => RecorderStore;
   /** Replace the module-level store in main.ts. */
   setStore: (store: RecorderStore) => void;
+  /**
+   * Re-point the WebXR session at the new store so live AR frames keep
+   * dispatching `poseReceived` into the store that drives the current
+   * recording. Without this, the new store's `tracking.phase` stays at
+   * `'initializing'` and the tracking-quality phase gate keeps the HUD
+   * pinned to "AR LOST" for the entire recording (Finding #1,
+   * 2026-05-23 user feedback).
+   */
+  setTrackingStore: (store: RecorderStore) => void;
   /** Create a fresh store instance. */
   createNewStore: () => RecorderStore;
   /** Read the current recording options (owned by main.ts). */
@@ -275,6 +284,12 @@ export function createRecordingSessionHandlers(
     // Create new store for this session
     const store = deps.createNewStore();
     deps.setStore(store);
+    // Finding #1 (2026-05-23 user feedback): the WebXR session captured a
+    // reference to the PREVIOUS store at app boot. If we do not re-point it
+    // now, every `poseReceived` dispatch flows into the orphaned store and
+    // the new store's `tracking.phase` never leaves `'initializing'`, which
+    // pins the tracking-quality HUD to "AR LOST" for the whole recording.
+    deps.setTrackingStore(store);
 
     // Generate session name from timestamp
     const now = new Date();

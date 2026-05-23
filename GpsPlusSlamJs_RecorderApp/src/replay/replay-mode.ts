@@ -119,9 +119,7 @@ export async function startReplayMode(
   // current schema, and exposes a memoised final state — replay only needs
   // the migrated action list, which it forwards to the ReplayEngine.
   const recording = await loadRecording(zipData);
-  const actions: ReplayAction[] = recording.actions.map(
-    (e) => e.action as ReplayAction
-  );
+  const actions: ReplayAction[] = recording.actions.map((e) => e.action);
   log.info(`Loaded ${actions.length} actions from zip`);
 
   // Create store with NullStorageBackend (no persistence side effects)

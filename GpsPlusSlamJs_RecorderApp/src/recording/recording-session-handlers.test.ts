@@ -380,6 +380,7 @@ function createMockDeps(
       .mockResolvedValue({ refPointCount: 0, observationCount: 0 }),
     collectTrackerErrors: vi.fn(),
     applyAlignmentMatrix: vi.fn(),
+    setTrackingStore: vi.fn(),
     ...overrides,
   };
 }
@@ -466,6 +467,24 @@ describe('handleStartRecording', () => {
     // Why: main.ts module-level store must be replaced
     await handlers.handleStartRecording();
     expect(deps.setStore).toHaveBeenCalled();
+  });
+
+  it('should re-point the AR session at the new store via setTrackingStore', async () => {
+    // Why (Finding #1, 2026-05-23 user feedback): when a recording starts a
+    // fresh Redux store, the WebXR session must be re-pointed at the new
+    // store. Otherwise `poseReceived` keeps flowing into the orphaned old
+    // store, the new store's `tracking.phase` stays 'initializing', and the
+    // tracking-quality phase gate keeps the HUD on "AR LOST" forever — the
+    // exact symptom reported in the field test.
+    const newStore = createMockStore();
+    const setTrackingStoreMock = vi.fn();
+    const localDeps = createMockDeps({
+      createNewStore: vi.fn().mockReturnValue(newStore),
+      setTrackingStore: setTrackingStoreMock,
+    });
+    const localHandlers = createRecordingSessionHandlers(localDeps);
+    await localHandlers.handleStartRecording();
+    expect(setTrackingStoreMock).toHaveBeenCalledWith(newStore);
   });
 
   it('should generate a session name from timestamp', async () => {

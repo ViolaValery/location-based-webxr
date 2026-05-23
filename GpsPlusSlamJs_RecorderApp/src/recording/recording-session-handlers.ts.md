@@ -44,6 +44,7 @@ Encapsulates recording-session lifecycle state and event handlers, extracted fro
 - **Recording format**: New recordings write `odomCoordVersion: 5` to session metadata. Action payloads use `rawGpsPoint` (no derived fields) and `rawDeviceOrientation` as sibling fields. The reducer converts these to full `GpsPoint` when building state. Session metadata also includes optional `build` (commit hash, versions, build time) and a sanitized `pageUrl` (scheme + host + path, with search/hash stripped via the URL object) for debugging without persisting query/hash secrets. The scheme is preserved for URLs with opaque origins (e.g. `file://`).
 - **Build metadata is best-effort**: `handleStopRecording()` logs and omits the optional `build` field if metadata lookup fails. The rest of `session.json` must still be written.
 - **Back-button guard**: `backDuringRecordingInProgress` prevents concurrent back-button presses during the async stop flow.
+- **Tracking store re-wire on new recording (Finding #1, 2026-05-23 user feedback)**: `handleStartRecording` must call `deps.setTrackingStore(newStore)` after `deps.setStore(newStore)`. The WebXR session caches the store reference passed at app boot; without re-pointing it, every `poseReceived` flows into the orphaned old store and the new store's `tracking.phase` never leaves `'initializing'`, which keeps the tracking-quality HUD pinned to "AR LOST" for the entire recording.
 
 ## Examples
 
@@ -55,6 +56,7 @@ const handlers = createRecordingSessionHandlers({
   setStore: (s) => {
     store = s;
   },
+  setTrackingStore: (s) => setTrackingStore(s), // re-point WebXR at the new store (Finding #1)
   createNewStore: () => createRecorderStore(),
   getRecordingOptions: () => recordingOptions,
   getMapOverlay: () => mapOverlay,

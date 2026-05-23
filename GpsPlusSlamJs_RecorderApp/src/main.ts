@@ -213,6 +213,7 @@ const recordingSessionHandlers = createRecordingSessionHandlers({
   setStore: (newStore) => {
     store = newStore;
   },
+  setTrackingStore,
   createNewStore,
   getRecordingOptions: () => recordingOptions,
   getMapOverlay: () => mapOverlay,

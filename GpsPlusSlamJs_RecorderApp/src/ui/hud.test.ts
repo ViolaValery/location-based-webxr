@@ -2496,12 +2496,10 @@ describe('updateTrackingQuality', () => {
     expect(document.getElementById('tq-residual')!.textContent).toContain(
       '72%'
     );
-    expect(document.getElementById('tq-compass')!.textContent).toContain(
-      '88%'
+    expect(document.getElementById('tq-compass')!.textContent).toContain('88%');
+    expect(document.getElementById('tq-gps-accuracy')!.textContent).toContain(
+      '65%'
     );
-    expect(
-      document.getElementById('tq-gps-accuracy')!.textContent
-    ).toContain('65%');
     expect(document.getElementById('tq-coverage')!.textContent).toContain(
       '100%'
     );
@@ -2520,9 +2518,7 @@ describe('updateTrackingQuality', () => {
         },
       })
     );
-    expect(document.getElementById('tq-compass')!.textContent).toContain(
-      'n/a'
-    );
+    expect(document.getElementById('tq-compass')!.textContent).toContain('n/a');
   });
 
   // Why: diagnostics give advanced users actionable debugging info.
@@ -2567,9 +2563,9 @@ describe('updateTrackingQuality', () => {
         },
       })
     );
-    expect(
-      document.getElementById('tq-compass-drift')!.textContent
-    ).toContain('DRIFT');
+    expect(document.getElementById('tq-compass-drift')!.textContent).toContain(
+      'DRIFT'
+    );
   });
 
   // Why: no false alarm when compass is stable.

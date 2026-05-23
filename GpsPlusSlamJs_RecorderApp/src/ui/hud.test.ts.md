@@ -17,10 +17,10 @@ Validates the behavior of the HUD module, including fail-fast initialization, bu
 
 | Function                 | Description                                                                                                 |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| `setupMinimalDOM()`      | Creates a minimal DOM structure with all required elements for testing (includes tracking quality elements)  |
+| `setupMinimalDOM()`      | Creates a minimal DOM structure with all required elements for testing (includes tracking quality elements) |
 | `createMockCallbacks()`  | Returns a mock `UICallbacks` object with all callbacks as `vi.fn()` spies                                   |
 | `mockTransitionBehavior` | Mocks `window.matchMedia` and `getComputedStyle` to control transition behavior; returns a cleanup function |
-| `makeReport(overrides?)` | Creates a test `TrackingQualityReport` with sensible defaults; overrides any field via spread                |
+| `makeReport(overrides?)` | Creates a test `TrackingQualityReport` with sensible defaults; overrides any field via spread               |
 
 ## Test Suites
 
@@ -104,39 +104,39 @@ Tests callback invocation and transition handling.
 
 Tests the tracking quality badge and detail panel rendering.
 
-| Test                                                        | Why It Matters                                                    |
-| ----------------------------------------------------------- | ----------------------------------------------------------------- |
-| shows state label for each TrackingQualityState             | Verifies all 4 state labels render correctly                      |
-| applies correct color class for each state                  | Color-coded state feedback (green/yellow/gray/red)                |
-| shows confidence as percentage                              | Converts 0..1 float to "XX%" string                              |
-| populates all five sub-scores                               | Detail panel shows convergence, residual, compass, GPS, coverage  |
-| populates diagnostic fields                                 | Observation count, walked distance, heading delta                 |
-| shows COMPASS DRIFT when detected                           | Red warning text for compass drift diagnostic                     |
-| hides COMPASS DRIFT when not detected                       | Clears text when drift resolves                                   |
-| handles null sub-scores as n/a                              | Graceful display when a sub-score is not yet available            |
-| no-op when tracking-quality container is missing            | Graceful degradation if HTML element absent                       |
-| handles null headingDeltaDeg                                | Displays "n/a" when heading delta not yet computed                |
-| re-attaches click listener when badge element changes       | Ensures tap-to-expand works across DOM rebuilds                   |
-| resets expanded state when badge element changes            | Clean slate after DOM rebuild prevents stale expansion state      |
+| Test                                                  | Why It Matters                                                   |
+| ----------------------------------------------------- | ---------------------------------------------------------------- |
+| shows state label for each TrackingQualityState       | Verifies all 4 state labels render correctly                     |
+| applies correct color class for each state            | Color-coded state feedback (green/yellow/gray/red)               |
+| shows confidence as percentage                        | Converts 0..1 float to "XX%" string                              |
+| populates all five sub-scores                         | Detail panel shows convergence, residual, compass, GPS, coverage |
+| populates diagnostic fields                           | Observation count, walked distance, heading delta                |
+| shows COMPASS DRIFT when detected                     | Red warning text for compass drift diagnostic                    |
+| hides COMPASS DRIFT when not detected                 | Clears text when drift resolves                                  |
+| handles null sub-scores as n/a                        | Graceful display when a sub-score is not yet available           |
+| no-op when tracking-quality container is missing      | Graceful degradation if HTML element absent                      |
+| handles null headingDeltaDeg                          | Displays "n/a" when heading delta not yet computed               |
+| re-attaches click listener when badge element changes | Ensures tap-to-expand works across DOM rebuilds                  |
+| resets expanded state when badge element changes      | Clean slate after DOM rebuild prevents stale expansion state     |
 
 ### Tracking quality badge tap to expand/collapse
 
 Tests the tap-to-toggle detail panel behavior.
 
-| Test                                         | Why It Matters                                                |
-| -------------------------------------------- | ------------------------------------------------------------- |
-| tapping badge toggles details visible        | Expand gesture shows sub-scores                               |
-| tapping badge again hides details            | Collapse gesture hides sub-scores                             |
-| multiple toggle cycles work correctly        | State machine toggles cleanly through repeated interactions   |
+| Test                                  | Why It Matters                                              |
+| ------------------------------------- | ----------------------------------------------------------- |
+| tapping badge toggles details visible | Expand gesture shows sub-scores                             |
+| tapping badge again hides details     | Collapse gesture hides sub-scores                           |
+| multiple toggle cycles work correctly | State machine toggles cleanly through repeated interactions |
 
 ### hideTrackingQuality
 
 Tests hiding the tracking quality indicator.
 
-| Test                                                        | Why It Matters                                              |
-| ----------------------------------------------------------- | ----------------------------------------------------------- |
-| hides tracking quality container and collapses details      | Clean HUD when recording stops                              |
-| no-op when tracking quality elements are missing            | Graceful degradation if HTML elements absent                 |
+| Test                                                   | Why It Matters                               |
+| ------------------------------------------------------ | -------------------------------------------- |
+| hides tracking quality container and collapses details | Clean HUD when recording stops               |
+| no-op when tracking quality elements are missing       | Graceful degradation if HTML elements absent |
 
 ### hideRecordingControls
 

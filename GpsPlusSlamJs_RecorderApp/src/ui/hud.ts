@@ -5,7 +5,10 @@
  */
 
 import type { PermissionCheckResult } from 'gps-plus-slam-app-framework/sensors/permission-checker';
-import type { TrackingQualityReport, TrackingQualityState } from 'gps-plus-slam-app-framework';
+import type {
+  TrackingQualityReport,
+  TrackingQualityState,
+} from 'gps-plus-slam-app-framework';
 import { listFormatter } from 'gps-plus-slam-app-framework/utils/list-formatter';
 import { getRequiredElement } from '../utils/dom-helpers';
 import { DEFAULT_SCENARIO } from './session-browser';
