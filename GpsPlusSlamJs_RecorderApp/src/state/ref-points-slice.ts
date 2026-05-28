@@ -67,10 +67,7 @@ const refPointsSlice = createSlice({
     addRefPointEntry(state, action: PayloadAction<RefPointEntry>) {
       state.entries.push(action.payload);
     },
-    setImportedRefPointEntries(
-      state,
-      action: PayloadAction<RefPointEntry[]>
-    ) {
+    setImportedRefPointEntries(state, action: PayloadAction<RefPointEntry[]>) {
       state.entries = action.payload;
     },
     resetRefPoints() {

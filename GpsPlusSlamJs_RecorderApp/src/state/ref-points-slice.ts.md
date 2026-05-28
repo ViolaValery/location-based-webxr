@@ -15,18 +15,18 @@ collapses the two.
 
 ## Public API
 
-| Symbol | Kind | Description |
-| --- | --- | --- |
-| `RefPointEntry` | type | One entry: `{ id, timestamp, name?, rawGpsPoint, gpsPoint? }`. |
-| `RefPointsState` | type | `{ entries: RefPointEntry[] }`. |
-| `refPointsReducer` | reducer | Mounted at `state.refPoints`. |
-| `addRefPointEntry(entry)` | action | Appends a single entry. |
-| `setImportedRefPointEntries(entries)` | action | Replaces the array wholesale (sidecar startup fast-path). |
-| `resetRefPoints()` | action | Restores empty initial state. |
-| `selectRefPointEntries(state)` | selector | Memoised; returns a stable empty sentinel when no entries. |
-| `selectKnownAnchorsByCell(state)` | selector | Memoised; groups by H3 cell `id`; first-non-null `name` per cell wins. |
-| `selectImportedKnownAnchors(state)` | selector | Memoised; filters entries by `timestamp === 0` (sidecar imports) and maps to `KnownGeoAnchor[]`. Mirrors the legacy `selectCachedKnownRefPoints` output (Option C, §A.6). |
-| `countEntriesByCellInSession(state, start, end)` | helper | `Map<id, count>` filtered by inclusive timestamp range. |
+| Symbol                                           | Kind     | Description                                                                                                                                                               |
+| ------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RefPointEntry`                                  | type     | One entry: `{ id, timestamp, name?, rawGpsPoint, gpsPoint? }`.                                                                                                            |
+| `RefPointsState`                                 | type     | `{ entries: RefPointEntry[] }`.                                                                                                                                           |
+| `refPointsReducer`                               | reducer  | Mounted at `state.refPoints`.                                                                                                                                             |
+| `addRefPointEntry(entry)`                        | action   | Appends a single entry.                                                                                                                                                   |
+| `setImportedRefPointEntries(entries)`            | action   | Replaces the array wholesale (sidecar startup fast-path).                                                                                                                 |
+| `resetRefPoints()`                               | action   | Restores empty initial state.                                                                                                                                             |
+| `selectRefPointEntries(state)`                   | selector | Memoised; returns a stable empty sentinel when no entries.                                                                                                                |
+| `selectKnownAnchorsByCell(state)`                | selector | Memoised; groups by H3 cell `id`; first-non-null `name` per cell wins.                                                                                                    |
+| `selectImportedKnownAnchors(state)`              | selector | Memoised; filters entries by `timestamp === 0` (sidecar imports) and maps to `KnownGeoAnchor[]`. Mirrors the legacy `selectCachedKnownRefPoints` output (Option C, §A.6). |
+| `countEntriesByCellInSession(state, start, end)` | helper   | `Map<id, count>` filtered by inclusive timestamp range.                                                                                                                   |
 
 ## Invariants
 

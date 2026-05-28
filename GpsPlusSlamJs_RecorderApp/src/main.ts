@@ -312,6 +312,7 @@ export function setImportedRefPointsForTesting(
     lat: number;
     lon: number;
     alt?: number;
+    sourceZipName?: string;
   }>
 ): void {
   const entries: RefPointEntry[] = refPoints.map((rp) => ({

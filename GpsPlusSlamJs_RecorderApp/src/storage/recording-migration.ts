@@ -125,9 +125,7 @@ function migrateErasIfNeeded(
 // Plan: [2026-05-27-collapse-refpoint-and-frame-slices-plan.md §B.5 5.6].
 // ---------------------------------------------------------------------------
 
-function injectRefPointsActions(
-  actions: RecordedAction[]
-): RecordedAction[] {
+function injectRefPointsActions(actions: RecordedAction[]): RecordedAction[] {
   // Idempotency guard — preserve same-reference contract for streams that
   // already carry the new slice's actions.
   let hasMark = false;
@@ -146,21 +144,26 @@ function injectRefPointsActions(
     if (!payload || typeof payload !== 'object') continue;
 
     const id = payload['id'];
-    const rawGpsPoint = payload['rawGpsPoint'];
-    if (typeof id !== 'string' || !rawGpsPoint || typeof rawGpsPoint !== 'object') {
+    const rawGpsPoint = payload['rawGpsPoint'] as
+      | Record<string, unknown>
+      | undefined;
+    if (
+      typeof id !== 'string' ||
+      !rawGpsPoint ||
+      typeof rawGpsPoint !== 'object'
+    ) {
       continue;
     }
     const timestamp =
       typeof payload['timestamp'] === 'number'
-        ? (payload['timestamp'] as number)
-        : (rawGpsPoint as Record<string, unknown>)['timestamp'];
+        ? payload['timestamp']
+        : rawGpsPoint['timestamp'];
 
     out.push({
       type: 'refPoints/addRefPointEntry',
       payload: {
         id,
-        timestamp:
-          typeof timestamp === 'number' ? timestamp : 0,
+        timestamp: typeof timestamp === 'number' ? timestamp : 0,
         rawGpsPoint,
       },
     });

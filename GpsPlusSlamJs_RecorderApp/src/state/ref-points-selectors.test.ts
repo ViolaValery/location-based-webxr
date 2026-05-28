@@ -139,9 +139,7 @@ describe('selectImportedKnownAnchors', () => {
       { ...importedB, timestamp: 0 },
     ]);
     const anchors = selectImportedKnownAnchors(state);
-    expect(anchors.map((a) => a.h3Index).sort()).toEqual(
-      [ID_A, ID_B].sort()
-    );
+    expect(anchors.map((a) => a.h3Index).sort()).toEqual([ID_A, ID_B].sort());
   });
 
   it('excludes entries with timestamp > 0 (live observations)', () => {

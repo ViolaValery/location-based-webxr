@@ -42,4 +42,3 @@ for ref points in the recorder.
 - `recorder-store.ts.md`
 - `ref-points-slice.ts.md`
 - `ref-point-visualizer.ts.md`
-

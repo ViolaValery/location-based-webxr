@@ -25,15 +25,15 @@ between calls plus a single `zeroRef` field; no other state.
     the animation was scheduled.
   - `getRefPointCount(): number` — number of meshes managed by
     `syncRefPoints`.
-  - `displayPriorRefPoints(marks)` — *legacy*; replaces the prior group;
+  - `displayPriorRefPoints(marks)` — _legacy_; replaces the prior group;
     marks without `gpsPosition` are skipped. Removed in Step 5 along
     with the recorder `refPoints` slice.
-  - `addCurrentRefPoint(mark)` — *legacy*; appends to the current group.
+  - `addCurrentRefPoint(mark)` — _legacy_; appends to the current group.
     Removed in Step 5.
   - `clearPriorRefPoints()` / `clearCurrentRefPoints()` / `clearAll()` —
     `clearAll` also clears the unified `syncRefPoints` handles and resets
     the zero ref.
-  - `getCounts(): { prior, current }` — *legacy*; counts for the
+  - `getCounts(): { prior, current }` — _legacy_; counts for the
     prior/current pipelines only. Use `getRefPointCount()` for the
     unified pipeline.
 - `const refPointVisualizer` — singleton consumed by

@@ -28,10 +28,7 @@ import {
   createSlamAppStore,
   type SlamAppStore,
 } from 'gps-plus-slam-app-framework/state/create-slam-app-store';
-import {
-  refPointsReducer,
-  type RefPointsState,
-} from './ref-points-slice';
+import { refPointsReducer, type RefPointsState } from './ref-points-slice';
 import type { RecordingState } from 'gps-plus-slam-app-framework/state/recording-slice';
 import type { TrackingSliceState } from 'gps-plus-slam-app-framework/state/tracking-slice';
 import type { TrackingQualitySliceState } from 'gps-plus-slam-app-framework';

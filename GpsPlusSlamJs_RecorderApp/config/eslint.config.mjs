@@ -88,6 +88,7 @@ export default defineConfig(
           assertFunctionNames: [
             'expect',
             'expectNonSerializableDetected',
+            'expectMarkDispatchedTimes',
             'expectTypeOf',
           ],
         },

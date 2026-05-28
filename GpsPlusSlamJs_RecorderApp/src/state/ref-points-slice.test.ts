@@ -39,7 +39,7 @@ const RAW: RawGpsPoint = {
 const FUSED: RawGpsPoint = {
   ...RAW,
   latitude: 50.124,
-  longitude: 6.790,
+  longitude: 6.79,
 };
 
 const baseEntry: RefPointEntry = {
@@ -103,9 +103,7 @@ describe('refPoints slice — reducer', () => {
   });
 
   it('action types use the `refPoints/` namespace', () => {
-    expect(addRefPointEntry(baseEntry).type).toBe(
-      'refPoints/addRefPointEntry'
-    );
+    expect(addRefPointEntry(baseEntry).type).toBe('refPoints/addRefPointEntry');
     expect(setImportedRefPointEntries([]).type).toBe(
       'refPoints/setImportedRefPointEntries'
     );

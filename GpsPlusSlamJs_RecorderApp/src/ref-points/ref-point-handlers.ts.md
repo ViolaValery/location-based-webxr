@@ -17,11 +17,11 @@ Factory that creates ref-point handlers with injected dependencies.
 
 **`RefPointHandlers`** returned object:
 
-| Method                      | Signature                                 | Description                                                                               |
-| --------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `handleMarkRefPoint`        | `() => Promise<void>`                     | Full mark-ref-point flow: validate → picker → build → persist → visualize.                |
-| `checkNearbyRefPoint`       | `(lat, lng) => string \| undefined`       | Check if (lat,lng) is near a known imported ref point. Returns display name or undefined. |
-| `reset`                     | `() => void`                              | Clears the concurrent-call guard and re-observation cooldown map, and dispatches `resetRefPoints` into the V2 slice. |
+| Method                | Signature                           | Description                                                                                                          |
+| --------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `handleMarkRefPoint`  | `() => Promise<void>`               | Full mark-ref-point flow: validate → picker → build → persist → visualize.                                           |
+| `checkNearbyRefPoint` | `(lat, lng) => string \| undefined` | Check if (lat,lng) is near a known imported ref point. Returns display name or undefined.                            |
+| `reset`               | `() => void`                        | Clears the concurrent-call guard and re-observation cooldown map, and dispatches `resetRefPoints` into the V2 slice. |
 
 ## Invariants & Assumptions
 

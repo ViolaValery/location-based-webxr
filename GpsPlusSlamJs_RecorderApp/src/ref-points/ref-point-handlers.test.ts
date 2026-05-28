@@ -150,7 +150,6 @@ import {
   refPointsReducer,
   addRefPointEntry,
   setImportedRefPointEntries,
-  resetRefPoints,
   type RefPointEntry,
 } from '../state/ref-points-slice';
 import { gpsToH3 } from 'gps-plus-slam-app-framework/geo/h3-proximity';
@@ -172,7 +171,9 @@ let lastTestStore: RecorderStore | null = null;
  */
 function seedImportedRefPoints(refPoints: ImportedRefPoint[]): void {
   if (!lastTestStore) {
-    throw new Error('seedImportedRefPoints: no test store has been created yet');
+    throw new Error(
+      'seedImportedRefPoints: no test store has been created yet'
+    );
   }
   const entries = refPoints.map((rp) => importedToEntry(rp, Date.now()));
   lastTestStore.dispatch(setImportedRefPointEntries(entries));
@@ -211,12 +212,14 @@ function createMockStore(
       refPoints: refPointsState,
     })),
     subscribe: vi.fn().mockReturnValue(() => {}),
-    dispatch: vi.fn().mockImplementation((action: { type: string; payload?: unknown }) => {
-      if (action.type.startsWith('refPoints/')) {
-        refPointsState = refPointsReducer(refPointsState, action);
-      }
-      return action;
-    }),
+    dispatch: vi
+      .fn()
+      .mockImplementation((action: { type: string; payload?: unknown }) => {
+        if (action.type.startsWith('refPoints/')) {
+          refPointsState = refPointsReducer(refPointsState, action);
+        }
+        return action;
+      }),
     replaceReducer: vi.fn(),
     writeFrame: vi.fn(),
     writeSessionMetadata: vi.fn(),
@@ -1235,7 +1238,6 @@ describe('handleMarkRefPoint — H3-based ID', () => {
     expect(mark.id).toMatch(/^[0-9a-f]{15}$/);
     expect(mark.id).not.toBe('MyRef');
   });
-
 });
 
 /**

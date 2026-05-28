@@ -1684,9 +1684,8 @@ describe('Imported Reference Points in Picker (Task 1e)', () => {
 
     // Step 5.4: matcher reads from refPoints. Seed the slice with the
     // same anchor (using a real H3-resolution-11 cell id at (49.0, 8.0)).
-    const { gpsToH3 } = await import(
-      'gps-plus-slam-app-framework/geo/h3-proximity'
-    );
+    const { gpsToH3 } =
+      await import('gps-plus-slam-app-framework/geo/h3-proximity');
     const bankH3 = gpsToH3(49.0, 8.0);
     mockState.refPoints = {
       entries: [
@@ -2131,7 +2130,7 @@ describe('handleClearRefPointCache', () => {
         lat: 0,
         lon: 0,
         sourceZipName: 'old.zip',
-      } as never,
+      },
     ]);
 
     const mockHandle = { name: 'TestScenario' } as FileSystemDirectoryHandle;
@@ -2174,7 +2173,7 @@ describe('handleClearRefPointCache', () => {
         lat: 0,
         lon: 0,
         sourceZipName: 'old.zip',
-      } as never,
+      },
     ]);
 
     vi.mocked(getCurrentScenarioHandle).mockReturnValue(null);

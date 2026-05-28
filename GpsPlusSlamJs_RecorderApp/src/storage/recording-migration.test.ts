@@ -1087,9 +1087,9 @@ describe('recording-migration', () => {
             },
           },
         ];
-        expect(
-          migrateActionsIfNeeded(actions, { odomCoordVersion: 5 })
-        ).toBe(actions);
+        expect(migrateActionsIfNeeded(actions, { odomCoordVersion: 5 })).toBe(
+          actions
+        );
       });
 
       /**
