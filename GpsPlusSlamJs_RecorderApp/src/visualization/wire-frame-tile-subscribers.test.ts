@@ -275,6 +275,56 @@ describe('wireFrameTileSubscribers', () => {
     expect(disposeSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('disposes a decoded texture when the store is swapped mid-decode', async () => {
+    // Why this test matters: a store swap (Start Recording / Replay)
+    // does NOT flip the subscriber-wide `disposed` flag. Without a
+    // per-store staleness check, an in-flight decode from the OLD store
+    // resolves after `visualizer.clear()` and calls `addTile` with a
+    // stale frame — leaking the texture (the visualizer never tracks /
+    // disposes it once a fresh attach owns the scene) and corrupting the
+    // new store's visualization. The wirer must drop+dispose the stale
+    // texture instead.
+    const visualizer = makeVisualizerSpy();
+    const texture = new THREE.Texture();
+    const disposeSpy = vi.spyOn(texture, 'dispose');
+    const blobSource = vi.fn().mockResolvedValue(makeBlobOfSize(5000));
+
+    let resolveDecode: ((t: THREE.Texture) => void) | undefined;
+    const decodeTexture = vi.fn(
+      () =>
+        new Promise<THREE.Texture>((resolve) => {
+          resolveDecode = resolve;
+        })
+    );
+
+    const dispose = wireFrameTileSubscribers({
+      storeRef,
+      visualizer,
+      blobSource,
+      decodeTexture,
+    });
+
+    storeRef.get().dispatch(add2dImage(makeFrame()));
+    await flushMicrotasks();
+    expect(decodeTexture).toHaveBeenCalledTimes(1);
+
+    // Swap stores while the decode is still pending, then resolve it.
+    const nextStore = createRecorderStore({
+      storageBackend: new NullStorageBackend(),
+    });
+    nextStore.dispatch(setZeroPos({ lat: 50, lon: 8 }));
+    storeRef.set(nextStore);
+    expect(visualizer.clear).toHaveBeenCalledTimes(1);
+
+    resolveDecode?.(texture);
+    await flushMicrotasks();
+
+    expect(visualizer.addTile).not.toHaveBeenCalled();
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
+
+    dispose();
+  });
+
   it('reports errors via onError and does not crash', async () => {
     const visualizer = makeVisualizerSpy();
     const onError = vi.fn();

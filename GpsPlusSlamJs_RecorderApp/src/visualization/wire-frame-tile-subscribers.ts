@@ -95,14 +95,25 @@ export function wireFrameTileSubscribers(
       void (async () => {
         try {
           const blob = await blobSource(frame.imageFile);
-          if (disposed || !blob || blob.size < minFrameBytes) return;
+          // `storeRef.get() !== store` means this attachment's store was
+          // swapped out (Start Recording / Replay) while the fetch was
+          // in flight; skip before paying for a decode we'd only discard.
+          if (
+            disposed ||
+            storeRef.get() !== store ||
+            !blob ||
+            blob.size < minFrameBytes
+          )
+            return;
           const texture = await decodeTexture(blob);
           if (!texture) return;
-          // If the subscriber was disposed while decodeTexture was
-          // awaiting, the texture never reaches the visualizer (which
-          // owns disposal of the textures it holds), so dispose it here
-          // to avoid leaking GPU memory.
-          if (disposed) {
+          // If the subscriber was disposed — or the store was swapped
+          // (which already triggered `visualizer.clear()`) — while
+          // decodeTexture was awaiting, the texture never reaches the
+          // visualizer (which owns disposal of the textures it holds),
+          // so dispose it here to avoid leaking GPU memory and adding a
+          // stale tile to the new store's scene.
+          if (disposed || storeRef.get() !== store) {
             texture.dispose();
             return;
           }
