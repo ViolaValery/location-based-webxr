@@ -1182,23 +1182,33 @@ export async function endARSession(): Promise<void> {
     renderer.setAnimationLoop(null);
   }
 
-  // End the actual XR session and await it. resetWebXRState() below only
-  // nulls the `xrSession` reference — it never calls XRSession.end() — so
-  // ending the session here is the one piece of teardown that is unique to
-  // the production path.
-  if (xrSession) {
-    await xrSession.end();
+  // End the actual XR session and await it. resetWebXRState() in the
+  // `finally` below only nulls the `xrSession` reference — it never calls
+  // XRSession.end() — so ending the session here is the one piece of
+  // teardown that is unique to the production path.
+  //
+  // The end()/teardown pair is wrapped in try/finally because
+  // XRSession.end() can reject (e.g. the session is already ended or in an
+  // invalid state). Without the `finally`, a rejection would skip the
+  // teardown and leave `renderer`/`xrSession` non-null — and the re-entry
+  // guard in initAR() would then permanently reject every subsequent
+  // session until a page reload. Running the teardown unconditionally
+  // guarantees the module always returns to a clean, re-initialisable state.
+  try {
+    if (xrSession) {
+      await xrSession.end();
+    }
+  } finally {
+    // Delegate the rest of the teardown to resetWebXRState() so we never leak
+    // any module-level reference. Re-implementing a subset here (the previous
+    // approach) silently dropped imageCaptureManager, depthSampler, the
+    // tracking-phase subscription, the frame-update registry, the scene-graph
+    // references and the diagnostic counters — all of which resetWebXRState()
+    // clears. Keeping a single source of truth for cleanup prevents new module
+    // state from leaking between sessions when it is added to resetWebXRState()
+    // but forgotten here.
+    resetWebXRState();
   }
-
-  // Delegate the rest of the teardown to resetWebXRState() so we never leak
-  // any module-level reference. Re-implementing a subset here (the previous
-  // approach) silently dropped imageCaptureManager, depthSampler, the
-  // tracking-phase subscription, the frame-update registry, the scene-graph
-  // references and the diagnostic counters — all of which resetWebXRState()
-  // clears. Keeping a single source of truth for cleanup prevents new module
-  // state from leaking between sessions when it is added to resetWebXRState()
-  // but forgotten here.
-  resetWebXRState();
 }
 
 /**

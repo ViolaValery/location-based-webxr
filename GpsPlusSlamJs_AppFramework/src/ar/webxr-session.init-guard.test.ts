@@ -45,7 +45,7 @@ vi.mock('three', async (importOriginal) => {
   };
 });
 
-import { initAR, resetWebXRState, getScene } from './webxr-session.js';
+import { initAR, resetWebXRState, getScene, endARSession } from './webxr-session.js';
 
 // Isolation options that avoid the CSS3D renderer / DOM overlay paths so the
 // guard test exercises the minimal renderer+session setup.
@@ -122,6 +122,36 @@ describe('initAR re-entry guard', () => {
     await initAR(container, MINIMAL_ISOLATION);
     resetWebXRState();
 
+    await expect(initAR(container, MINIMAL_ISOLATION)).resolves.toBeUndefined();
+  });
+
+  /**
+   * Why this test matters: XRSession.end() can reject (e.g. the session is
+   * already ended or in an invalid state). endARSession() wraps the
+   * end()/teardown pair in try/finally so resetWebXRState() always runs.
+   * Without the `finally`, a rejecting end() would leave renderer/xrSession
+   * non-null and the initAR() re-entry guard would permanently reject every
+   * subsequent session until a page reload. This proves a fresh session can
+   * still be started after a failed teardown.
+   */
+  it('still tears down (allowing a new session) when xrSession.end() rejects', async () => {
+    const failingSession = {
+      addEventListener: vi.fn(),
+      end: vi.fn().mockRejectedValue(new Error('session already ended')),
+    };
+    vi.stubGlobal('navigator', {
+      xr: {
+        requestSession: vi.fn().mockResolvedValue(failingSession),
+      },
+    });
+
+    await initAR(container, MINIMAL_ISOLATION);
+
+    // The teardown awaits the rejecting end(), so endARSession() rejects…
+    await expect(endARSession()).rejects.toThrow(/already ended/i);
+
+    // …but resetWebXRState() still ran in the `finally`, so the re-entry
+    // guard has released and a new session can initialize.
     await expect(initAR(container, MINIMAL_ISOLATION)).resolves.toBeUndefined();
   });
 });
