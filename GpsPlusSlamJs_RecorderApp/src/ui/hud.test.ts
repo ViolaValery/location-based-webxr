@@ -2548,6 +2548,37 @@ describe('updateTrackingQuality', () => {
     expect(badge.className).toContain('text-red-400');
   });
 
+  // Why: the badge must toggle only its state-color class, not overwrite
+  // className wholesale. A wholesale overwrite would silently drop any
+  // layout/padding/font classes (and the static `cursor-pointer`) declared
+  // on the element in index.html. This guards against regressing to
+  // `badge.className = ...`.
+  it('preserves unrelated classes when updating state color', () => {
+    const badge = document.getElementById('tracking-quality-badge')!;
+    // Simulate classes that index.html may add now or in the future.
+    badge.classList.add('cursor-pointer', 'px-2', 'font-bold');
+
+    updateTrackingQuality(makeReport({ state: 'ok' }));
+
+    expect(badge.classList.contains('cursor-pointer')).toBe(true);
+    expect(badge.classList.contains('px-2')).toBe(true);
+    expect(badge.classList.contains('font-bold')).toBe(true);
+    expect(badge.classList.contains('text-green-400')).toBe(true);
+  });
+
+  // Why: switching state must remove the previous state color, otherwise
+  // stale color classes accumulate and the displayed color is undefined.
+  it('removes the previous state color when state changes', () => {
+    const badge = document.getElementById('tracking-quality-badge')!;
+
+    updateTrackingQuality(makeReport({ state: 'ok' }));
+    expect(badge.classList.contains('text-green-400')).toBe(true);
+
+    updateTrackingQuality(makeReport({ state: 'ar-lost' }));
+    expect(badge.classList.contains('text-green-400')).toBe(false);
+    expect(badge.classList.contains('text-red-400')).toBe(true);
+  });
+
   // Why: sub-scores must be visible in the expanded detail view.
   it('populates sub-score values in detail panel', () => {
     // Why: confirms the four sub-scores that survived the 2026-05-23

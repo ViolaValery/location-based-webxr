@@ -394,7 +394,12 @@ export function updateTrackingQuality(report: TrackingQualityReport): void {
   if (badge && stateEl && confEl) {
     stateEl.textContent = STATE_LABEL[report.state];
     confEl.textContent = pct(report.confidence);
-    badge.className = `${STATE_COLOR[report.state]} cursor-pointer`;
+    // Selectively toggle only the state-color classes so any other classes
+    // on the badge (layout, padding, font, the static `cursor-pointer`, …)
+    // declared in index.html are preserved. Overwriting `className` wholesale
+    // would silently drop them. Mirrors updateSinglePermissionStatus().
+    badge.classList.remove(...Object.values(STATE_COLOR));
+    badge.classList.add(STATE_COLOR[report.state]);
   }
 
   // Sub-scores (detail panel). Compass / Heading Δ / drift, Obs count, and
