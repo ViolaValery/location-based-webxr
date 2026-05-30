@@ -16,14 +16,14 @@ Manages loading, saving, and transforming reference points from the scenario's `
 
 ### Functions
 
-| Export                    | Signature                                                   | Description                                                                                    |
-| ------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `loadAllRefPoints`        | `(scenarioHandle) => Promise<RefPointDefinition[]>`         | Load all ref point JSON files from refPoints/                                                  |
-| `loadRefPoint`            | `(scenarioHandle, pointId) => Promise<RefPointDefinition?>` | Load specific ref point by ID                                                                  |
-| `saveRefPointObservation` | `(handle, id, name, obs) => Promise<void>`                  | Save/append observation to ref point file                                                      |
-| `listRefPointIds`         | `(scenarioHandle) => Promise<string[]>`                     | List all ref point IDs for autocomplete                                                        |
-| `flattenRefPointsToMarks` | `(defs) => RefPointMark[]`                                  | Transform definitions to flat visualization list (prefers `fusedGpsPoint` over raw `gpsPoint`) |
-| `averageGpsPerRefPoint`   | `(defs) => AveragedRefPoint[]`                              | Compute GPS centroid per ref point ID (prefers fusedGpsPoint over raw gpsPoint)                |
+| Export                    | Signature                                                   | Description                                                                                                                                                 |
+| ------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loadAllRefPoints`        | `(scenarioHandle) => Promise<RefPointDefinition[]>`         | Load all ref point JSON files from refPoints/                                                                                                               |
+| `loadRefPoint`            | `(scenarioHandle, pointId) => Promise<RefPointDefinition?>` | Load specific ref point by ID                                                                                                                               |
+| `saveRefPointObservation` | `(handle, id, name, obs) => Promise<void>`                  | Save/append observation to ref point file                                                                                                                   |
+| `listRefPointIds`         | `(scenarioHandle) => Promise<string[]>`                     | List all ref point IDs for autocomplete                                                                                                                     |
+| `flattenRefPointsToMarks` | `(defs) => RefPointMark[]`                                  | Transform definitions to flat visualization list (prefers `fusedGpsPoint` over raw `gpsPoint`)                                                              |
+| `averageGpsPerRefPoint`   | `(defs) => AveragedRefPoint[]`                              | Compute GPS centroid per ref point ID (prefers fusedGpsPoint over raw gpsPoint)                                                                             |
 | `isRefPointDefinition`    | `(value: unknown) => value is RefPointDefinition`           | Deep type guard: validates base shape **and** every observation's `arPose`/`gpsPoint` nested fields. Reused by `recording-loader.ts` for sidecar validation |
 
 ## Invariants & Assumptions

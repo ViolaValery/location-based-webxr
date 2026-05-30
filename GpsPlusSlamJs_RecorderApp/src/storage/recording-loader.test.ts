@@ -154,7 +154,9 @@ describe('isMarkRefPointAction — pose-array length contract', () => {
   });
 
   it('accepts a full-length position (3) and rotation (4)', () => {
-    expect(isMarkRefPointAction(baseAction([1, 2, 3], [0, 0, 0, 1]))).toBe(true);
+    expect(isMarkRefPointAction(baseAction([1, 2, 3], [0, 0, 0, 1]))).toBe(
+      true
+    );
   });
 
   it('rejects a position with fewer than 3 elements', () => {

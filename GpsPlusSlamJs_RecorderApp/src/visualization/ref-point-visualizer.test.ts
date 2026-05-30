@@ -444,16 +444,15 @@ describe('RefPointVisualizer', () => {
      * (2026-05-29-refpoint-single-sphere-vs-multi-sphere-review.md §3.3).
      */
     it('renders one sphere at the LAST entry position when entries share an id', async () => {
-      const { calcRelativeCoordsInMeters } = await import(
-        'gps-plus-slam-app-framework/core'
-      );
+      const { calcRelativeCoordsInMeters } =
+        await import('gps-plus-slam-app-framework/core');
       const zeroRef: LatLong = { lat: 48.8566, lon: 2.3522 };
       visualizer.setZeroRef(zeroRef);
 
       // Imported centroid entry, then a live re-observation a few metres
       // away — both for the same H3 cell id 'cellX'.
-      const imported = createMockReferencePoint('cellX', 48.85670, 2.35230);
-      const liveTap = createMockReferencePoint('cellX', 48.85675, 2.35240);
+      const imported = createMockReferencePoint('cellX', 48.8567, 2.3523);
+      const liveTap = createMockReferencePoint('cellX', 48.85675, 2.3524);
       visualizer.syncRefPoints([imported, liveTap]);
 
       // Single sphere for the cell.
@@ -464,7 +463,7 @@ describe('RefPointVisualizer', () => {
       const mesh = mockScene.children[0] as THREE.Mesh;
       const expected = calcRelativeCoordsInMeters(
         zeroRef,
-        { lat: 48.85675, lon: 2.35240 },
+        { lat: 48.85675, lon: 2.3524 },
         100,
         0
       );
@@ -483,18 +482,17 @@ describe('RefPointVisualizer', () => {
      * 2026-05-29-refpoint-single-sphere-vs-multi-sphere-review.md §3.3.
      */
     it('moves an existing sphere to the latest position on re-observation', async () => {
-      const { calcRelativeCoordsInMeters } = await import(
-        'gps-plus-slam-app-framework/core'
-      );
+      const { calcRelativeCoordsInMeters } =
+        await import('gps-plus-slam-app-framework/core');
       const zeroRef: LatLong = { lat: 48.8566, lon: 2.3522 };
       visualizer.setZeroRef(zeroRef);
 
-      const first = createMockReferencePoint('cellX', 48.85670, 2.35230);
+      const first = createMockReferencePoint('cellX', 48.8567, 2.3523);
       visualizer.syncRefPoints([first]);
       const mesh = mockScene.children[0] as THREE.Mesh;
 
       // Re-observe the same cell at a new position.
-      const reobserved = createMockReferencePoint('cellX', 48.85680, 2.35250);
+      const reobserved = createMockReferencePoint('cellX', 48.8568, 2.3525);
       visualizer.syncRefPoints([reobserved]);
 
       // Same mesh instance reused (still one sphere), moved to new coords.
@@ -503,7 +501,7 @@ describe('RefPointVisualizer', () => {
       expect(mockScene.children[0]).toBe(mesh);
       const expected = calcRelativeCoordsInMeters(
         zeroRef,
-        { lat: 48.85680, lon: 2.35250 },
+        { lat: 48.8568, lon: 2.3525 },
         100,
         0
       );

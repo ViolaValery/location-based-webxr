@@ -17,10 +17,11 @@
         "src/sensors/index.ts",
         "src/state/index.ts",
         "src/storage/index.ts",
-        "src/ref-points/index.ts",
         "src/visualization/index.ts",
         "src/utils/index.ts",
         "src/types/index.ts",
+        "src/types/global.d.ts",
+        "src/types/webxr.d.ts",
         "src/licensing/index.ts",
         "src/test-utils/**/*.ts"
       ],

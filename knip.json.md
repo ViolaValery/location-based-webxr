@@ -39,7 +39,17 @@ entirely after confirming they were only transitively pulled in.
   per-module `index.ts` files are entry points because the package is
   consumed externally via the `exports` map. Test utilities under
   [`src/test-utils/`](../GpsPlusSlamJs_AppFramework/src/test-utils/)
-  are also entries (consumed by sibling packages' tests).
+  are also entries (consumed by sibling packages' tests). The ambient
+  declaration files
+  [`src/types/global.d.ts`](../GpsPlusSlamJs_AppFramework/src/types/global.d.ts)
+  and
+  [`src/types/webxr.d.ts`](../GpsPlusSlamJs_AppFramework/src/types/webxr.d.ts)
+  are listed as entries too: they carry only `declare global`
+  augmentations (no named exports), so knip cannot trace their usage
+  and would otherwise flag them as unused files (an `error`-severity
+  gate). There is intentionally **no** `src/ref-points/index.ts` entry —
+  that module does not exist in this package; a stale entry produced a
+  "no matches" configuration hint.
 - **GpsPlusSlamJs_RecorderApp** — main entry is auto-detected from
   `package.json` "main"/"module"; we explicitly list `src/global.d.ts`,
   `playwright-tests/**`, and the stylelint config. Non-source tooling
