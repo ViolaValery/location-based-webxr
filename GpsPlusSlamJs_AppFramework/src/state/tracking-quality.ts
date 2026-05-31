@@ -1030,13 +1030,16 @@ const REPORT_METRE_EPSILON_M = 1e-3;
 /**
  * Tolerant scalar comparison that treats `null` as a distinct value
  * (both `null` ⇒ equal; exactly one `null` ⇒ different) and otherwise
- * compares with an absolute epsilon. Non-finite values are compared by
- * strict identity so e.g. `NaN`/`Infinity` transitions are never
- * silently swallowed.
+ * compares with an absolute epsilon. Non-finite values are compared with
+ * {@link Object.is}, so a genuine finite↔NaN/Infinity transition still
+ * fires a dispatch, but a *persistently* NaN diagnostic (the only
+ * unguarded path is a NaN compass `alpha` leaking into
+ * `diagnostics.headingDeltaDeg`) does NOT churn the gate every frame —
+ * `Object.is(NaN, NaN)` is `true` whereas `NaN === NaN` is `false`.
  */
 function nearlyEqual(a: number | null, b: number | null, eps: number): boolean {
   if (a === null || b === null) return a === b;
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return a === b;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return Object.is(a, b);
   return Math.abs(a - b) <= eps;
 }
 

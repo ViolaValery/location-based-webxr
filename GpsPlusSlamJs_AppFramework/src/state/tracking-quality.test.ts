@@ -1130,6 +1130,73 @@ describe('createTrackingQualityListenerMiddleware', () => {
     // these jitter frames should produce a fresh report reference.
     expect(reportRefChanges).toBe(0);
   });
+
+  // Why this test matters: a diagnostic field can become *persistently*
+  // NaN (the only unguarded path: a NaN compass `alpha` with
+  // `absolute: true` flows into `diagnostics.headingDeltaDeg` — the
+  // sub-score is clamped to 0 but the diagnostic is not). `NaN === NaN`
+  // is `false`, so a strict-identity gate would treat every frame as a
+  // change and churn `reportUpdated` at frame rate. The gate must treat
+  // two NaNs as equal (Object.is semantics) while still surfacing a
+  // finite↔NaN transition. This reproduces the persistent-NaN frame and
+  // asserts the gate does NOT churn.
+  it('does not churn reportUpdated when a diagnostic is persistently NaN', () => {
+    const store = makeListenerStore(snapshotGpsAfter(null, [], []));
+
+    // Absolute compass with a NaN heading — defends against a misbehaving
+    // sensor that reports `absolute: true` but a non-finite alpha.
+    const nanCompass: DeviceOrientation = {
+      alpha: NaN,
+      beta: 0,
+      gamma: 0,
+      absolute: true,
+    };
+    store.dispatch(
+      poseReceived({ pose: DEFAULT_POSE, sensorOrientation: nanCompass })
+    );
+
+    // Enough GPS observations + alignment so a report exists and the
+    // compass cross-check runs (IDENTITY alignment ⇒ non-vertical AR
+    // forward ⇒ headingDeltaDeg is computed, then poisoned by NaN alpha).
+    const odom: Vector3[] = [];
+    const gpsPts: GpsPoint[] = [];
+    for (let i = 0; i < 4; i++) {
+      odom.push([i, 0, 0]);
+      gpsPts.push(gps(i, i, 0));
+      store.dispatch({
+        type: 'gpsData/recordGpsEvent',
+        payload: snapshotGpsAfter(IDENTITY, [...gpsPts], [...odom]),
+      });
+    }
+
+    // Confirm the precondition: the diagnostic really is NaN.
+    expect(
+      Number.isNaN(
+        selectTrackingQuality(store.getState())?.diagnostics.headingDeltaDeg ??
+          0
+      )
+    ).toBe(true);
+
+    let reportRefChanges = 0;
+    let lastSeen = selectTrackingQuality(store.getState());
+    const unsub = store.subscribe(() => {
+      const report = selectTrackingQuality(store.getState());
+      if (report !== lastSeen) {
+        reportRefChanges += 1;
+        lastSeen = report;
+      }
+    });
+
+    // Repeated identical NaN-alpha frames must not produce a fresh report.
+    for (let frame = 1; frame <= 10; frame++) {
+      store.dispatch(
+        poseReceived({ pose: DEFAULT_POSE, sensorOrientation: nanCompass })
+      );
+    }
+    unsub();
+
+    expect(reportRefChanges).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
