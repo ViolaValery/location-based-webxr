@@ -21,14 +21,8 @@ import type {
   RefPointMarker,
 } from 'gps-plus-slam-app-framework/types/geo-types';
 import { VIS_COLORS } from 'gps-plus-slam-app-framework/visualization/vis-colors';
-import { addAccuracyCircles } from './accuracy-circles';
-import {
-  addOsmTileLayer,
-  PATH_POLYLINE_WEIGHT,
-  PATH_POLYLINE_OPACITY,
-  INITIAL_ZOOM,
-  FIT_BOUNDS_PADDING,
-} from './map-osm-base';
+import { drawMapData } from 'gps-plus-slam-app-framework/visualization/map-overlay-draw';
+import { addOsmTileLayer, INITIAL_ZOOM, FIT_BOUNDS_PADDING } from './map-osm-base';
 
 const log = createLogger('SummaryMap');
 
@@ -122,92 +116,22 @@ export function createSummaryMap(
     // Add OSM tile layer
     const tileLayer = addOsmTileLayer(map);
 
-    // Track all layers for cleanup
+    // Track all layers for cleanup (tile layer + data layers)
     const layers: L.Layer[] = [tileLayer];
 
-    // Create bounds for auto-fit
-    const bounds = L.latLngBounds([]);
-
-    // Add raw GPS polyline (yellow)
-    if (data.rawGpsPath.length > 0) {
-      const rawLatLngs = data.rawGpsPath.map(
-        (p) => [p.lat, p.lng] as L.LatLngTuple
-      );
-
-      // Per-event accuracy circles (transparent, sized by horizontal accuracy
-      // in meters). Drawn BEFORE the polyline so the line stays visually on
-      // top. Shared with `preview-map.ts` via `accuracy-circles.ts`.
-      const circles = addAccuracyCircles(map, data.rawGpsPath, RAW_GPS_COLOR);
-      layers.push(...circles);
-
-      const rawPolyline = L.polyline(rawLatLngs, {
-        color: RAW_GPS_COLOR,
-        weight: PATH_POLYLINE_WEIGHT,
-        opacity: PATH_POLYLINE_OPACITY,
-      }).addTo(map);
-      layers.push(rawPolyline);
-
-      // Extend bounds
-      for (const ll of rawLatLngs) {
-        bounds.extend(ll);
-      }
-    }
-
-    // Add fused path polyline (cyan)
-    if (data.fusedPath.length > 0) {
-      const fusedLatLngs = data.fusedPath.map(
-        (p) => [p.lat, p.lng] as L.LatLngTuple
-      );
-      const fusedPolyline = L.polyline(fusedLatLngs, {
-        color: FUSED_PATH_COLOR,
-        weight: PATH_POLYLINE_WEIGHT,
-        opacity: PATH_POLYLINE_OPACITY,
-      }).addTo(map);
-      layers.push(fusedPolyline);
-
-      // Extend bounds
-      for (const ll of fusedLatLngs) {
-        bounds.extend(ll);
-      }
-    }
-
-    // Add reference point markers
-    for (const refPoint of data.referencePoints) {
-      // Inline HTML is intentional: simple static icon, no user input, standard Leaflet pattern
-      const icon = L.divIcon({
-        className: 'summary-map-ref-point',
-        html: `<div style="background:${REF_POINT_COLOR};width:12px;height:12px;border-radius:50%;border:2px solid white;"></div>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
-      });
-
-      const popupContent = document.createElement('b');
-      popupContent.textContent = `📍 ${refPoint.name}`;
-
-      const marker = L.marker([refPoint.lat, refPoint.lng], { icon })
-        .bindPopup(popupContent)
-        .addTo(map);
-      layers.push(marker);
-
-      bounds.extend([refPoint.lat, refPoint.lng]);
-    }
-
-    // Add alignment snapshot polyline (red)
-    if (data.alignmentSnapshots && data.alignmentSnapshots.length > 0) {
-      const snapshotLatLngs = data.alignmentSnapshots.map(
-        (p) => [p.lat, p.lng] as L.LatLngTuple
-      );
-      const snapshotPolyline = L.polyline(snapshotLatLngs, {
-        color: ALIGNMENT_SNAPSHOT_COLOR,
-        weight: PATH_POLYLINE_WEIGHT,
-        opacity: PATH_POLYLINE_OPACITY,
-      }).addTo(map);
-      layers.push(snapshotPolyline);
-
-      for (const ll of snapshotLatLngs) {
-        bounds.extend(ll);
-      }
-    }
+    // Draw every trajectory layer (raw GPS + accuracy circles, fused path,
+    // reference markers, alignment-snapshot path) through the SHARED
+    // overlay-drawing module so the summary map and the live/replay overlay
+    // render identically (Phase 3 of the map-system review; fixes Findings 1
+    // & 4 of the unified-trajectory-map user feedback).
+    const { layers: dataLayers, bounds } = drawMapData(map, {
+      userPosition: null,
+      rawGpsPath: data.rawGpsPath,
+      fusedPath: data.fusedPath,
+      referencePoints: data.referencePoints,
+      alignmentSnapshots: data.alignmentSnapshots ?? [],
+    });
+    layers.push(...dataLayers);
 
     // Fit bounds if we have valid bounds
     if (bounds.isValid()) {

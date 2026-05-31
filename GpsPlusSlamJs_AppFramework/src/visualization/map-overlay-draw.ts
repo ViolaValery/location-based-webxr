@@ -1,0 +1,186 @@
+/**
+ * Shared map-overlay-drawing module.
+ *
+ * `drawMapData` is the SINGLE Leaflet drawing routine rendered by BOTH map
+ * consumers — the live/replay 3D overlay (`LeafletMapOverlay`) and the 2D
+ * session-summary map (`createSummaryMap`). Centralising the drawing here is
+ * Phase 3 of the map-system review and the fix for Findings 1 & 4 of the
+ * unified-trajectory-map user feedback: previously each renderer drew the
+ * trajectory by hand and the two visibly diverged.
+ *
+ * It consumes the resolved {@link MapData} produced by `buildMapData` and adds,
+ * in this order:
+ *   1. per-event accuracy circles for the raw GPS path (drawn first so the
+ *      polyline stays on top), then the raw GPS polyline;
+ *   2. the fused (SLAM+GPS) polyline;
+ *   3. one labelled marker per reference point;
+ *   4. the alignment-snapshot polyline;
+ *   5. (optional) a user-position marker.
+ *
+ * The caller owns map creation, tile layer, `fitBounds`, resize handling and
+ * fullscreen — this module only draws data layers and reports the accumulated
+ * bounds so the caller can frame the view.
+ */
+
+import L from 'leaflet';
+import type { MapData } from './map-data.js';
+import { VIS_COLORS } from './vis-colors.js';
+import { addAccuracyCircles } from './accuracy-circles.js';
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Raw GPS polyline + accuracy-circle color (yellow). */
+export const RAW_GPS_COLOR = VIS_COLORS.RAW_GPS.css;
+/** Fused SLAM+GPS polyline color (cyan). */
+export const FUSED_PATH_COLOR = VIS_COLORS.FUSED_VIO.css;
+/** Reference-point marker color. */
+export const REF_POINT_COLOR = VIS_COLORS.CURRENT_REF_POINT.css;
+/** Alignment-snapshot polyline color (red). */
+export const ALIGNMENT_SNAPSHOT_COLOR = VIS_COLORS.ALIGNMENT_SNAPSHOT.css;
+/** User-position marker color (blue). */
+export const USER_POSITION_COLOR = VIS_COLORS.USER_POSITION.css;
+
+/** Polyline weight (px) — matches the recorder's `PATH_POLYLINE_WEIGHT`. */
+export const MAP_PATH_POLYLINE_WEIGHT = 3;
+/** Polyline opacity — matches the recorder's `PATH_POLYLINE_OPACITY`. */
+export const MAP_PATH_POLYLINE_OPACITY = 0.8;
+
+// ============================================================================
+// Types
+// ============================================================================
+
+/** Options controlling optional layers drawn by {@link drawMapData}. */
+export interface DrawMapDataOptions {
+  /**
+   * Draw a user-position marker when `MapData.userPosition` is set. Off by
+   * default — the summary map shows the path only; the live overlay opts in.
+   */
+  showUserPosition?: boolean;
+}
+
+/** Result of {@link drawMapData}: the created layers and accumulated bounds. */
+export interface DrawnMapData {
+  /** Every Leaflet layer created, in draw order, for later cleanup. */
+  layers: L.Layer[];
+  /** Bounds spanning every drawn coordinate; use `.isValid()` before fitting. */
+  bounds: L.LatLngBounds;
+}
+
+// ============================================================================
+// Implementation
+// ============================================================================
+
+/**
+ * Draw a {@link MapData} snapshot onto an existing Leaflet map.
+ *
+ * @param map - Target map (already created with a tile layer by the caller).
+ * @param data - Resolved trajectory data from `buildMapData`.
+ * @param options - Optional layer toggles (see {@link DrawMapDataOptions}).
+ * @returns The created layers and the bounds spanning every drawn coordinate.
+ */
+export function drawMapData(
+  map: L.Map,
+  data: MapData,
+  options: DrawMapDataOptions = {}
+): DrawnMapData {
+  const layers: L.Layer[] = [];
+  const bounds = L.latLngBounds([]);
+
+  // 1. Raw GPS: accuracy circles first (so the polyline stays on top), then line.
+  if (data.rawGpsPath.length > 0) {
+    const rawLatLngs = data.rawGpsPath.map(
+      (p) => [p.lat, p.lng] as L.LatLngTuple
+    );
+
+    const circles = addAccuracyCircles(map, data.rawGpsPath, RAW_GPS_COLOR);
+    layers.push(...circles);
+
+    const rawPolyline = L.polyline(rawLatLngs, {
+      color: RAW_GPS_COLOR,
+      weight: MAP_PATH_POLYLINE_WEIGHT,
+      opacity: MAP_PATH_POLYLINE_OPACITY,
+    }).addTo(map);
+    layers.push(rawPolyline);
+
+    for (const ll of rawLatLngs) {
+      bounds.extend(ll);
+    }
+  }
+
+  // 2. Fused SLAM+GPS polyline.
+  if (data.fusedPath.length > 0) {
+    const fusedLatLngs = data.fusedPath.map(
+      (p) => [p.lat, p.lng] as L.LatLngTuple
+    );
+    const fusedPolyline = L.polyline(fusedLatLngs, {
+      color: FUSED_PATH_COLOR,
+      weight: MAP_PATH_POLYLINE_WEIGHT,
+      opacity: MAP_PATH_POLYLINE_OPACITY,
+    }).addTo(map);
+    layers.push(fusedPolyline);
+
+    for (const ll of fusedLatLngs) {
+      bounds.extend(ll);
+    }
+  }
+
+  // 3. Reference-point markers (labelled).
+  for (const refPoint of data.referencePoints) {
+    const icon = L.divIcon({
+      className: 'map-overlay-ref-point',
+      html: `<div style="background:${REF_POINT_COLOR};width:12px;height:12px;border-radius:50%;border:2px solid white;"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    });
+
+    // Build popup content via DOM API (no innerHTML) to avoid injecting
+    // unsanitised names into markup.
+    const popupContent = document.createElement('b');
+    popupContent.textContent = `📍 ${refPoint.name}`;
+
+    const marker = L.marker([refPoint.lat, refPoint.lng], { icon })
+      .bindPopup(popupContent)
+      .addTo(map);
+    layers.push(marker);
+
+    bounds.extend([refPoint.lat, refPoint.lng]);
+  }
+
+  // 4. Alignment-snapshot polyline.
+  if (data.alignmentSnapshots.length > 0) {
+    const snapshotLatLngs = data.alignmentSnapshots.map(
+      (p) => [p.lat, p.lng] as L.LatLngTuple
+    );
+    const snapshotPolyline = L.polyline(snapshotLatLngs, {
+      color: ALIGNMENT_SNAPSHOT_COLOR,
+      weight: MAP_PATH_POLYLINE_WEIGHT,
+      opacity: MAP_PATH_POLYLINE_OPACITY,
+    }).addTo(map);
+    layers.push(snapshotPolyline);
+
+    for (const ll of snapshotLatLngs) {
+      bounds.extend(ll);
+    }
+  }
+
+  // 5. Optional user-position marker.
+  if (options.showUserPosition && data.userPosition) {
+    const icon = L.divIcon({
+      className: 'map-overlay-user-position',
+      html: `<div style="background:${USER_POSITION_COLOR};width:14px;height:14px;border-radius:50%;border:2px solid white;"></div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    });
+    const marker = L.marker(
+      [data.userPosition.lat, data.userPosition.lng],
+      { icon }
+    ).addTo(map);
+    layers.push(marker);
+
+    bounds.extend([data.userPosition.lat, data.userPosition.lng]);
+  }
+
+  return { layers, bounds };
+}

@@ -95,6 +95,7 @@ const entryFiles = [
 
   // visualization/
   'src/visualization/index.ts',
+  'src/visualization/accuracy-circles.ts',
   'src/visualization/alignment-lerper.ts',
   'src/visualization/camera-follower.ts',
   'src/visualization/css3d-renderer-manager.ts',
@@ -104,7 +105,9 @@ const entryFiles = [
   'src/visualization/gps-event-markers.ts',
   'src/visualization/leaflet-map-overlay.ts',
   'src/visualization/lerp-utils.ts',
+  'src/visualization/map-data.ts',
   'src/visualization/map-overlay.ts',
+  'src/visualization/map-overlay-draw.ts',
   'src/visualization/three-dispose.ts',
   'src/visualization/vis-colors.ts',
 ];
