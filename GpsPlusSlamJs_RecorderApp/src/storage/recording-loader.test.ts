@@ -208,7 +208,9 @@ describe('pickGpsPoint — finite-coordinate contract', () => {
   });
 
   it('returns null when latitude is NaN', () => {
-    expect(pickGpsPoint(payload({ latitude: NaN, longitude: 6.08 }))).toBeNull();
+    expect(
+      pickGpsPoint(payload({ latitude: NaN, longitude: 6.08 }))
+    ).toBeNull();
   });
 
   it('returns null when longitude is undefined', () => {

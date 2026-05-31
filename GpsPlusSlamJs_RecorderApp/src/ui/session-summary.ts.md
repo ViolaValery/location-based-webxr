@@ -32,7 +32,7 @@ interface SessionSummaryData {
   failedWriteCount?: number;
   rawGpsPath?: GpsCoord[]; // from types/geo-types
   fusedPath?: GpsCoord[]; // from types/geo-types
-  referencePointsForMap?: RefPointMarker[]; // from types/geo-types;
+  referencePointsForMap?: RefPointMarkerInput[]; // from ./draw-ref-point-markers; carries timestamp for prior/current classification
   alignmentSnapshotPath?: GpsCoord[]; // Red dot positions from alignment snapshots
   zipSizeBytes?: number; // Issue #3 (2026-02-06): ZIP file size in bytes
   zipFileCount?: number; // Issue #3 (2026-02-06): Number of files in ZIP

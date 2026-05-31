@@ -9,13 +9,13 @@
  */
 
 import { createSummaryMap, type SummaryMapInstance } from './summary-map';
+import type { RefPointMarkerInput } from './draw-ref-point-markers';
 import { createLogger } from 'gps-plus-slam-app-framework/utils/logger';
 import { formatFileSize } from 'gps-plus-slam-app-framework/utils/format-file-size';
 import { getRequiredElement } from '../utils/dom-helpers';
 import type {
   GpsCoord,
   RawGpsSample,
-  RefPointMarker,
 } from 'gps-plus-slam-app-framework/types/geo-types';
 
 // Re-export formatFileSize for tests and external consumers
@@ -69,10 +69,12 @@ export interface SessionSummaryData {
    */
   readonly fusedPath?: GpsCoord[];
   /**
-   * Reference points with names for map markers.
+   * Reference points with names for map markers. Each carries a `timestamp`
+   * used to classify it as prior (green) or current (red) relative to the
+   * recording start time.
    * User Feedback Issue #4 (2026-01-27): Show ref points on summary map.
    */
-  readonly referencePointsForMap?: RefPointMarker[];
+  readonly referencePointsForMap?: RefPointMarkerInput[];
   /**
    * ZIP blob size in bytes for display on summary.
    * User Feedback Issue #3 (2026-02-06): Show ZIP stats.
@@ -396,6 +398,7 @@ export function showSessionSummary(data: SessionSummaryData): void {
         rawGpsPath,
         fusedPath,
         referencePoints,
+        startTime: data.duration.startTime,
         alignmentSnapshots: data.alignmentSnapshotPath ?? [],
       });
       if (currentMapInstance) {

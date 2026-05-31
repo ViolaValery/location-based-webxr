@@ -18,11 +18,18 @@ import { createLogger } from 'gps-plus-slam-app-framework/utils/logger';
 import type {
   GpsCoord,
   RawGpsSample,
-  RefPointMarker,
 } from 'gps-plus-slam-app-framework/types/geo-types';
 import { VIS_COLORS } from 'gps-plus-slam-app-framework/visualization/vis-colors';
 import { drawMapData } from 'gps-plus-slam-app-framework/visualization/map-overlay-draw';
-import { addOsmTileLayer, INITIAL_ZOOM, FIT_BOUNDS_PADDING } from './map-osm-base';
+import {
+  drawRefPointMarkers,
+  type RefPointMarkerInput,
+} from './draw-ref-point-markers';
+import {
+  addOsmTileLayer,
+  INITIAL_ZOOM,
+  FIT_BOUNDS_PADDING,
+} from './map-osm-base';
 
 const log = createLogger('SummaryMap');
 
@@ -40,8 +47,20 @@ export interface SummaryMapData {
   rawGpsPath: RawGpsSample[];
   /** Fused/aligned positions (cyan polyline) */
   fusedPath: GpsCoord[];
-  /** Reference points with markers */
-  referencePoints: RefPointMarker[];
+  /**
+   * Reference points with markers. Each carries its own `timestamp`, which is
+   * compared against `startTime` to classify it as prior (green) or current
+   * (red) — drawn by the recorder-owned {@link drawRefPointMarkers} helper
+   * rather than the ref-agnostic shared overlay module.
+   */
+  referencePoints: RefPointMarkerInput[];
+  /**
+   * Recording start time (epoch ms) used to classify ref points as prior
+   * (green) or current (red). Optional: when omitted it defaults to `0`, so
+   * every ref point classifies as current — the production caller
+   * (session-summary) always passes the real session start time.
+   */
+  startTime?: number;
   /** Alignment snapshot GPS positions (red dots) — Issue #1 */
   alignmentSnapshots?: GpsCoord[];
 }
@@ -120,18 +139,30 @@ export function createSummaryMap(
     const layers: L.Layer[] = [tileLayer];
 
     // Draw every trajectory layer (raw GPS + accuracy circles, fused path,
-    // reference markers, alignment-snapshot path) through the SHARED
-    // overlay-drawing module so the summary map and the live/replay overlay
-    // render identically (Phase 3 of the map-system review; fixes Findings 1
-    // & 4 of the unified-trajectory-map user feedback).
+    // alignment-snapshot path) through the SHARED overlay-drawing module so
+    // the summary map and the live/replay overlay render identically (Phase 3
+    // of the map-system review; fixes Findings 1 & 4 of the
+    // unified-trajectory-map user feedback). Reference-point markers are a
+    // RECORDER concept and are drawn separately via the recorder-owned helper.
     const { layers: dataLayers, bounds } = drawMapData(map, {
       userPosition: null,
       rawGpsPath: data.rawGpsPath,
       fusedPath: data.fusedPath,
-      referencePoints: data.referencePoints,
       alignmentSnapshots: data.alignmentSnapshots ?? [],
     });
     layers.push(...dataLayers);
+
+    // Draw reference-point markers (prior vs. current by timestamp) and extend
+    // the fitted bounds so they stay in view.
+    const refLayers = drawRefPointMarkers(
+      map,
+      data.referencePoints,
+      data.startTime ?? 0
+    );
+    layers.push(...refLayers);
+    for (const refPoint of data.referencePoints) {
+      bounds.extend([refPoint.lat, refPoint.lng]);
+    }
 
     // Fit bounds if we have valid bounds
     if (bounds.isValid()) {

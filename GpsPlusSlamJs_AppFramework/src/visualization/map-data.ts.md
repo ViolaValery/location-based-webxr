@@ -13,8 +13,18 @@ plan in
 ## Public API
 
 - `buildMapData(input: MapDataInput): MapData` — pure; no Leaflet/Three deps.
-- `interface MapData` — `{ userPosition, rawGpsPath, fusedPath, referencePoints, alignmentSnapshots }`.
+- `interface MapData` — `{ userPosition, rawGpsPath, fusedPath, alignmentSnapshots }`.
 - `interface MapDataInput` — all fields optional; array fields are read-only.
+
+## Scope
+
+This model owns only the genuinely-shared SLAM/GPS trajectory layers. **Reference
+points are a recorder concept and are NOT modelled here** — the recorder draws
+them via its own [`ui/draw-ref-point-markers.ts`](../../../GpsPlusSlamJs_RecorderApp/src/ui/draw-ref-point-markers.ts)
+helper, keeping the framework ref-point-agnostic and the dependency direction
+(recorder → framework) intact. See the
+[Phase 3 plan](../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-31-unified-trajectory-map-phase3-plan.md)
+§ Step 5.
 
 ## Invariants & assumptions
 
@@ -35,7 +45,6 @@ const data = buildMapData({
   odometryPositions: gpsEvents.odometryPositions,
   alignmentMatrix: gpsEvents.alignmentMatrix,
   zeroRef: firstGps.zeroRef,
-  referencePoints: refMarkers,
   alignmentSnapshots: snapshots,
 });
 // data.fusedPath reflects the CURRENT matrix — it "snaps" on every rebuild.

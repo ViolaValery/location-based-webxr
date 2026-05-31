@@ -17,11 +17,20 @@
  * alignment matrix via `computeFusedPath` over ALL odometry positions. It is
  * never frozen per-event, so the live fused polyline "snaps" as the alignment
  * matrix improves, exactly matching the summary.
+ *
+ * SCOPE: this model owns only the genuinely-shared SLAM/GPS trajectory layers
+ * (raw GPS + accuracy circles, fused path, alignment snapshots, optional user
+ * position). Reference points are a RECORDER concept and are deliberately NOT
+ * modelled here — the recorder draws them via its own helper
+ * (`ui/draw-ref-point-markers.ts`) so the framework stays ref-point-agnostic
+ * and the dependency direction (recorder → framework) is preserved. See
+ * gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-31-unified-trajectory-map-phase3-plan.md
+ * § Step 5.
  */
 
 import type { LatLong, Matrix4, Vector3 } from 'gps-plus-slam-js';
 import { computeFusedPath } from '../utils/fused-path';
-import type { GpsCoord, RawGpsSample, RefPointMarker } from '../types/geo-types';
+import type { GpsCoord, RawGpsSample } from '../types/geo-types';
 
 // ============================================================================
 // Types
@@ -35,8 +44,6 @@ export interface MapData {
   rawGpsPath: RawGpsSample[];
   /** Fused SLAM+GPS positions (cyan polyline), recomputed from latest matrix. */
   fusedPath: GpsCoord[];
-  /** Reference points (labelled markers). */
-  referencePoints: RefPointMarker[];
   /** Alignment-snapshot GPS positions (red). */
   alignmentSnapshots: GpsCoord[];
 }
@@ -54,8 +61,6 @@ export interface MapDataInput {
   alignmentMatrix?: Matrix4 | null;
   /** GPS origin for ENU→GPS conversion (null when no GPS yet). */
   zeroRef?: LatLong | null;
-  /** Reference points to mark. */
-  referencePoints?: readonly RefPointMarker[];
   /** Alignment-snapshot GPS positions. */
   alignmentSnapshots?: readonly GpsCoord[];
   /**
@@ -81,9 +86,6 @@ export interface MapDataInput {
  */
 export function buildMapData(input: MapDataInput): MapData {
   const rawGpsPath = input.rawGpsPath ? [...input.rawGpsPath] : [];
-  const referencePoints = input.referencePoints
-    ? [...input.referencePoints]
-    : [];
   const alignmentSnapshots = input.alignmentSnapshots
     ? [...input.alignmentSnapshots]
     : [];
@@ -106,7 +108,6 @@ export function buildMapData(input: MapDataInput): MapData {
     userPosition,
     rawGpsPath,
     fusedPath,
-    referencePoints,
     alignmentSnapshots,
   };
 }

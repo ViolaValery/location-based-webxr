@@ -5,11 +5,12 @@
  * the live/replay 3D overlay and the 2D session-summary map will render
  * through (Phase 3 of the map-system review / unified-trajectory-map plan). It
  * must reproduce the exact layer set the summary map drew by hand — raw
- * polyline + per-event accuracy circles, fused polyline, labelled reference
- * markers, and the alignment-snapshot polyline — and accumulate a bounds box
- * over every drawn coordinate. These tests pin that contract so the two
- * renderers cannot silently diverge again (see the user-feedback doc,
- * Findings 1 & 4).
+ * polyline + per-event accuracy circles, fused polyline, and the
+ * alignment-snapshot polyline — and accumulate a bounds box over every drawn
+ * coordinate. Reference-point markers are deliberately NOT drawn here (they are
+ * a recorder concept, drawn by `ui/draw-ref-point-markers.ts`). These tests pin
+ * that contract so the two renderers cannot silently diverge again (see the
+ * user-feedback doc, Findings 1 & 4).
  *
  * @vitest-environment jsdom
  */
@@ -82,7 +83,7 @@ vi.mock('leaflet', () => {
   };
 });
 
-import { drawMapData, RAW_GPS_COLOR, FUSED_PATH_COLOR, REF_POINT_COLOR, ALIGNMENT_SNAPSHOT_COLOR, USER_POSITION_COLOR } from './map-overlay-draw';
+import { drawMapData, RAW_GPS_COLOR, FUSED_PATH_COLOR, ALIGNMENT_SNAPSHOT_COLOR, USER_POSITION_COLOR } from './map-overlay-draw';
 
 const mapStub = {} as L.Map;
 
@@ -91,7 +92,6 @@ function emptyMapData(overrides: Partial<MapData> = {}): MapData {
     userPosition: null,
     rawGpsPath: [],
     fusedPath: [],
-    referencePoints: [],
     alignmentSnapshots: [],
     ...overrides,
   };
@@ -148,26 +148,24 @@ describe('drawMapData', () => {
   });
 
   it('draws a labelled marker per reference point', () => {
+    // Reference-point markers are NO LONGER drawn by the shared module — they
+    // are a recorder concept owned by `ui/draw-ref-point-markers.ts`. Even when
+    // a caller (incorrectly) leaves ref data out of MapData, drawMapData must
+    // not create any marker for it. Pin that the shared module is
+    // ref-point-agnostic.
     drawMapData(
       mapStub,
       emptyMapData({
-        referencePoints: [
-          { lat: 5, lng: 6, name: 'Door' },
-          { lat: 7, lng: 8, name: 'Window' },
+        fusedPath: [
+          { lat: 5, lng: 6 },
+          { lat: 7, lng: 8 },
         ],
       })
     );
 
-    expect(markerCalls).toHaveLength(2);
-    expect(markerCalls[0]!.latLng).toEqual([5, 6]);
-    expect(divIconCalls).toHaveLength(2);
-    // Popup carries the labelled name.
-    const popup0 = markerCalls[0]!.popup as HTMLElement;
-    const popup1 = markerCalls[1]!.popup as HTMLElement;
-    expect(popup0.textContent).toBe('📍 Door');
-    expect(popup1.textContent).toBe('📍 Window');
-    // Marker icon uses the reference-point color.
-    expect(String(divIconCalls[0]!.options.html)).toContain(REF_POINT_COLOR);
+    // Only the fused polyline is drawn; no markers, no div icons.
+    expect(markerCalls).toHaveLength(0);
+    expect(divIconCalls).toHaveLength(0);
   });
 
   it('draws the alignment-snapshot polyline in the snapshot color', () => {
@@ -191,7 +189,6 @@ describe('drawMapData', () => {
       emptyMapData({
         rawGpsPath: [{ lat: 1, lng: 2 }],
         fusedPath: [{ lat: 3, lng: 4 }],
-        referencePoints: [{ lat: 5, lng: 6, name: 'X' }],
         alignmentSnapshots: [{ lat: 7, lng: 8 }],
       })
     );
@@ -199,7 +196,6 @@ describe('drawMapData', () => {
     expect(boundsExtends).toEqual([
       [1, 2],
       [3, 4],
-      [5, 6],
       [7, 8],
     ]);
     expect(result.bounds.isValid()).toBe(true);
@@ -211,13 +207,12 @@ describe('drawMapData', () => {
       emptyMapData({
         rawGpsPath: [{ lat: 1, lng: 2, accuracy: 5 }],
         fusedPath: [{ lat: 3, lng: 4 }],
-        referencePoints: [{ lat: 5, lng: 6, name: 'X' }],
         alignmentSnapshots: [{ lat: 7, lng: 8 }],
       })
     );
 
-    // 1 circle + raw line + fused line + ref marker + snapshot line = 5
-    expect(result.layers).toHaveLength(5);
+    // 1 circle + raw line + fused line + snapshot line = 4
+    expect(result.layers).toHaveLength(4);
   });
 
   it('does not draw a user marker by default', () => {

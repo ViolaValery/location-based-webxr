@@ -17,13 +17,12 @@ renderers cannot diverge again.
   1. raw accuracy circles (via [accuracy-circles.ts](accuracy-circles.ts),
      drawn first so the polyline stays on top) + raw GPS polyline;
   2. fused SLAM+GPS polyline;
-  3. one labelled marker per reference point (`📍 name` popup);
-  4. alignment-snapshot polyline;
-  5. optional user-position marker (`options.showUserPosition`).
+  3. alignment-snapshot polyline;
+  4. optional user-position marker (`options.showUserPosition`).
   Returns `{ layers, bounds }`.
 - `DrawMapDataOptions` — `{ showUserPosition?: boolean }` (default off).
 - `DrawnMapData` — `{ layers: L.Layer[]; bounds: L.LatLngBounds }`.
-- Color constants: `RAW_GPS_COLOR`, `FUSED_PATH_COLOR`, `REF_POINT_COLOR`,
+- Color constants: `RAW_GPS_COLOR`, `FUSED_PATH_COLOR`,
   `ALIGNMENT_SNAPSHOT_COLOR`, `USER_POSITION_COLOR` (from
   [vis-colors.ts](vis-colors.ts)).
 - Style constants: `MAP_PATH_POLYLINE_WEIGHT = 3`,
@@ -36,8 +35,11 @@ renderers cannot diverge again.
   fullscreen. This module only draws data layers and reports bounds.
 - Empty slices create no layers; `bounds.isValid()` is `false` when nothing
   was drawn.
-- Reference-point popups are built with the DOM API (`textContent`), never
-  `innerHTML`, so a malicious reference-point name cannot inject markup.
+- **Scope:** this module draws only the shared SLAM/GPS trajectory layers.
+  Reference-point markers are a recorder concept drawn by the recorder-owned
+  [`ui/draw-ref-point-markers.ts`](../../../GpsPlusSlamJs_RecorderApp/src/ui/draw-ref-point-markers.ts)
+  helper (called from both the summary map and the live overlay), so the two
+  maps stay identical while the framework stays ref-point-agnostic.
 - Draw order is significant: accuracy circles precede the raw polyline.
 
 ## Examples

@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { buildMapData } from './map-data';
 import { computeFusedPath } from '../utils/fused-path';
 import type { Matrix4, Vector3 } from 'gps-plus-slam-js';
-import type { RawGpsSample, RefPointMarker } from '../types/geo-types';
+import type { RawGpsSample } from '../types/geo-types';
 
 // ============================================================================
 // Fixtures
@@ -43,25 +43,19 @@ const RAW: RawGpsSample[] = [
   { lat: 50.001, lng: 8.001 },
 ];
 
-const REF_POINTS: RefPointMarker[] = [
-  { lat: 50.0005, lng: 8.0005, name: 'Entrance' },
-];
-
 // ============================================================================
 // Tests
 // ============================================================================
 
 describe('buildMapData', () => {
-  it('passes raw GPS, reference points and snapshots through unchanged', () => {
+  it('passes raw GPS and snapshots through unchanged', () => {
     const snapshots = [{ lat: 50.0, lng: 8.0 }];
     const data = buildMapData({
       rawGpsPath: RAW,
-      referencePoints: REF_POINTS,
       alignmentSnapshots: snapshots,
     });
 
     expect(data.rawGpsPath).toEqual(RAW);
-    expect(data.referencePoints).toEqual(REF_POINTS);
     expect(data.alignmentSnapshots).toEqual(snapshots);
   });
 
@@ -76,7 +70,6 @@ describe('buildMapData', () => {
     const data = buildMapData({});
     expect(data.rawGpsPath).toEqual([]);
     expect(data.fusedPath).toEqual([]);
-    expect(data.referencePoints).toEqual([]);
     expect(data.alignmentSnapshots).toEqual([]);
     expect(data.userPosition).toBeNull();
   });

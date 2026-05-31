@@ -120,8 +120,8 @@ function createValidMapData(): SummaryMapData {
       { lat: 50.0021, lng: 8.0021 },
     ],
     referencePoints: [
-      { lat: 50.001, lng: 8.001, name: 'Entrance' },
-      { lat: 50.002, lng: 8.002, name: 'Exit' },
+      { lat: 50.001, lng: 8.001, name: 'Entrance', timestamp: 1000 },
+      { lat: 50.002, lng: 8.002, name: 'Exit', timestamp: 1000 },
     ],
   };
 }
@@ -428,7 +428,12 @@ describe('SummaryMap', () => {
         ],
         fusedPath: [],
         referencePoints: [
-          { lat: 50.001, lng: 8.001, name: '<img src=x onerror=alert(1)>' },
+          {
+            lat: 50.001,
+            lng: 8.001,
+            name: '<img src=x onerror=alert(1)>',
+            timestamp: 1000,
+          },
         ],
       };
 
@@ -452,7 +457,9 @@ describe('SummaryMap', () => {
           { lat: 50.001, lng: 8.001 },
         ],
         fusedPath: [],
-        referencePoints: [{ lat: 50.001, lng: 8.001, name: 'Entrance' }],
+        referencePoints: [
+          { lat: 50.001, lng: 8.001, name: 'Entrance', timestamp: 1000 },
+        ],
       };
 
       createSummaryMap(container, data);
@@ -472,7 +479,12 @@ describe('SummaryMap', () => {
         ],
         fusedPath: [],
         referencePoints: [
-          { lat: 50.001, lng: 8.001, name: 'A &amp; B "quoted"' },
+          {
+            lat: 50.001,
+            lng: 8.001,
+            name: 'A &amp; B "quoted"',
+            timestamp: 1000,
+          },
         ],
       };
 
@@ -508,7 +520,9 @@ describe('SummaryMap', () => {
           { lat: 50.001, lng: 8.001 },
         ],
         fusedPath: [],
-        referencePoints: [{ lat: 50.001, lng: 8.001, name: '' }],
+        referencePoints: [
+          { lat: 50.001, lng: 8.001, name: '', timestamp: 1000 },
+        ],
       };
 
       createSummaryMap(container, data);
@@ -544,7 +558,7 @@ describe('SummaryMapData type', () => {
     const data: SummaryMapData = {
       rawGpsPath: [{ lat: 50.0, lng: 8.0 }],
       fusedPath: [{ lat: 50.0, lng: 8.0 }],
-      referencePoints: [{ lat: 50.0, lng: 8.0, name: 'Test' }],
+      referencePoints: [{ lat: 50.0, lng: 8.0, name: 'Test', timestamp: 1000 }],
     };
 
     // Type check passes if this compiles

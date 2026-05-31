@@ -13,9 +13,16 @@
  *   1. per-event accuracy circles for the raw GPS path (drawn first so the
  *      polyline stays on top), then the raw GPS polyline;
  *   2. the fused (SLAM+GPS) polyline;
- *   3. one labelled marker per reference point;
- *   4. the alignment-snapshot polyline;
- *   5. (optional) a user-position marker.
+ *   3. the alignment-snapshot polyline;
+ *   4. (optional) a user-position marker.
+ *
+ * SCOPE: this module draws only the genuinely-shared SLAM/GPS trajectory
+ * layers. Reference-point markers are a RECORDER concept and are drawn by the
+ * recorder-owned `ui/draw-ref-point-markers.ts` helper (called from both the
+ * summary map and the live overlay wiring), so the two maps stay identical
+ * while the framework remains ref-point-agnostic. See
+ * gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-31-unified-trajectory-map-phase3-plan.md
+ * § Step 5.
  *
  * The caller owns map creation, tile layer, `fitBounds`, resize handling and
  * fullscreen — this module only draws data layers and reports the accumulated
@@ -35,8 +42,6 @@ import { addAccuracyCircles } from './accuracy-circles.js';
 export const RAW_GPS_COLOR = VIS_COLORS.RAW_GPS.css;
 /** Fused SLAM+GPS polyline color (cyan). */
 export const FUSED_PATH_COLOR = VIS_COLORS.FUSED_VIO.css;
-/** Reference-point marker color. */
-export const REF_POINT_COLOR = VIS_COLORS.CURRENT_REF_POINT.css;
 /** Alignment-snapshot polyline color (red). */
 export const ALIGNMENT_SNAPSHOT_COLOR = VIS_COLORS.ALIGNMENT_SNAPSHOT.css;
 /** User-position marker color (blue). */
@@ -126,29 +131,7 @@ export function drawMapData(
     }
   }
 
-  // 3. Reference-point markers (labelled).
-  for (const refPoint of data.referencePoints) {
-    const icon = L.divIcon({
-      className: 'map-overlay-ref-point',
-      html: `<div style="background:${REF_POINT_COLOR};width:12px;height:12px;border-radius:50%;border:2px solid white;"></div>`,
-      iconSize: [16, 16],
-      iconAnchor: [8, 8],
-    });
-
-    // Build popup content via DOM API (no innerHTML) to avoid injecting
-    // unsanitised names into markup.
-    const popupContent = document.createElement('b');
-    popupContent.textContent = `📍 ${refPoint.name}`;
-
-    const marker = L.marker([refPoint.lat, refPoint.lng], { icon })
-      .bindPopup(popupContent)
-      .addTo(map);
-    layers.push(marker);
-
-    bounds.extend([refPoint.lat, refPoint.lng]);
-  }
-
-  // 4. Alignment-snapshot polyline.
+  // 3. Alignment-snapshot polyline.
   if (data.alignmentSnapshots.length > 0) {
     const snapshotLatLngs = data.alignmentSnapshots.map(
       (p) => [p.lat, p.lng] as L.LatLngTuple
@@ -165,7 +148,7 @@ export function drawMapData(
     }
   }
 
-  // 5. Optional user-position marker.
+  // 4. Optional user-position marker.
   if (options.showUserPosition && data.userPosition) {
     const icon = L.divIcon({
       className: 'map-overlay-user-position',

@@ -1072,6 +1072,7 @@ describe('handleStopRecording', () => {
       scenario: {
         currentScenarioName: 'Test',
       },
+      refPoints: { entries: [] },
     });
 
     await handlers.handleStopRecording();

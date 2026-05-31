@@ -20,6 +20,7 @@ import { startSession, endSession } from '../state/recorder-store';
 import type { RecorderStore } from '../state/recorder-store';
 import { wireStoreSubscribers } from 'gps-plus-slam-app-framework/state/store-subscribers';
 import { wireRefPointSubscribers } from '../state/ref-point-subscribers';
+import { selectRefPointEntries } from '../state/ref-points-slice';
 import type { RecordingOptions } from 'gps-plus-slam-app-framework/state/recording-options';
 import { formatTimestamp } from 'gps-plus-slam-app-framework/storage/file-system-utils';
 import {
@@ -462,7 +463,12 @@ export function createRecordingSessionHandlers(
     const state = store.getState();
     const sessionMetadata = state.recording.sessionMetadata;
     const gpsEvents = state.gpsData?.gpsEvents;
-    const refPoints = state.gpsData?.referencePoints ?? [];
+    // Reference points come from the recorder's flat `refPoints` slice (the
+    // canonical post-slice-collapse source). The legacy `gpsData.referencePoints`
+    // slice is no longer dispatched to (Step 5.7a-1), so reading it here would
+    // always yield an empty list. The flat entries carry `timestamp`, which the
+    // summary map needs to classify each marker as prior vs. current.
+    const refPoints = selectRefPointEntries(state.refPoints);
     const gpsPositions = gpsEvents?.gpsPositions ?? [];
 
     if (!sessionMetadata?.startTime) {
@@ -633,9 +639,10 @@ export function createRecordingSessionHandlers(
         zeroRef: firstGps?.zeroRef ?? null,
       }),
       referencePointsForMap: refPoints.map((rp) => ({
-        lat: rp.gpsPoint.latitude,
-        lng: rp.gpsPoint.longitude,
-        name: rp.id,
+        lat: rp.gpsPoint?.latitude ?? rp.rawGpsPoint.latitude,
+        lng: rp.gpsPoint?.longitude ?? rp.rawGpsPoint.longitude,
+        name: rp.name ?? rp.id,
+        timestamp: rp.timestamp,
       })),
       zipSizeBytes: lastSyncResult?.blob?.size,
       zipFileCount: lastSyncResult?.fileCount,

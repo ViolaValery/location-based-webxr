@@ -39,16 +39,14 @@ export const ALIGNMENT_SNAPSHOT_COLOR = '#ff0000'; // Red — alignment snapshot
 
 ```typescript
 // Imported from types/geo-types.ts (re-exported)
-import type {
-  GpsCoord,
-  RawGpsSample,
-  RefPointMarker,
-} from '../types/geo-types';
+import type { GpsCoord, RawGpsSample } from '../types/geo-types';
+import type { RefPointMarkerInput } from './draw-ref-point-markers';
 
 interface SummaryMapData {
   rawGpsPath: RawGpsSample[]; // Yellow polyline + per-event accuracy circles (when accuracy is set)
   fusedPath: GpsCoord[]; // Cyan polyline
-  referencePoints: RefPointMarker[];
+  referencePoints: RefPointMarkerInput[]; // each carries a `timestamp` for prior/current classification
+  startTime?: number; // recording start (epoch ms) for classification; defaults to 0
   alignmentSnapshots?: GpsCoord[]; // Red polyline from alignment-update snapshots
 }
 
@@ -62,14 +60,14 @@ interface SummaryMapInstance {
 
 ## Visual Elements
 
-| Element                 | Color                         | Description                                                                                                            |
-| ----------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Raw GPS Polyline        | `#ffff00` (yellow)            | Raw GPS readings from device                                                                                           |
-| Raw GPS Accuracy Circle | `#ffff00` (yellow, ~12% fill) | Per-event horizontal accuracy (radius = `latLongAccuracy` in meters); skipped when accuracy is missing or non-positive |
-| Fused Path Polyline     | `#00ffff` (cyan)              | GPS+SLAM aligned positions                                                                                             |
-| Reference Point Markers | `#ff6b6b` (red)               | Clickable markers with name popup                                                                                      |
-| Alignment Snapshots     | `#ff0000` (red)               | Polyline connecting snapshot positions                                                                                 |
-| Tile Layer              | OpenStreetMap                 | Standard map tiles                                                                                                     |
+| Element                 | Color                               | Description                                                                                                                                                   |
+| ----------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Raw GPS Polyline        | `#ffff00` (yellow)                  | Raw GPS readings from device                                                                                                                                  |
+| Raw GPS Accuracy Circle | `#ffff00` (yellow, ~12% fill)       | Per-event horizontal accuracy (radius = `latLongAccuracy` in meters); skipped when accuracy is missing or non-positive                                        |
+| Fused Path Polyline     | `#00ffff` (cyan)                    | GPS+SLAM aligned positions                                                                                                                                    |
+| Reference Point Markers | `#ff6b6b` (red) / `#51cf66` (green) | Drawn by the recorder-owned [draw-ref-point-markers.ts](draw-ref-point-markers.ts) helper. Red `📍 current`, green `📌 prior` by `timestamp` vs. `startTime`. |
+| Alignment Snapshots     | `#ff0000` (red)                     | Polyline connecting snapshot positions                                                                                                                        |
+| Tile Layer              | OpenStreetMap                       | Standard map tiles                                                                                                                                            |
 
 ## Invariants & Assumptions
 
@@ -78,7 +76,7 @@ interface SummaryMapInstance {
 3. **Coordinates in WGS84** - Lat/lng values are standard GPS coordinates
 4. **Auto-fit bounds** - Map automatically zooms to show all path points with 20px padding
 5. **Safe cleanup** - `destroy()` is idempotent (safe to call multiple times)
-6. **XSS-safe popups** - Reference point name popups use DOM `textContent` (not innerHTML), so names containing HTML-like characters are safely escaped
+6. **XSS-safe popups** - Reference point name popups use DOM `textContent` (not innerHTML), so names containing HTML-like characters are safely escaped. Ref markers are NOT drawn by the shared framework overlay module (which is ref-point-agnostic) but by the recorder-owned [draw-ref-point-markers.ts](draw-ref-point-markers.ts) helper, shared with the live/replay overlay so both maps render ref points identically.
 7. **Fullscreen toggle** - `expand()`/`collapse()` are idempotent and safe after `destroy()`. Fullscreen uses `fixed inset-0 z-[60]` CSS. Leaflet `invalidateSize()` + `fitBounds()` called after each transition (300ms delay for CSS reflow). Buttons (`data-testid="btn-map-expand"` / `data-testid="btn-map-collapse"`) are created dynamically inside the container and cleaned up on `destroy()`.
 
 ## Examples
@@ -95,7 +93,10 @@ const mapData = {
     { lat: 50.001, lng: 8.001 },
   ],
   fusedPath: [],
-  referencePoints: [{ lat: 50.001, lng: 8.001, name: 'Entrance' }],
+  referencePoints: [
+    { lat: 50.001, lng: 8.001, name: 'Entrance', timestamp: 1700000000000 },
+  ],
+  startTime: 1699999999000,
 };
 
 const map = createSummaryMap(container, mapData);
