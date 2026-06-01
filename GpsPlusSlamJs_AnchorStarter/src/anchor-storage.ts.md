@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Persist a *single* GPS anchor to `localStorage` so it survives a page
+Persist a _single_ GPS anchor to `localStorage` so it survives a page
 reload — the payoff of the starter example's umbrella user story. Decision
 D2 (option B1) keeps this inline in the example (no framework helper) so the
 whole save/load story is readable in one small file.

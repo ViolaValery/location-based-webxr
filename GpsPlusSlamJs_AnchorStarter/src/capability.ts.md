@@ -1,7 +1,7 @@
 # `capability.ts` — E1 capability gating
 
 - **Purpose:** Pure decision + copy for the "try anywhere" fallback (decision
-  D5 / E1). The async feature probing happens in `main.ts`; the *decision* and
+  D5 / E1). The async feature probing happens in `main.ts`; the _decision_ and
   the user-facing message live here so they are unit-testable.
 - **Public API:**
   - `CapabilitySupport { webxr, geolocation }`

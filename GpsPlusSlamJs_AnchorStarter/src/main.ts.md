@@ -14,6 +14,7 @@
     `setTrackingStore` → `initAR` → `startSession` (so the GPS coordinator
     feeds alignment) → `createGpsPositionHandler` + `startGpsWatch` →
     `requestDeviceOrientationPermission` + `startOrientationWatch` →
+    wire `placeButton` click → `placeAnchor` →
     `loadAnchor()` → `dispatchSetup(BOOTED)`.
   - `placeAnchor()` (cache-miss): `PLACE_REQUESTED` (saving) →
     `spawnAnchor(gps, false)` + `saveAnchor(gps)` → `PLACE_SUCCEEDED`, or

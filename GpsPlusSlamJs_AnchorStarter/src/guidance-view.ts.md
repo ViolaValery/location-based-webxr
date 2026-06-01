@@ -4,10 +4,11 @@
   (produced by `computeOnboardingGuidance`) to render-ready display strings
   for the top "move around — N% ready" widget.
 - **Public API:**
-  - `GuidanceTone = 'info' | 'progress' | 'good' | 'lost'`
   - `GuidanceView { title, percentText, barWidthPct, hint, tone }`
   - `toGuidanceView(guidance: OnboardingGuidance): GuidanceView` — total/pure,
     never throws.
+  - _Internal:_ `GuidanceTone = 'info' | 'progress' | 'good' | 'lost'` is not
+    re-exported; reach it via `GuidanceView['tone']`.
 - **Invariants & assumptions:**
   - Every `OnboardingGuidance['phase']` has a presentation entry (exhaustive
     `Record`), so a new phase in the framework forces a compile error here.

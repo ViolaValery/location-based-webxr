@@ -4,9 +4,10 @@
   UI: the "Place anchor" button, the status banner, the reload call-to-action,
   and the error line. Keeps the async-UX contract testable without a DOM.
 - **Public API:**
-  - `PlaceButtonView { visible, label, disabled, busy }`
   - `PlacementView { button, banner, reloadPrompt, error }`
   - `toPlacementView(state: SetupState): PlacementView` — total/pure.
+  - _Internal:_ `PlaceButtonView { visible, label, disabled, busy }` is not
+    re-exported; reach it via `PlacementView['button']`.
 - **Invariants & assumptions:**
   - Button is visible only in the cache-miss placement branch
     (`awaiting-tracking`, `ready-to-place`, `saving`, `saved`).

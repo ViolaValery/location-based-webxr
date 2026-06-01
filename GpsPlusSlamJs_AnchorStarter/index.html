@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
     <title>gps-plus-slam — persistent anchor starter</title>
     <style>
       :root {
@@ -39,9 +42,10 @@
       .panel {
         margin: 12px;
         padding: 12px 14px;
-        background: rgba(0, 0, 0, 0.6);
+        background: rgb(0 0 0 / 60%);
         border: 1px solid #333;
         border-radius: 10px;
+        /* stylelint-disable-next-line csstree/validator -- min() is valid CSS; the bundled css-tree grammar rejects math functions (false positive). */
         max-width: min(86vw, 460px);
       }
       /* Start / capability screen */
@@ -157,19 +161,25 @@
       <section id="start-screen" class="panel" data-testid="start-screen">
         <h1>Persistent GPS anchor</h1>
         <p>
-          Place a marker in the real world, save it, then reload the page —
-          it reappears at the exact same spot. Go outside with a clear view
-          of the sky for the best GPS.
+          Place a marker in the real world, save it, then reload the page — it
+          reappears at the exact same spot. Go outside with a clear view of the
+          sky for the best GPS.
         </p>
         <button id="start-button" data-testid="start-button">Start AR</button>
-        <div id="capability-message" data-testid="capability-message" hidden></div>
+        <div
+          id="capability-message"
+          data-testid="capability-message"
+          hidden
+        ></div>
       </section>
 
       <!-- Placement controls -->
       <section id="placement" class="panel" data-testid="placement" hidden>
         <div id="banner" data-testid="banner"></div>
         <div id="error" data-testid="error" hidden></div>
-        <button id="place-button" data-testid="place-button" hidden>Place anchor</button>
+        <button id="place-button" data-testid="place-button" hidden>
+          Place anchor
+        </button>
         <div id="reload-prompt" data-testid="reload-prompt" hidden>
           Reload the page to confirm your anchor was saved.
         </div>

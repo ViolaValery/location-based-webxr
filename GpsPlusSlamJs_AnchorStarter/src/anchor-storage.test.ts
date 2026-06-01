@@ -9,14 +9,14 @@
  *    (the cache-miss branch), never a throw.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 import {
   STORAGE_KEY,
   saveAnchor,
   loadAnchor,
   clearAnchor,
   type AnchorStore,
-} from './anchor-storage.js';
+} from "./anchor-storage.js";
 
 /** Minimal in-memory `AnchorStore` so tests need no jsdom/localStorage. */
 function memoryStore(seed?: Record<string, string>): AnchorStore {
@@ -28,14 +28,14 @@ function memoryStore(seed?: Record<string, string>): AnchorStore {
   };
 }
 
-describe('anchor-storage round-trip', () => {
-  it('saves and loads a lat/lon anchor', () => {
+describe("anchor-storage round-trip", () => {
+  it("saves and loads a lat/lon anchor", () => {
     const store = memoryStore();
     saveAnchor({ lat: 48.137, lon: 11.575 }, store);
     expect(loadAnchor(store)).toEqual({ lat: 48.137, lon: 11.575 });
   });
 
-  it('preserves an optional altitude', () => {
+  it("preserves an optional altitude", () => {
     const store = memoryStore();
     saveAnchor({ lat: 48.137, lon: 11.575, altitude: 519.2 }, store);
     expect(loadAnchor(store)).toEqual({
@@ -45,7 +45,7 @@ describe('anchor-storage round-trip', () => {
     });
   });
 
-  it('clearAnchor removes the cached anchor (back to cache-miss)', () => {
+  it("clearAnchor removes the cached anchor (back to cache-miss)", () => {
     const store = memoryStore();
     saveAnchor({ lat: 1, lon: 2 }, store);
     clearAnchor(store);
@@ -53,56 +53,56 @@ describe('anchor-storage round-trip', () => {
   });
 });
 
-describe('anchor-storage — load is defensive', () => {
-  it('returns null when nothing is stored (cache-miss)', () => {
+describe("anchor-storage — load is defensive", () => {
+  it("returns null when nothing is stored (cache-miss)", () => {
     expect(loadAnchor(memoryStore())).toBeNull();
   });
 
-  it('returns null on malformed JSON instead of throwing', () => {
-    expect(loadAnchor(memoryStore({ [STORAGE_KEY]: '{not json' }))).toBeNull();
+  it("returns null on malformed JSON instead of throwing", () => {
+    expect(loadAnchor(memoryStore({ [STORAGE_KEY]: "{not json" }))).toBeNull();
   });
 
-  it('returns null when JSON is not an object', () => {
-    expect(loadAnchor(memoryStore({ [STORAGE_KEY]: '42' }))).toBeNull();
-    expect(loadAnchor(memoryStore({ [STORAGE_KEY]: 'null' }))).toBeNull();
+  it("returns null when JSON is not an object", () => {
+    expect(loadAnchor(memoryStore({ [STORAGE_KEY]: "42" }))).toBeNull();
+    expect(loadAnchor(memoryStore({ [STORAGE_KEY]: "null" }))).toBeNull();
   });
 
-  it('returns null when lat/lon are missing or non-numeric', () => {
+  it("returns null when lat/lon are missing or non-numeric", () => {
     expect(loadAnchor(memoryStore({ [STORAGE_KEY]: '{"lat":48}' }))).toBeNull();
     expect(
-      loadAnchor(memoryStore({ [STORAGE_KEY]: '{"lat":"x","lon":1}' }))
+      loadAnchor(memoryStore({ [STORAGE_KEY]: '{"lat":"x","lon":1}' })),
     ).toBeNull();
   });
 
-  it('returns null when lat/lon are out of geographic range', () => {
+  it("returns null when lat/lon are out of geographic range", () => {
     expect(
-      loadAnchor(memoryStore({ [STORAGE_KEY]: '{"lat":120,"lon":11}' }))
+      loadAnchor(memoryStore({ [STORAGE_KEY]: '{"lat":120,"lon":11}' })),
     ).toBeNull();
     expect(
-      loadAnchor(memoryStore({ [STORAGE_KEY]: '{"lat":48,"lon":999}' }))
-    ).toBeNull();
-  });
-
-  it('returns null for non-finite coordinates', () => {
-    expect(
-      loadAnchor(memoryStore({ [STORAGE_KEY]: '{"lat":null,"lon":1}' }))
+      loadAnchor(memoryStore({ [STORAGE_KEY]: '{"lat":48,"lon":999}' })),
     ).toBeNull();
   });
 
-  it('drops a non-finite altitude but keeps a valid lat/lon', () => {
+  it("returns null for non-finite coordinates", () => {
+    expect(
+      loadAnchor(memoryStore({ [STORAGE_KEY]: '{"lat":null,"lon":1}' })),
+    ).toBeNull();
+  });
+
+  it("drops a non-finite altitude but keeps a valid lat/lon", () => {
     const loaded = loadAnchor(
-      memoryStore({ [STORAGE_KEY]: '{"lat":48,"lon":11,"altitude":"high"}' })
+      memoryStore({ [STORAGE_KEY]: '{"lat":48,"lon":11,"altitude":"high"}' }),
     );
     expect(loaded).toEqual({ lat: 48, lon: 11 });
   });
 });
 
-describe('anchor-storage — save is defensive', () => {
-  it('does not throw when the underlying store throws (e.g. quota / private mode)', () => {
+describe("anchor-storage — save is defensive", () => {
+  it("does not throw when the underlying store throws (e.g. quota / private mode)", () => {
     const throwing: AnchorStore = {
       getItem: () => null,
       setItem: () => {
-        throw new Error('QuotaExceededError');
+        throw new Error("QuotaExceededError");
       },
       removeItem: () => undefined,
     };
@@ -110,7 +110,7 @@ describe('anchor-storage — save is defensive', () => {
   });
 });
 
-describe('anchor-storage — origin-isolation invariant', () => {
+describe("anchor-storage — origin-isolation invariant", () => {
   // Why this test matters: the multi-app subpath deployment serves the
   // recorder (/recorder/) and this starter (/starter/) from one origin
   // (gps.csutil.com). Browser storage is keyed by origin, not path, so the
@@ -118,7 +118,7 @@ describe('anchor-storage — origin-isolation invariant', () => {
   // The recorder uses `gps-plus-slam-recorder-*`; this starter MUST keep its
   // own `gps-plus-slam-anchor-starter` prefix so the namespaces stay disjoint.
   // See docs: 2026-06-01-multi-app-subpath-deployment-plan.md (Step 6).
-  it('namespaces its localStorage key under the app-specific prefix', () => {
+  it("namespaces its localStorage key under the app-specific prefix", () => {
     expect(STORAGE_KEY).toMatch(/^gps-plus-slam-anchor-starter/);
   });
 });

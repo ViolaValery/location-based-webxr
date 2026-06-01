@@ -13,12 +13,13 @@ state machine for the first-user-experience, replacing inline `if`/flag glue.
 - `canPlaceAnchor(state): boolean` — soft-gate predicate (placement branch
   only, never while saving).
 - `isBusy(state): boolean` — true during the async `saving` phase.
-- Types: `SetupPhase`, `SetupState`, `SetupEvent`.
+- Types: `SetupState`, `SetupEvent` (exported). `SetupPhase` is internal —
+  reach it via `SetupState["phase"]`.
 
 ### Branches
 
 - **cache-miss:** `booting → awaiting-tracking ⇄ ready-to-place →
-  (PLACE_REQUESTED) saving → (PLACE_SUCCEEDED) saved` /
+(PLACE_REQUESTED) saving → (PLACE_SUCCEEDED) saved` /
   `(PLACE_FAILED) back to placeable + errorMessage`.
 - **cache-hit:** `booting → relocalising → (tracking ready) anchor-shown`.
 
@@ -26,7 +27,7 @@ state machine for the first-user-experience, replacing inline `if`/flag glue.
 
 - Placement is **soft-gated** (decision D2): `canPlaceAnchor` is true in both
   `awaiting-tracking` and `ready-to-place`; `trackingReady` only drives a
-  *recommendation*, never a hard block.
+  _recommendation_, never a hard block.
 - The async place/save honours the repo async-UX rule: `saving` is the
   in-progress state and resolves to either `saved` (final) or a placeable
   phase carrying `errorMessage` (revert). A fresh `PLACE_REQUESTED` clears a
@@ -37,10 +38,13 @@ state machine for the first-user-experience, replacing inline `if`/flag glue.
 ## Examples
 
 ```ts
-let s = setupReducer(initialSetupState, { type: 'BOOTED', hasCachedAnchor: false });
+let s = setupReducer(initialSetupState, {
+  type: "BOOTED",
+  hasCachedAnchor: false,
+});
 // s.phase === 'awaiting-tracking', canPlaceAnchor(s) === true
-s = setupReducer(s, { type: 'PLACE_REQUESTED' });   // s.phase === 'saving', isBusy(s)
-s = setupReducer(s, { type: 'PLACE_SUCCEEDED' });   // s.phase === 'saved'
+s = setupReducer(s, { type: "PLACE_REQUESTED" }); // s.phase === 'saving', isBusy(s)
+s = setupReducer(s, { type: "PLACE_SUCCEEDED" }); // s.phase === 'saved'
 ```
 
 ## Tests

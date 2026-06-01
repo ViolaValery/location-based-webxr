@@ -22,14 +22,16 @@
  * (final) or back to a placeable phase carrying `errorMessage` (revert).
  */
 
-export type SetupPhase =
-  | 'booting'
-  | 'awaiting-tracking'
-  | 'ready-to-place'
-  | 'saving'
-  | 'saved'
-  | 'relocalising'
-  | 'anchor-shown';
+// Internal union (not re-exported): the public surface is `SetupState`, which
+// carries this as its `phase` field. Consumers reach it via `SetupState["phase"]`.
+type SetupPhase =
+  | "booting"
+  | "awaiting-tracking"
+  | "ready-to-place"
+  | "saving"
+  | "saved"
+  | "relocalising"
+  | "anchor-shown";
 
 export interface SetupState {
   readonly phase: SetupPhase;
@@ -44,14 +46,14 @@ export interface SetupState {
 }
 
 export type SetupEvent =
-  | { type: 'BOOTED'; hasCachedAnchor: boolean }
-  | { type: 'TRACKING_READY_CHANGED'; ready: boolean }
-  | { type: 'PLACE_REQUESTED' }
-  | { type: 'PLACE_SUCCEEDED' }
-  | { type: 'PLACE_FAILED'; message: string };
+  | { type: "BOOTED"; hasCachedAnchor: boolean }
+  | { type: "TRACKING_READY_CHANGED"; ready: boolean }
+  | { type: "PLACE_REQUESTED" }
+  | { type: "PLACE_SUCCEEDED" }
+  | { type: "PLACE_FAILED"; message: string };
 
 export const initialSetupState: SetupState = {
-  phase: 'booting',
+  phase: "booting",
   trackingReady: false,
   errorMessage: null,
 };
@@ -63,23 +65,23 @@ export const initialSetupState: SetupState = {
  */
 export function setupReducer(state: SetupState, event: SetupEvent): SetupState {
   switch (event.type) {
-    case 'BOOTED': {
+    case "BOOTED": {
       // Idempotent guard: only the initial booting phase reacts to BOOTED.
-      if (state.phase !== 'booting') return state;
+      if (state.phase !== "booting") return state;
       return {
         ...state,
-        phase: event.hasCachedAnchor ? 'relocalising' : 'awaiting-tracking',
+        phase: event.hasCachedAnchor ? "relocalising" : "awaiting-tracking",
       };
     }
 
-    case 'TRACKING_READY_CHANGED': {
+    case "TRACKING_READY_CHANGED": {
       const trackingReady = event.ready;
       let phase = state.phase;
       if (event.ready) {
-        if (state.phase === 'awaiting-tracking') phase = 'ready-to-place';
-        else if (state.phase === 'relocalising') phase = 'anchor-shown';
-      } else if (state.phase === 'ready-to-place') {
-        phase = 'awaiting-tracking';
+        if (state.phase === "awaiting-tracking") phase = "ready-to-place";
+        else if (state.phase === "relocalising") phase = "anchor-shown";
+      } else if (state.phase === "ready-to-place") {
+        phase = "awaiting-tracking";
       }
       if (phase === state.phase && trackingReady === state.trackingReady) {
         return state;
@@ -87,24 +89,27 @@ export function setupReducer(state: SetupState, event: SetupEvent): SetupState {
       return { ...state, phase, trackingReady };
     }
 
-    case 'PLACE_REQUESTED': {
-      if (state.phase !== 'awaiting-tracking' && state.phase !== 'ready-to-place') {
+    case "PLACE_REQUESTED": {
+      if (
+        state.phase !== "awaiting-tracking" &&
+        state.phase !== "ready-to-place"
+      ) {
         return state;
       }
-      return { ...state, phase: 'saving', errorMessage: null };
+      return { ...state, phase: "saving", errorMessage: null };
     }
 
-    case 'PLACE_SUCCEEDED': {
-      if (state.phase !== 'saving') return state;
-      return { ...state, phase: 'saved' };
+    case "PLACE_SUCCEEDED": {
+      if (state.phase !== "saving") return state;
+      return { ...state, phase: "saved" };
     }
 
-    case 'PLACE_FAILED': {
-      if (state.phase !== 'saving') return state;
+    case "PLACE_FAILED": {
+      if (state.phase !== "saving") return state;
       // Async-UX rule: revert the in-progress state and surface the error.
       return {
         ...state,
-        phase: state.trackingReady ? 'ready-to-place' : 'awaiting-tracking',
+        phase: state.trackingReady ? "ready-to-place" : "awaiting-tracking",
         errorMessage: event.message,
       };
     }
@@ -122,10 +127,12 @@ export function setupReducer(state: SetupState, event: SetupEvent): SetupState {
  * the cache-miss placement branch and never while a save is in flight.
  */
 export function canPlaceAnchor(state: SetupState): boolean {
-  return state.phase === 'awaiting-tracking' || state.phase === 'ready-to-place';
+  return (
+    state.phase === "awaiting-tracking" || state.phase === "ready-to-place"
+  );
 }
 
 /** Is an async operation (the anchor save) currently in progress? */
 export function isBusy(state: SetupState): boolean {
-  return state.phase === 'saving';
+  return state.phase === "saving";
 }

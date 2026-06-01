@@ -15,8 +15,8 @@ import {
   Group,
   Mesh,
   MeshStandardMaterial,
-  Object3D,
-} from 'three';
+  type Object3D,
+} from "three";
 
 /**
  * Build the marker that gets pinned to the saved GPS anchor.
@@ -27,7 +27,7 @@ import {
  */
 export function createAnchorMarker(): Object3D {
   const marker = new Group();
-  marker.name = 'anchor-marker';
+  marker.name = "anchor-marker";
 
   const material = new MeshStandardMaterial({ color: 0xff4f6d });
 

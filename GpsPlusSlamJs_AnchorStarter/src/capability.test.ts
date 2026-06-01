@@ -7,11 +7,11 @@
  * demo can actually run.
  */
 
-import { describe, it, expect } from 'vitest';
-import { isFullySupported, capabilityMessage } from './capability.js';
+import { describe, it, expect } from "vitest";
+import { isFullySupported, capabilityMessage } from "./capability.js";
 
-describe('isFullySupported', () => {
-  it('is true only when both WebXR and geolocation are available', () => {
+describe("isFullySupported", () => {
+  it("is true only when both WebXR and geolocation are available", () => {
     expect(isFullySupported({ webxr: true, geolocation: true })).toBe(true);
     expect(isFullySupported({ webxr: true, geolocation: false })).toBe(false);
     expect(isFullySupported({ webxr: false, geolocation: true })).toBe(false);
@@ -19,28 +19,28 @@ describe('isFullySupported', () => {
   });
 });
 
-describe('capabilityMessage', () => {
-  it('returns null when everything is supported', () => {
+describe("capabilityMessage", () => {
+  it("returns null when everything is supported", () => {
     expect(capabilityMessage({ webxr: true, geolocation: true })).toBeNull();
   });
 
-  it('names WebXR when only AR is missing', () => {
+  it("names WebXR when only AR is missing", () => {
     const msg = capabilityMessage({ webxr: false, geolocation: true });
-    expect(msg).toContain('WebXR');
-    expect(msg).not.toContain('GPS / geolocation');
-    expect(msg).toContain('AR-capable phone');
+    expect(msg).toContain("WebXR");
+    expect(msg).not.toContain("GPS / geolocation");
+    expect(msg).toContain("AR-capable phone");
   });
 
-  it('names GPS when only geolocation is missing', () => {
+  it("names GPS when only geolocation is missing", () => {
     const msg = capabilityMessage({ webxr: true, geolocation: false });
-    expect(msg).toContain('GPS / geolocation');
-    expect(msg).not.toContain('WebXR');
+    expect(msg).toContain("GPS / geolocation");
+    expect(msg).not.toContain("WebXR");
   });
 
-  it('names both when nothing is supported', () => {
+  it("names both when nothing is supported", () => {
     const msg = capabilityMessage({ webxr: false, geolocation: false });
-    expect(msg).toContain('WebXR');
-    expect(msg).toContain('GPS / geolocation');
-    expect(msg).toContain('and');
+    expect(msg).toContain("WebXR");
+    expect(msg).toContain("GPS / geolocation");
+    expect(msg).toContain("and");
   });
 });

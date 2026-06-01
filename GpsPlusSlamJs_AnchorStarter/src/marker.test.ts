@@ -7,17 +7,17 @@
  * refactor that accidentally returns undefined/null is caught.
  */
 
-import { describe, it, expect } from 'vitest';
-import { Object3D } from 'three';
-import { createAnchorMarker } from './marker.js';
+import { describe, it, expect } from "vitest";
+import { Object3D } from "three";
+import { createAnchorMarker } from "./marker.js";
 
-describe('createAnchorMarker', () => {
-  it('returns a single Three.js Object3D', () => {
+describe("createAnchorMarker", () => {
+  it("returns a single Three.js Object3D", () => {
     const marker = createAnchorMarker();
     expect(marker).toBeInstanceOf(Object3D);
   });
 
-  it('returns a fresh instance each call (no shared mutable singleton)', () => {
+  it("returns a fresh instance each call (no shared mutable singleton)", () => {
     expect(createAnchorMarker()).not.toBe(createAnchorMarker());
   });
 });

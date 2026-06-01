@@ -7,9 +7,10 @@
  * this pure makes the coaching UI testable in node (no DOM, no store).
  */
 
-import type { OnboardingGuidance } from 'gps-plus-slam-app-framework/state';
+import type { OnboardingGuidance } from "gps-plus-slam-app-framework/state";
 
-export type GuidanceTone = 'info' | 'progress' | 'good' | 'lost';
+// Internal union (not re-exported): reachable as `GuidanceView["tone"]`.
+type GuidanceTone = "info" | "progress" | "good" | "lost";
 
 export interface GuidanceView {
   /** Short headline for the current phase. */
@@ -29,12 +30,15 @@ interface PhasePresentation {
   readonly tone: GuidanceTone;
 }
 
-const PHASE_PRESENTATION: Record<OnboardingGuidance['phase'], PhasePresentation> = {
-  initializing: { title: 'Starting up…', tone: 'info' },
-  'ar-lost': { title: 'AR tracking lost', tone: 'lost' },
-  'move-around': { title: 'Move around', tone: 'progress' },
-  'almost-ready': { title: 'Almost ready', tone: 'progress' },
-  ready: { title: 'Ready', tone: 'good' },
+const PHASE_PRESENTATION: Record<
+  OnboardingGuidance["phase"],
+  PhasePresentation
+> = {
+  initializing: { title: "Starting up…", tone: "info" },
+  "ar-lost": { title: "AR tracking lost", tone: "lost" },
+  "move-around": { title: "Move around", tone: "progress" },
+  "almost-ready": { title: "Almost ready", tone: "progress" },
+  ready: { title: "Ready", tone: "good" },
 };
 
 function clampPercent(value: number): number {

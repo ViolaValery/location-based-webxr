@@ -28,11 +28,11 @@ export function capabilityMessage(support: CapabilitySupport): string | null {
   if (isFullySupported(support)) return null;
 
   const missing: string[] = [];
-  if (!support.webxr) missing.push('WebXR augmented reality');
-  if (!support.geolocation) missing.push('GPS / geolocation');
+  if (!support.webxr) missing.push("WebXR augmented reality");
+  if (!support.geolocation) missing.push("GPS / geolocation");
 
   return (
-    `This demo needs ${missing.join(' and ')}, which this device or browser ` +
+    `This demo needs ${missing.join(" and ")}, which this device or browser ` +
     `does not provide. Open it on an AR-capable phone (e.g. Chrome on ` +
     `Android with ARCore), outdoors, to try the persistent-anchor flow.`
   );

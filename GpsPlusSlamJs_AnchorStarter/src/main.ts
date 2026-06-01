@@ -29,28 +29,31 @@ import {
   computeOnboardingGuidance,
   selectAlignmentMatrix,
   selectZeroReference,
-} from 'gps-plus-slam-app-framework/state';
-import { NullStorageBackend } from 'gps-plus-slam-app-framework/storage';
+} from "gps-plus-slam-app-framework/state";
+import { NullStorageBackend } from "gps-plus-slam-app-framework/storage";
 import {
   initAR,
   getArWorldGroup,
   getCamera,
   getCurrentArPose,
   setTrackingStore,
-} from 'gps-plus-slam-app-framework/ar/webxr-session';
+} from "gps-plus-slam-app-framework/ar/webxr-session";
 import {
   startGpsWatch,
   stopGpsWatch,
   startOrientationWatch,
   requestDeviceOrientationPermission,
   type GpsPosition,
-} from 'gps-plus-slam-app-framework/sensors';
+} from "gps-plus-slam-app-framework/sensors";
 import {
   checkWebXRSupport,
   checkGeolocationPermission,
-} from 'gps-plus-slam-app-framework/sensors';
-import { createGpsAnchor, type GpsAnchor } from 'gps-plus-slam-app-framework/visualization';
-import type { LatLong, LatLongAlt } from 'gps-plus-slam-app-framework/core';
+} from "gps-plus-slam-app-framework/sensors";
+import {
+  createGpsAnchor,
+  type GpsAnchor,
+} from "gps-plus-slam-app-framework/visualization";
+import type { LatLong, LatLongAlt } from "gps-plus-slam-app-framework/core";
 
 import {
   initialSetupState,
@@ -58,13 +61,13 @@ import {
   canPlaceAnchor,
   type SetupState,
   type SetupEvent,
-} from './setup-state-machine.js';
-import { loadAnchor, saveAnchor } from './anchor-storage.js';
-import { toGuidanceView } from './guidance-view.js';
-import { toPlacementView } from './placement-view.js';
-import { isFullySupported, capabilityMessage } from './capability.js';
+} from "./setup-state-machine.js";
+import { loadAnchor, saveAnchor } from "./anchor-storage.js";
+import { toGuidanceView } from "./guidance-view.js";
+import { toPlacementView } from "./placement-view.js";
+import { isFullySupported, capabilityMessage } from "./capability.js";
 // --- your content here -----------------------------------------------------
-import { createAnchorMarker } from './marker.js';
+import { createAnchorMarker } from "./marker.js";
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -78,19 +81,19 @@ function el<T extends HTMLElement>(id: string): T {
 }
 
 const dom = {
-  startScreen: el('start-screen'),
-  startButton: el<HTMLButtonElement>('start-button'),
-  capabilityMessage: el('capability-message'),
-  guidance: el('guidance'),
-  guidanceTitle: el('guidance-title'),
-  guidanceBarFill: el('guidance-bar-fill'),
-  guidancePercent: el('guidance-percent'),
-  guidanceHint: el('guidance-hint'),
-  placement: el('placement'),
-  banner: el('banner'),
-  error: el('error'),
-  placeButton: el<HTMLButtonElement>('place-button'),
-  reloadPrompt: el('reload-prompt'),
+  startScreen: el("start-screen"),
+  startButton: el<HTMLButtonElement>("start-button"),
+  capabilityMessage: el("capability-message"),
+  guidance: el("guidance"),
+  guidanceTitle: el("guidance-title"),
+  guidanceBarFill: el("guidance-bar-fill"),
+  guidancePercent: el("guidance-percent"),
+  guidanceHint: el("guidance-hint"),
+  placement: el("placement"),
+  banner: el("banner"),
+  error: el("error"),
+  placeButton: el<HTMLButtonElement>("place-button"),
+  reloadPrompt: el("reload-prompt"),
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -112,12 +115,12 @@ let lastTrackingReady = false;
  * the MinimalExample).
  */
 function sel<S, R>(selector: (state: S) => R): R {
-  if (!store) throw new Error('store not initialised');
+  if (!store) throw new Error("store not initialised");
   return selector(store.getState() as unknown as S);
 }
 
 function toLatLongAlt(pos: GpsPosition): LatLongAlt {
-  return typeof pos.altitude === 'number' && Number.isFinite(pos.altitude)
+  return typeof pos.altitude === "number" && Number.isFinite(pos.altitude)
     ? { lat: pos.lat, lon: pos.lon, altitude: pos.altitude }
     : { lat: pos.lat, lon: pos.lon, altitude: 0 };
 }
@@ -143,7 +146,7 @@ function renderPlacement(): void {
   dom.placeButton.textContent = view.button.label;
   dom.placeButton.disabled = view.button.disabled;
   dom.error.hidden = view.error === null;
-  dom.error.textContent = view.error ?? '';
+  dom.error.textContent = view.error ?? "";
   dom.reloadPrompt.hidden = !view.reloadPrompt;
 }
 
@@ -167,10 +170,10 @@ function dispatchSetup(event: SetupEvent): void {
 function syncTrackingReady(): void {
   if (!store) return;
   const report = sel(selectTrackingQuality);
-  const ready = computeOnboardingGuidance(report).phase === 'ready';
+  const ready = computeOnboardingGuidance(report).phase === "ready";
   if (ready !== lastTrackingReady) {
     lastTrackingReady = ready;
-    dispatchSetup({ type: 'TRACKING_READY_CHANGED', ready });
+    dispatchSetup({ type: "TRACKING_READY_CHANGED", ready });
   }
 }
 
@@ -183,11 +186,14 @@ function onStoreChanged(): void {
 // Anchor creation — anchors `createAnchorMarker()` to a GPS coordinate
 // ---------------------------------------------------------------------------
 
-function spawnAnchor(gpsPoint: LatLong | LatLongAlt, skipBootstrap: boolean): GpsAnchor {
+function spawnAnchor(
+  gpsPoint: LatLong | LatLongAlt,
+  skipBootstrap: boolean,
+): GpsAnchor {
   const arWorldGroup = getArWorldGroup();
   const camera = getCamera();
   if (!arWorldGroup || !camera) {
-    throw new Error('AR scene not ready — cannot place anchor');
+    throw new Error("AR scene not ready — cannot place anchor");
   }
   const marker = createAnchorMarker();
   arWorldGroup.add(marker);
@@ -197,31 +203,33 @@ function spawnAnchor(gpsPoint: LatLong | LatLongAlt, skipBootstrap: boolean): Gp
     camera,
     gpsPoint,
     skipBootstrap,
-    getAlignmentMatrix: () =>
-      sel(selectAlignmentMatrix) as readonly number[] | null,
+    getAlignmentMatrix: () => sel(selectAlignmentMatrix),
     getGpsZeroRef: (): LatLong | null => sel(selectZeroReference),
     getCurrentGpsPoint: () => lastGps,
   });
 }
 
 // ---------------------------------------------------------------------------
-// Placement action (cache-miss branch) — async, follows the in-progress →
-// final UI rule via the setup FSM (saving → saved / revert + error).
+// Placement action (cache-miss branch) — synchronous (localStorage write),
+// but still routed through the setup FSM's saving → saved / revert + error
+// transitions so the placement view-model renders the in-progress → final
+// states consistently.
 // ---------------------------------------------------------------------------
 
-async function placeAnchor(): Promise<void> {
+function placeAnchor(): void {
   if (!canPlaceAnchor(setupState)) return;
-  dispatchSetup({ type: 'PLACE_REQUESTED' });
+  dispatchSetup({ type: "PLACE_REQUESTED" });
   try {
     const gps = lastGps;
-    if (!gps) throw new Error('No GPS fix yet — wait for a location, then retry');
+    if (!gps)
+      throw new Error("No GPS fix yet — wait for a location, then retry");
     anchor = spawnAnchor(gps, false);
     saveAnchor(gps);
-    dispatchSetup({ type: 'PLACE_SUCCEEDED' });
+    dispatchSetup({ type: "PLACE_SUCCEEDED" });
   } catch (err) {
     dispatchSetup({
-      type: 'PLACE_FAILED',
-      message: err instanceof Error ? err.message : 'Failed to place anchor',
+      type: "PLACE_FAILED",
+      message: err instanceof Error ? err.message : "Failed to place anchor",
     });
   }
 }
@@ -232,38 +240,38 @@ async function placeAnchor(): Promise<void> {
 
 async function startAr(): Promise<void> {
   dom.startButton.disabled = true;
-  dom.startButton.textContent = 'Starting…';
+  dom.startButton.textContent = "Starting…";
 
   store = createSlamAppStore({ storageBackend: new NullStorageBackend() });
   store.subscribe(onStoreChanged);
 
   // Tracking restart detection must be wired before initAR.
-  setTrackingStore(store as Parameters<typeof setTrackingStore>[0]);
+  setTrackingStore(store);
 
-  const appContainer = el('app');
+  const appContainer = el("app");
   try {
     await initAR(appContainer);
   } catch (err) {
     dom.startButton.disabled = false;
-    dom.startButton.textContent = 'Start AR';
+    dom.startButton.textContent = "Start AR";
     dom.capabilityMessage.hidden = false;
     dom.capabilityMessage.textContent =
-      err instanceof Error ? err.message : 'Failed to start the AR session.';
+      err instanceof Error ? err.message : "Failed to start the AR session.";
     return;
   }
 
   // Recording must be active for the GPS coordinator to feed alignment.
   store.dispatch(
     startSession({
-      scenarioName: 'anchor-starter',
-      sessionName: 'live',
+      scenarioName: "anchor-starter",
+      sessionName: "live",
       startTime: Date.now(),
-    })
+    }),
   );
 
   // GPS → store (+ remember the latest fix for the anchor's getCurrentGpsPoint).
   const gpsHandler = createGpsPositionHandler({
-    store: store as Parameters<typeof createGpsPositionHandler>[0]['store'],
+    store,
     getArPose: getCurrentArPose,
   });
   startGpsWatch((pos) => {
@@ -280,6 +288,10 @@ async function startAr(): Promise<void> {
   dom.guidance.hidden = false;
   dom.placement.hidden = false;
 
+  // Wire the soft-gated "Place anchor" button to the cache-miss placement
+  // flow. `placeAnchor` itself no-ops unless the FSM currently allows it.
+  dom.placeButton.addEventListener("click", () => placeAnchor());
+
   const cached = loadAnchor();
   if (cached) {
     // cache-hit: seed from stored GPS and let it re-converge as alignment
@@ -287,7 +299,7 @@ async function startAr(): Promise<void> {
     lastGps = cached;
     anchor = spawnAnchor(cached, true);
   }
-  dispatchSetup({ type: 'BOOTED', hasCachedAnchor: cached !== null });
+  dispatchSetup({ type: "BOOTED", hasCachedAnchor: cached !== null });
   render();
 }
 
@@ -311,16 +323,16 @@ async function main(): Promise<void> {
     // E1: honest, capability-gated message instead of a crash.
     dom.startButton.disabled = true;
     dom.capabilityMessage.hidden = false;
-    dom.capabilityMessage.textContent = capabilityMessage(support) ?? '';
+    dom.capabilityMessage.textContent = capabilityMessage(support) ?? "";
     return;
   }
 
-  dom.startButton.addEventListener('click', () => {
+  dom.startButton.addEventListener("click", () => {
     void startAr();
   });
 }
 
-window.addEventListener('beforeunload', () => {
+window.addEventListener("beforeunload", () => {
   stopGpsWatch();
   anchor?.dispose();
 });

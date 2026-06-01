@@ -9,10 +9,10 @@
  *
  */
 
-import type { LatLong, LatLongAlt } from 'gps-plus-slam-app-framework/core';
+import type { LatLong, LatLongAlt } from "gps-plus-slam-app-framework/core";
 
 /** localStorage key under which the single starter anchor is cached. */
-export const STORAGE_KEY = 'gps-plus-slam-anchor-starter:anchor';
+export const STORAGE_KEY = "gps-plus-slam-anchor-starter:anchor";
 
 /**
  * The minimal storage surface this module needs — a structural subset of the
@@ -40,7 +40,7 @@ function defaultStore(): AnchorStore | null {
 }
 
 function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 /**
@@ -50,11 +50,11 @@ function isFiniteNumber(value: unknown): value is number {
  */
 export function saveAnchor(
   anchor: LatLong | LatLongAlt,
-  store: AnchorStore | null = defaultStore()
+  store: AnchorStore | null = defaultStore(),
 ): void {
   if (!store) return;
   const payload: LatLongAlt = { lat: anchor.lat, lon: anchor.lon };
-  if ('altitude' in anchor && isFiniteNumber(anchor.altitude)) {
+  if ("altitude" in anchor && isFiniteNumber(anchor.altitude)) {
     payload.altitude = anchor.altitude;
   }
   try {
@@ -71,7 +71,7 @@ export function saveAnchor(
  * setup state machine's branch selection robust.
  */
 export function loadAnchor(
-  store: AnchorStore | null = defaultStore()
+  store: AnchorStore | null = defaultStore(),
 ): LatLongAlt | null {
   if (!store) return null;
   const raw = store.getItem(STORAGE_KEY);
@@ -83,7 +83,7 @@ export function loadAnchor(
   } catch {
     return null;
   }
-  if (typeof parsed !== 'object' || parsed === null) return null;
+  if (typeof parsed !== "object" || parsed === null) return null;
 
   const { lat, lon, altitude } = parsed as Record<string, unknown>;
   if (!isFiniteNumber(lat) || !isFiniteNumber(lon)) return null;

@@ -16,8 +16,9 @@
         "test:recorder": "pnpm --filter gps-plus-slam-recorder test",
         "test:recorder:unit": "pnpm --filter gps-plus-slam-recorder run test:unit",
         "test:recorder:e2e": "pnpm --filter gps-plus-slam-recorder run test:e2e",
+        "test:starter": "pnpm --filter gps-plus-slam-anchor-starter test",
         "test:example": "pnpm --filter gps-plus-slam-minimal-example test",
-        "test": "pnpm run test:repo-config && pnpm run test:framework && pnpm run test:recorder && pnpm run test:example"
+        "test": "pnpm run test:repo-config && pnpm run test:framework && pnpm run test:recorder && pnpm run test:starter && pnpm run test:example"
     },
     "engines": {
         "node": ">=20.0.0"

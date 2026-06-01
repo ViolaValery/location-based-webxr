@@ -9,9 +9,10 @@
  * copies these fields onto elements; it contains no branching logic.
  */
 
-import type { SetupState } from './setup-state-machine.js';
+import type { SetupState } from "./setup-state-machine.js";
 
-export interface PlaceButtonView {
+// Internal shape (not re-exported): reachable as `PlacementView["button"]`.
+interface PlaceButtonView {
   /** Shown only in the cache-miss placement branch. */
   readonly visible: boolean;
   readonly label: string;
@@ -32,21 +33,26 @@ export interface PlacementView {
 
 const HIDDEN_BUTTON: PlaceButtonView = {
   visible: false,
-  label: 'Place anchor',
+  label: "Place anchor",
   disabled: true,
   busy: false,
 };
 
 function buttonFor(state: SetupState): PlaceButtonView {
   switch (state.phase) {
-    case 'awaiting-tracking':
-    case 'ready-to-place':
+    case "awaiting-tracking":
+    case "ready-to-place":
       // Soft gate (D2): always enabled in the placement branch.
-      return { visible: true, label: 'Place anchor', disabled: false, busy: false };
-    case 'saving':
-      return { visible: true, label: 'Saving…', disabled: true, busy: true };
-    case 'saved':
-      return { visible: true, label: 'Saved ✓', disabled: true, busy: false };
+      return {
+        visible: true,
+        label: "Place anchor",
+        disabled: false,
+        busy: false,
+      };
+    case "saving":
+      return { visible: true, label: "Saving…", disabled: true, busy: true };
+    case "saved":
+      return { visible: true, label: "Saved ✓", disabled: true, busy: false };
     default:
       return HIDDEN_BUTTON;
   }
@@ -54,21 +60,21 @@ function buttonFor(state: SetupState): PlaceButtonView {
 
 function bannerFor(state: SetupState): string {
   switch (state.phase) {
-    case 'booting':
-      return 'Starting…';
-    case 'awaiting-tracking':
-    case 'ready-to-place':
+    case "booting":
+      return "Starting…";
+    case "awaiting-tracking":
+    case "ready-to-place":
       return state.trackingReady
-        ? 'Tracking looks good — place your anchor.'
+        ? "Tracking looks good — place your anchor."
         : 'You can place now, but moving until "Ready" makes the anchor more accurate.';
-    case 'saving':
-      return 'Saving your anchor…';
-    case 'saved':
-      return 'Saved. Reload the page to test cross-session persistence.';
-    case 'relocalising':
-      return 'Move around to re-localise your saved anchor.';
-    case 'anchor-shown':
-      return 'Your saved anchor is shown at its real-world spot.';
+    case "saving":
+      return "Saving your anchor…";
+    case "saved":
+      return "Saved. Reload the page to test cross-session persistence.";
+    case "relocalising":
+      return "Move around to re-localise your saved anchor.";
+    case "anchor-shown":
+      return "Your saved anchor is shown at its real-world spot.";
   }
 }
 
@@ -77,7 +83,7 @@ export function toPlacementView(state: SetupState): PlacementView {
   return {
     button: buttonFor(state),
     banner: bannerFor(state),
-    reloadPrompt: state.phase === 'saved',
+    reloadPrompt: state.phase === "saved",
     error: state.errorMessage,
   };
 }
