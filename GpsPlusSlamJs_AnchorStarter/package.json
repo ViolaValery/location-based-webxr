@@ -2,7 +2,7 @@
   "name": "gps-plus-slam-anchor-starter",
   "version": "0.1.0",
   "private": true,
-  "description": "Starter example consuming gps-plus-slam-app-framework: place a single GPS anchor, persist it to localStorage, reload, re-localise and re-display it at the exact physical spot. The 'meaningful minimal' rung between the trivial minimal example and the full recorder app.",
+  "description": "Starter example consuming gps-plus-slam-app-framework: place a single GPS anchor, encode it into the page URL (?show=), reload, re-localise and re-display it at the exact physical spot — and share the link to open the same anchor on another device. The 'meaningful minimal' rung between the trivial minimal example and the full recorder app.",
   "type": "module",
   "scripts": {
     "dev": "vite",
