@@ -29,11 +29,12 @@ parenting rules see the dedicated port plan:
 
 This file currently implements **sub-steps 2 (bootstrap phase),
 3 (steady-state `'snap-every-tick'` + distance-scaled threshold gate),
-4 (`'snap-when-offscreen'` mode gate + alignment-matrix large-jump
-bypass), and 5 (re-bootstrap on external move)** of the port plan.
-Floor-Y correction (sub-step 6) is deferred until the depth raycaster
-(Item 6 in the C# survey) lands; the `floorY?: () => number | null`
-constructor seam is reserved but not yet consulted.
+4 (`'snap-when-offscreen'` mode gate, with a one-time initial-placement
+exemption for `skipBootstrap` anchors), and 5 (re-bootstrap on external
+move)** of the port plan. Floor-Y correction (sub-step 6) is deferred
+until the depth raycaster (Item 6 in the C# survey) lands; the
+`floorY?: () => number | null` constructor seam is reserved but not yet
+consulted.
 
 ## Public API
 
@@ -104,11 +105,25 @@ object as an `@internal` testing seam in lieu of pumping the global
   `arWorldGroup.matrix`), so the camera and every anchored child shift together
   and each accepted commit here is only a small off-screen residual. The commit
   **gate** (distance-scaled threshold + `snap-when-offscreen` frustum
-  suppression + large-jump bypass) decides _when_ a correction lands; the snap
-  decides _how_ (instantly). A previous per-anchor lerp (`lerpCorrections` /
+  suppression) decides _when_ a correction lands; the snap decides _how_
+  (instantly). A previous per-anchor lerp (`lerpCorrections` /
   `correctionLerpRate`, D1′) was removed once alignment was lerped at
   `arWorldGroup` — see
   `gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-05-gps-anchor-frame-architecture-bug-and-plan.md`.
+- **`snap-when-offscreen` corrections fire only off-screen — except the first
+  placement**: a correction is suppressed while the object is inside the camera
+  frustum, so the user never sees a jump. The lone exception is the **one-time
+  initial placement** of a `skipBootstrap` anchor: it is `anchored` from frame
+  one but its `object3D` sits at the AR origin ("inside the user") until its
+  first commit, which must land even on-screen so the marker can leave the
+  origin (the AnchorStarter `?show=` reveal). That exemption is consumed by the
+  first committed correction and **never re-armed** (a re-bootstrap moves an
+  already-placed object). The earlier **large-jump bypass** (which overrode the
+  frustum gate on a >2°/4 m/20 m alignment-matrix delta) was **removed**: now
+  that the whole frame rides one lerped `arWorldGroup.matrix`, a large jump is
+  absorbed smoothly for the entire view, so a per-anchor on-screen snap only
+  manufactured the AnchorStarter cache-hit hard-jump — see
+  `gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-06-anchor-starter-cachehit-jump-investigation.md`.
 
 ## Examples
 
@@ -154,19 +169,19 @@ See [gps-anchor.test.ts](gps-anchor.test.ts). Coverage:
   - Distance-scaled threshold: same delta commits up close, skips far
     away.
   - `null` `zeroRef` suppresses the commit.
-- Steady state — `'snap-when-offscreen'` + large-jump bypass (sub-step 4):
-  - On-screen object: no commit even when threshold gate would allow.
-  - Off-screen object: commits.
-  - 10 m translation jump bypasses the on-screen mode gate.
-  - 1 m translation does NOT bypass.
-  - 25 m Y-only jump bypasses.
-  - 30° rotation jump bypasses.
+- Steady state — `'snap-when-offscreen'` (sub-step 4):
+  - On-screen object: no commit even when threshold gate would allow
+    — including when a large alignment-matrix jump arrives (regression
+    for the AnchorStarter `?show=` cache-hit hard-jump).
+  - First commit of a `skipBootstrap` anchor places it even while
+    on-screen (the one-time initial-placement exemption).
+  - Off-screen object: a later steady-state correction commits.
 - Re-bootstrap on external move (sub-step 5):
   - No position writes while back in bootstrap; resumes with the
     new median target once re-anchored.
-  - Large-jump baseline is cleared on `markMovedExternally` so the
-    first steady-state tick after re-bootstrap doesn't spuriously
-    trigger the bypass.
+  - The on-screen initial-placement exemption is NOT re-armed after a
+    re-bootstrap (the first post-rebootstrap correction is a normal
+    frustum-gated snap).
 
 - Alignment-frame correctness (bug doc):
   - Object reaches the correct **world** position under a non-trivial

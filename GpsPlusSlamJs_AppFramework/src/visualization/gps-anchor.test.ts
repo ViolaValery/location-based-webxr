@@ -602,14 +602,22 @@ describe('createGpsAnchor — steady state (snap-every-tick)', () => {
 });
 
 /**
- * Sub-step 4 of the GpsAnchor port plan: `snap-when-offscreen` mode +
- * the alignment-matrix large-jump bypass. The anchor MUST
- * - skip the steady-state commit when the object is currently inside
- *   the camera frustum (even if the threshold gate would allow it),
- * - commit when the object is outside the camera frustum,
- * - bypass the on-screen mode gate when the alignment matrix has
- *   jumped by more than `2°` rotation, `4 m` translation, or `20 m`
- *   on the Y axis between the previous and current tick.
+ * Sub-step 4 of the GpsAnchor port plan: `snap-when-offscreen` mode. The
+ * anchor MUST
+ * - place a freshly-spawned `skipBootstrap` anchor on its FIRST commit even
+ *   while on-screen (the one-time initial-placement exemption — a fresh
+ *   appearance is not a jump),
+ * - thereafter skip the steady-state commit when the object is currently
+ *   inside the camera frustum (even if the threshold gate would allow it, and
+ *   no matter how large the alignment-matrix delta),
+ * - commit when the object is outside the camera frustum.
+ *
+ * The previous "large-jump bypass" (which overrode the on-screen gate on a
+ * >2°/4 m/20 m alignment delta) was REMOVED: now that the whole frame rides one
+ * lerped `arWorldGroup.matrix`, a large jump is absorbed smoothly for the entire
+ * view, so a per-anchor on-screen snap only manufactured the AnchorStarter
+ * cache-hit hard-jump. See
+ * gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-06-anchor-starter-cachehit-jump-investigation.md.
  *
  * Tests use a real `THREE.Mesh` (not `Object3D`) because the
  * frustum-visibility module's `isObjectInCameraFrustum` requires a
@@ -630,13 +638,12 @@ const IDENTITY_MATRIX16: readonly number[] = [
   1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
 ];
 
-function translationMatrix16(
-  tx: number,
-  ty: number,
-  tz: number
-): readonly number[] {
-  // Column-major 4×4 with translation in the last column.
-  return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, tx, ty, tz, 1];
+function rotationYMatrix16(degrees: number): readonly number[] {
+  // Column-major 4×4 pure rotation about the Y axis.
+  const a = (degrees * Math.PI) / 180;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  return [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1];
 }
 
 function setupSceneFor(env: ReturnType<typeof makeMeshAnchorEnv>): void {
@@ -649,7 +656,60 @@ function setupSceneFor(env: ReturnType<typeof makeMeshAnchorEnv>): void {
 }
 
 describe('createGpsAnchor — steady state (snap-when-offscreen)', () => {
-  it('does NOT commit when the object is currently inside the camera frustum', () => {
+  it('does NOT snap on-screen when a large alignment jump arrives after the initial placement', () => {
+    // Why this test matters: regression for the AnchorStarter `?show=` cache-hit
+    // "hard jump". A `skipBootstrap` anchor observed during early convergence
+    // sees >2°/tick alignment-rotation deltas. The old large-jump bypass let
+    // such a delta override the `snap-when-offscreen` frustum gate and snap the
+    // marker WHILE the user was looking straight at it. The fix removes that
+    // bypass: once the one-time initial placement is consumed, every later
+    // correction must wait until the object is off-screen — no matter how large
+    // the alignment delta. See
+    // gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-06-anchor-starter-cachehit-jump-investigation.md.
+    const env = makeMeshAnchorEnv();
+    // Step 1 — place the object OFF-SCREEN so the one-time placement bypass is
+    // consumed without making the later on-screen assertion ambiguous. Camera
+    // looks away from the origin → the freshly-spawned object at (0,0,0) is
+    // behind the camera.
+    env.camera.position.set(0, 0, -5);
+    env.camera.lookAt(0, 0, -10);
+    setupSceneFor(env);
+    const zero = { lat: 48.0, lon: 11.0 };
+    const target = { lat: zero.lat + 10 / 111319, lon: zero.lon }; // 10 m north
+    let matrix: readonly number[] = IDENTITY_MATRIX16;
+    const anchor = createGpsAnchor({
+      ...env,
+      gpsPoint: target,
+      skipBootstrap: true,
+      mode: 'snap-when-offscreen',
+      getAlignmentMatrix: () => matrix,
+      getGpsZeroRef: () => zero,
+      getCurrentGpsPoint: () => null,
+    });
+    anchor.__tickForTests(1, 1); // initial placement bypass commits (off-screen)
+    expect(env.object3D.position.x).toBeGreaterThan(8); // placed at ~10 m north
+    const placedX = env.object3D.position.x;
+
+    // Step 2 — now LOOK AT the placed object so it is on-screen, then push a
+    // large alignment-rotation jump (30°, far above the old 2° bypass
+    // threshold). The placement bypass is already consumed, so the on-screen
+    // frustum gate MUST hold and the object MUST NOT discretely snap.
+    env.camera.position.set(placedX, 0, 5);
+    env.camera.lookAt(placedX, 0, 0);
+    setupSceneFor(env);
+    matrix = rotationYMatrix16(30);
+    anchor.__tickForTests(1, 2);
+    expect(env.object3D.position.x).toBeCloseTo(placedX, 4); // no on-screen snap
+    anchor.dispose();
+  });
+
+  it('first commit places a skipBootstrap anchor even while on-screen (initial-placement exemption)', () => {
+    // A skipBootstrap anchor is `anchored` from frame one but its object3D sits
+    // at the AR origin (inside the user) until its first commit. That first
+    // placement MUST land even on-screen, otherwise the marker stays stuck at
+    // the origin until the user looks away (the AnchorStarter `?show=` reveal).
+    // Only the FIRST commit is exempt — the repro test above locks in that
+    // later on-screen corrections stay gated.
     const env = makeMeshAnchorEnv();
     // Camera looks at the origin from 5 m back along +Z → object at (0,0,0) is on-screen.
     env.camera.position.set(0, 0, 5);
@@ -668,165 +728,35 @@ describe('createGpsAnchor — steady state (snap-when-offscreen)', () => {
       getCurrentGpsPoint: () => null,
     });
     anchor.__tickForTests(1, 1);
-    // Mode gate suppresses the commit; object stays at (0,0,0).
-    expect(env.object3D.position.x).toBeCloseTo(0, 4);
-    expect(env.object3D.position.y).toBeCloseTo(0, 4);
-    expect(env.object3D.position.z).toBeCloseTo(0, 4);
+    // Initial-placement exemption: the object leaves the origin despite being
+    // on-screen.
+    expect(env.object3D.position.x).toBeGreaterThan(8); // placed at ~10 m north
     anchor.dispose();
   });
 
-  it('commits when the object is outside the camera frustum', () => {
+  it('commits a steady-state correction when the object is outside the camera frustum', () => {
     const env = makeMeshAnchorEnv();
-    // Camera looks *away* from the origin → (0,0,0) is behind the camera and off-screen.
+    // Camera looks *away* from the origin → the object is off-screen throughout.
     env.camera.position.set(0, 0, -5);
     env.camera.lookAt(0, 0, -10);
     setupSceneFor(env);
     const zero = { lat: 48.0, lon: 11.0 };
-    const target = { lat: zero.lat + 10 / 111319, lon: zero.lon };
     const anchor = createGpsAnchor({
       ...env,
-      gpsPoint: target,
+      gpsPoint: { lat: zero.lat + 10 / 111319, lon: zero.lon },
       skipBootstrap: true,
       mode: 'snap-when-offscreen',
       getAlignmentMatrix: () => IDENTITY_MATRIX16,
       getGpsZeroRef: () => zero,
       getCurrentGpsPoint: () => null,
     });
-    anchor.__tickForTests(1, 1);
-    expect(env.object3D.position.x).toBeGreaterThan(8); // ~10 m
-    anchor.dispose();
-  });
-
-  it('large translation jump in the alignment matrix bypasses the on-screen mode gate', () => {
-    const env = makeMeshAnchorEnv();
-    env.camera.position.set(0, 0, 5);
-    env.camera.lookAt(0, 0, 0);
-    setupSceneFor(env);
-    const zero = { lat: 48.0, lon: 11.0 };
-    const target = { lat: zero.lat + 10 / 111319, lon: zero.lon };
-    let matrix: readonly number[] = IDENTITY_MATRIX16;
-    const anchor = createGpsAnchor({
-      ...env,
-      gpsPoint: target,
-      skipBootstrap: true,
-      mode: 'snap-when-offscreen',
-      getAlignmentMatrix: () => matrix,
-      getGpsZeroRef: () => zero,
-      getCurrentGpsPoint: () => null,
-    });
-    // Tick 1: establishes baseline alignment. Object is on-screen → no commit.
-    anchor.__tickForTests(1, 1);
-    expect(env.object3D.position.x).toBeCloseTo(0, 4);
-    // Tick 2: alignment matrix jumps by 50 m on the EAST (Z) axis (> 4 m
-    // large-jump threshold). The jump axis is deliberately decoupled from the
-    // NORTH (X) GPS target so the committed AR-local target — `alignment⁻¹ ·
-    // nue` — keeps its X≈10 m component (the inverse only subtracts the Z
-    // translation), making "a commit happened" unambiguous on the X axis.
-    // (World-placement correctness under a coupled alignment is covered by the
-    // dedicated alignment-frame tests + property test; here arWorldGroup stays
-    // identity so the bypass DECISION is exercised in isolation.)
-    matrix = translationMatrix16(0, 0, 50);
-    anchor.__tickForTests(1, 2);
-    expect(env.object3D.position.x).toBeGreaterThan(8); // committed despite on-screen
-    anchor.dispose();
-  });
-
-  it('small alignment-matrix delta does NOT bypass the on-screen mode gate', () => {
-    const env = makeMeshAnchorEnv();
-    env.camera.position.set(0, 0, 5);
-    env.camera.lookAt(0, 0, 0);
-    setupSceneFor(env);
-    const zero = { lat: 48.0, lon: 11.0 };
-    const target = { lat: zero.lat + 10 / 111319, lon: zero.lon };
-    let matrix: readonly number[] = IDENTITY_MATRIX16;
-    const anchor = createGpsAnchor({
-      ...env,
-      gpsPoint: target,
-      skipBootstrap: true,
-      mode: 'snap-when-offscreen',
-      getAlignmentMatrix: () => matrix,
-      getGpsZeroRef: () => zero,
-      getCurrentGpsPoint: () => null,
-    });
-    anchor.__tickForTests(1, 1);
-    // Tiny 1 m translation — below the 4 m large-jump threshold → no bypass.
-    matrix = translationMatrix16(1, 0, 0);
-    anchor.__tickForTests(1, 2);
-    expect(env.object3D.position.x).toBeCloseTo(0, 4);
-    anchor.dispose();
-  });
-
-  it('large Y-only jump (>20 m) bypasses the on-screen mode gate', () => {
-    const env = makeMeshAnchorEnv();
-    env.camera.position.set(0, 0, 5);
-    env.camera.lookAt(0, 0, 0);
-    setupSceneFor(env);
-    const zero = { lat: 48.0, lon: 11.0 };
-    const target = { lat: zero.lat + 10 / 111319, lon: zero.lon };
-    let matrix: readonly number[] = IDENTITY_MATRIX16;
-    const anchor = createGpsAnchor({
-      ...env,
-      gpsPoint: target,
-      skipBootstrap: true,
-      mode: 'snap-when-offscreen',
-      getAlignmentMatrix: () => matrix,
-      getGpsZeroRef: () => zero,
-      getCurrentGpsPoint: () => null,
-    });
-    anchor.__tickForTests(1, 1);
-    expect(env.object3D.position.x).toBeCloseTo(0, 4);
-    // Y jump of 25 m exceeds the 20 m Y-only threshold (also exceeds the 4 m
-    // total-translation threshold, but the explicit Y check is what we're locking in here).
-    matrix = translationMatrix16(0, 25, 0);
-    anchor.__tickForTests(1, 2);
+    anchor.__tickForTests(1, 1); // initial placement (off-screen) → ~10 m
     expect(env.object3D.position.x).toBeGreaterThan(8);
-    anchor.dispose();
-  });
-
-  it('large rotation jump (>2°) bypasses the on-screen mode gate', () => {
-    const env = makeMeshAnchorEnv();
-    env.camera.position.set(0, 0, 5);
-    env.camera.lookAt(0, 0, 0);
-    setupSceneFor(env);
-    const zero = { lat: 48.0, lon: 11.0 };
-    const target = { lat: zero.lat + 10 / 111319, lon: zero.lon };
-    // 30° rotation around Y axis (well above 2°).
-    const angle = (30 * Math.PI) / 180;
-    const c = Math.cos(angle);
-    const s = Math.sin(angle);
-    const rotated: readonly number[] = [
-      c,
-      0,
-      -s,
-      0,
-      0,
-      1,
-      0,
-      0,
-      s,
-      0,
-      c,
-      0,
-      0,
-      0,
-      0,
-      1,
-    ];
-    let matrix: readonly number[] = IDENTITY_MATRIX16;
-    const anchor = createGpsAnchor({
-      ...env,
-      gpsPoint: target,
-      skipBootstrap: true,
-      mode: 'snap-when-offscreen',
-      getAlignmentMatrix: () => matrix,
-      getGpsZeroRef: () => zero,
-      getCurrentGpsPoint: () => null,
-    });
-    anchor.__tickForTests(1, 1);
-    expect(env.object3D.position.x).toBeCloseTo(0, 4);
-    matrix = rotated;
+    // A LATER correction must still commit while off-screen — this exercises the
+    // frustum gate proper, not just the one-time initial-placement exemption.
+    anchor.setGpsPoint({ lat: zero.lat + 20 / 111319, lon: zero.lon });
     anchor.__tickForTests(1, 2);
-    expect(env.object3D.position.x).toBeGreaterThan(8);
+    expect(env.object3D.position.x).toBeGreaterThan(18); // ~20 m, committed off-screen
     anchor.dispose();
   });
 });
@@ -838,9 +768,9 @@ describe('createGpsAnchor — steady state (snap-when-offscreen)', () => {
  *   phase after `markMovedExternally()`,
  * - resume steady-state commits using the *new* median target once
  *   the re-bootstrap completes,
- * - NOT inherit a stale large-jump baseline from before the move
- *   (the first steady-state tick after re-bootstrap MUST NOT
- *   spuriously trigger the bypass).
+ * - NOT re-arm the one-time on-screen initial-placement exemption: a
+ *   re-bootstrap moves an already-placed object, so its first
+ *   post-rebootstrap correction is a normal frustum-gated snap.
  */
 describe('createGpsAnchor — re-bootstrap on external move', () => {
   it('stops committing position updates while back in `bootstrap` and resumes after the new median is committed', async () => {
@@ -888,44 +818,49 @@ describe('createGpsAnchor — re-bootstrap on external move', () => {
     anchor.dispose();
   });
 
-  it('does NOT inherit a stale large-jump baseline across `markMovedExternally`', () => {
+  it('does NOT re-arm the on-screen initial-placement exemption after a re-bootstrap', () => {
+    // Why this test matters: the one-time on-screen placement exemption exists
+    // only so a freshly-spawned `skipBootstrap` anchor can leave the AR origin.
+    // A re-bootstrap moves an object that is ALREADY placed at a real pose, so
+    // re-arming the exemption would let it pop on-screen — exactly the jump the
+    // fix removes. The exemption must stay consumed across `markMovedExternally`.
     const env = makeMeshAnchorEnv();
-    env.camera.position.set(0, 0, 5);
-    env.camera.lookAt(0, 0, 0);
+    // Place the object OFF-SCREEN first so the one-time exemption is consumed.
+    env.camera.position.set(0, 0, -5);
+    env.camera.lookAt(0, 0, -10);
     setupSceneFor(env);
     const zero = { lat: 48.0, lon: 11.0 };
     const target = { lat: zero.lat + 10 / 111319, lon: zero.lon };
-    let matrix: readonly number[] = IDENTITY_MATRIX16;
     let currentSample: GpsAnchorSamplePoint = target;
     const anchor = createGpsAnchor({
       ...env,
       gpsPoint: target,
       skipBootstrap: true,
       mode: 'snap-when-offscreen',
-      getAlignmentMatrix: () => matrix,
+      getAlignmentMatrix: () => IDENTITY_MATRIX16,
       getGpsZeroRef: () => zero,
       getCurrentGpsPoint: () => currentSample,
       secondsToAccumulateGpsPose: 1,
     });
-    // Tick 1: establishes the alignment baseline (identity). On-screen → no commit.
-    anchor.__tickForTests(1, 1);
-    expect(env.object3D.position.x).toBeCloseTo(0, 4);
+    anchor.__tickForTests(1, 1); // initial placement (off-screen) → ~10 m
+    const placedX = env.object3D.position.x;
+    expect(placedX).toBeGreaterThan(8);
 
-    // Big alignment jump while still "anchored", then external move.
-    matrix = translationMatrix16(100, 0, 0);
+    // External move + re-bootstrap to a NEW target 30 m north, completing
+    // immediately (size-1 accumulation).
+    currentSample = { lat: zero.lat + 30 / 111319, lon: zero.lon };
     anchor.markMovedExternally();
-    currentSample = target;
-    anchor.__tickForTests(1, 2); // bootstrap sample → re-anchored
+    anchor.__tickForTests(1, 2); // one sample → re-anchored
     expect(anchor.phase).toBe('anchored');
 
-    // Next tick is the first steady-state tick post-rebootstrap. The previous
-    // alignment-matrix snapshot has been cleared, so the bypass MUST NOT fire
-    // even though the matrix is wildly different from the (cleared) baseline.
-    // Object stays at the post-bootstrap reset position.
-    env.object3D.position.set(0, 0, 0);
+    // Now LOOK AT the placed object. The new median target is ~20 m further
+    // north (past the threshold), but because the exemption is NOT re-armed the
+    // on-screen frustum gate MUST suppress the correction — the object stays put.
+    env.camera.position.set(placedX, 0, 5);
+    env.camera.lookAt(placedX, 0, 0);
+    setupSceneFor(env);
     anchor.__tickForTests(1, 3);
-    // No bypass + on-screen mode gate → no commit despite the big "first" matrix.
-    expect(env.object3D.position.x).toBeCloseTo(0, 4);
+    expect(env.object3D.position.x).toBeCloseTo(placedX, 4); // suppressed on-screen
     anchor.dispose();
   });
 });
