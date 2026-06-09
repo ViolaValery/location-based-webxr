@@ -24,7 +24,7 @@ Not applicable — declarative config consumed by Cloudflare's build pipeline.
   alone is not enough — without the dashboard change the `dist-site` directory
   would be empty and the deploy fails fast.
 - The deployed URL map is: `/` → landing page, `/recorder/` → RecorderApp,
-  `/starter/` → AnchorStarter. See
+  `/starter/` → AnchorStarter, `/minimal/` → MinimalExample. See
   [2026-06-01-multi-app-subpath-deployment-plan.md](../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-01-multi-app-subpath-deployment-plan.md).
 - `compatibility_date` is bumped to deploy date when Cloudflare APIs change;
   no behaviour depends on it for a pure static-asset site.

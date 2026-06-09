@@ -65,7 +65,8 @@ Your app composes its own state, screen flow, and visuals on top of the framewor
 | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | [`GpsPlusSlamJs_AppFramework`](GpsPlusSlamJs_AppFramework/) | Reusable AR+GPS app framework — WebXR session management, Three.js visualization, GPS sensors, OPFS+ZIP record/replay, composable store. | Apache-2.0 |
 | [`GpsPlusSlamJs_RecorderApp`](GpsPlusSlamJs_RecorderApp/)   | Full-featured recorder app: capture AR sessions on a phone, replay on a desktop, debug alignment, and contribute test data.              | Apache-2.0 |
-| [`GpsPlusSlamJs_MinimalExample`](GpsPlusSlamJs_MinimalExample/) | Smallest possible consumer of the framework. Three.js cube + status panel, no AR session. Use this as your starting template.         | Apache-2.0 |
+| [`GpsPlusSlamJs_AnchorStarter`](GpsPlusSlamJs_AnchorStarter/) | Persistent-anchor starter (the public "Demo"). GPS-anchored placement with URL-based persistence (`?show=`) and cross-device sharing.   | Apache-2.0 |
+| [`GpsPlusSlamJs_MinimalExample`](GpsPlusSlamJs_MinimalExample/) | Smallest possible consumer of the framework. A single-file GPS + AR hit-test demo (Enable GPS AR button → reticle → tap-to-place) that contrasts an uncompensated floater cube with a drift-corrected `createGpsAnchor` marker. Use this as your starting template. | Apache-2.0 |
 
 The recorder app at a glance:
 
@@ -124,7 +125,7 @@ startGpsWatch(
 );
 ```
 
-> See [`GpsPlusSlamJs_MinimalExample`](GpsPlusSlamJs_MinimalExample/) for the full version of this snippet (Three.js scene + status panel, end-to-end runnable). For the full API surface and the composable extension hooks (`extraReducers`, `extraMiddleware`, `ZipExportContributor`), see the [framework README](GpsPlusSlamJs_AppFramework/README.md).
+> See [`GpsPlusSlamJs_MinimalExample`](GpsPlusSlamJs_MinimalExample/) for a full, end-to-end runnable example (GPS + AR hit-test session with tap-to-place). For the full API surface and the composable extension hooks (`extraReducers`, `extraMiddleware`, `ZipExportContributor`), see the [framework README](GpsPlusSlamJs_AppFramework/README.md).
 
 ## Repository Layout
 
@@ -150,12 +151,13 @@ All public surfaces share one origin and are built into a single `dist-site/`
 directory served by Cloudflare static assets:
 
 ```bash
-pnpm run build:site   # framework + recorder (/recorder/) + starter (/starter/) + landing (/)
+pnpm run build:site   # framework + recorder (/recorder/) + starter (/starter/) + minimal (/minimal/) + landing (/)
 ```
 
 - `/` → landing page ([`GpsPlusSlamJs_Landing/`](GpsPlusSlamJs_Landing/))
 - `/recorder/` → recorder app, built with `base=/recorder/`
 - `/starter/` → anchor starter, built with `base=/starter/`
+- `/minimal/` → minimal example, built with `base=/minimal/`
 
 The Cloudflare Git integration runs `pnpm run build:site` and serves `./dist-site`
 (see [`wrangler.toml`](wrangler.toml)). The orchestration script
@@ -166,7 +168,7 @@ resolves under its app's base so a misrouted asset fails the deploy instead of
 ## Run Tests
 
 ```bash
-# All tests (framework + recorder unit + recorder E2E + minimal example)
+# All tests (repo-config + framework + recorder unit & E2E + anchor starter + minimal example)
 pnpm test
 
 # Framework tests only
@@ -177,6 +179,9 @@ pnpm run test:recorder:unit
 
 # Recorder E2E tests only
 pnpm run test:recorder:e2e
+
+# Anchor-starter tests only
+pnpm run test:starter
 
 # Minimal-example tests only
 pnpm run test:example
