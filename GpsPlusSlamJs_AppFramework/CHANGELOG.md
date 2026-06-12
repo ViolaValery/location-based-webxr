@@ -2,9 +2,26 @@
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-06-13
+
 ### Features
 
+- **Depth → occupancy-grid mapping** — ported the Unity occupancy-grid core (`bresenham3d` ray-carving + `OccupancyGrid`) into the framework, added a `depth-unprojection` helper (screen + depth → raw WebXR point), captured each `XRView` `projectionMatrix` in depth samples (with a denser default grid), stored `latestDepthSample`, and wired the occupancy grid into the recorder store. `DepthCaptureOptions` now plumb depth recording options through the sampler without dropping `projectionMatrix`.
 - **RGB voxel coloring (occupancy-grid port Iter 8)** — `DepthPoint` gains an optional, additive `rgb: [r, g, b]` (0–255) sampled from the camera frame in the same XR frame as the depth read; `DepthSampler` gains a `rgb` config (default true) + lazy `acquireRgbLookup` callback (at most one small GPU blit+readback per emitted sample via the new `CameraBlitCapture.captureToPixels()` and the pure `ar/depth-rgb-lookup`); `OccupancyGrid.getCellColor()` exposes a per-cell running average of the colored observations; `DepthCaptureOptions.rgb` recording option (default on). Old recordings and rgb-off sessions are unaffected (consumers fall back to height-based coloring).
+
+### Bug Fixes
+
+- Cap `bresenham3d` trace span to prevent a main-thread freeze on long rays
+- Reject non-negative-integer `stopDistance` in `bresenham3d`
+- Clarify `OccupancyGrid.addSample` behavior and ensure point-order independence in carving
+- Correct `WEBXR_TO_NUE` imports to the correct subpath and add the missing entry file
+- Close recorder payload field-drop seams (audit F2/F3/F4)
+
+### Refactoring
+
+- Make `DepthSample.points` readonly to enforce the no-mutation invariant
+- Hoist the projection inverse + camera quaternion to a sample-scoped `DepthUnprojector`
+- Pass `projectionMatrix` straight to `mat4.invert` in depth-unprojection
 
 ## [1.1.0] — 2026-06-08
 
