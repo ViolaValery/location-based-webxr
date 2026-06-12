@@ -161,6 +161,31 @@ describe('wireOccupancyGridSubscribers', () => {
     dispose();
   });
 
+  it('still clears the visualizer when grid.clear() throws on swap', () => {
+    // Why this matters: grid and visualizer clears are independent
+    // best-effort. A throwing grid.clear() must not skip visualizer.clear(),
+    // otherwise the cube view keeps rendering the now-stale grid after a swap.
+    const grid = makeGridSpy();
+    grid.clear.mockImplementationOnce(() => {
+      throw new Error('clear boom');
+    });
+    const visualizer = makeVisualizerSpy();
+    const onError = vi.fn();
+    const dispose = wireOccupancyGridSubscribers({
+      storeRef,
+      grid,
+      visualizer,
+      onError,
+    });
+
+    storeRef.set(makeStore());
+    expect(grid.clear).toHaveBeenCalledTimes(1);
+    expect(visualizer.clear).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledTimes(1);
+
+    dispose();
+  });
+
   it('stops processing after dispose', () => {
     const grid = makeGridSpy();
     const dispose = wireOccupancyGridSubscribers({

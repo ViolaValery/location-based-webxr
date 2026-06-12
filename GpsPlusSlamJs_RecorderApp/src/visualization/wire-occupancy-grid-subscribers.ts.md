@@ -20,7 +20,7 @@ Plan: `GpsPlusSlamJs_Docs/docs/2026-06-11-depth-occupancy-grid-port-plan.md` §3
 
 1. **Every sample folds exactly once** — reference comparison on `latestDepthSample`; unrelated dispatches are no-ops. A sample already present at attach time is seeded once.
 2. **Samples are never throttled — only refreshes are.** Leading-edge + trailing-edge throttle: first sample after a quiet period refreshes immediately; bursts (replay re-dispatches much faster than 1 Hz) coalesce into one trailing refresh per interval, so the final state always renders.
-3. **Best-effort:** `addSample`/`refresh`/`clear` failures go to `onError`; a failed `addSample` skips that refresh but later samples still flow.
+3. **Best-effort:** `addSample`/`refresh`/`clear` failures go to `onError`; a failed `addSample` skips that refresh but later samples still flow. On swap, `grid.clear()` and `visualizer.clear()` are **independent** best-effort calls — a throwing `grid.clear()` still runs `visualizer.clear()`, so the cube view never keeps rendering a stale grid.
 4. Uses `Date.now()` + `setTimeout` (fake-timer friendly).
 
 ## Examples

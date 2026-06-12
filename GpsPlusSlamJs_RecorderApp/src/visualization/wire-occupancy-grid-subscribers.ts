@@ -140,8 +140,14 @@ export function wireOccupancyGridSubscribers<TGrid extends OccupancyGridSink>(
     detach();
     cancelPendingRefresh();
     lastRefreshTime = -Infinity;
+    // Independent best-effort: a throwing grid.clear() must not skip
+    // visualizer.clear(), or the cube view keeps rendering the stale grid.
     try {
       grid.clear();
+    } catch (err) {
+      onError?.(err);
+    }
+    try {
       visualizer.clear();
     } catch (err) {
       onError?.(err);
