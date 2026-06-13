@@ -37,8 +37,12 @@ import {
   syncToExternalZip,
   exportSessionAsZip,
   type ZipExportResult,
+  type ZipExportContributor,
 } from 'gps-plus-slam-app-framework/storage/zip-export';
 import { createRefPointsZipContributor } from '../storage/ref-points-zip-contributor';
+import { createColmapZipContributor } from '../colmap/colmap-zip-contributor';
+import { selectFrameTilesInWebXR } from 'gps-plus-slam-app-framework/state';
+import { getOccupancyGrid } from '../state/occupancy-grid-provider';
 import {
   startGpsWatch,
   stopGpsWatch,
@@ -225,6 +229,33 @@ export function createRecordingSessionHandlers(
   // --- Internal helpers ---
 
   /**
+   * Build the ZIP export contributors for the current session. Used by BOTH
+   * the periodic crash-safety sync and the final export so the on-disk backup
+   * is continuously up to date (a contributor added here therefore runs on
+   * every sync — COLMAP export plan Q2).
+   *
+   * The COLMAP contributor reads the maintained live state directly (poses via
+   * `selectFrameTilesInWebXR`, the session-constant `projectionMatrix` from the
+   * latest depth sample, and the shared occupancy grid) — never a from-scratch
+   * re-parse of `actions/`, which would be O(session²) over a recording.
+   */
+  function buildZipContributors(): ZipExportContributor[] {
+    return [
+      createRefPointsZipContributor(
+        getCurrentScenarioHandle(),
+        currentSessionName
+      ),
+      createColmapZipContributor({
+        getFrames: () => selectFrameTilesInWebXR(deps.getStore().getState()),
+        getProjectionMatrix: () =>
+          deps.getStore().getState().recording.latestDepthSample
+            ?.projectionMatrix,
+        getOccupancyGrid,
+      }),
+    ];
+  }
+
+  /**
    * Load and visualize reference points from prior sessions in the current scenario.
    */
   async function loadPriorReferencePoints(): Promise<void> {
@@ -402,12 +433,7 @@ export function createRecordingSessionHandlers(
             scenarioName,
             currentSessionName,
             {
-              contributors: [
-                createRefPointsZipContributor(
-                  getCurrentScenarioHandle(),
-                  currentSessionName
-                ),
-              ],
+              contributors: buildZipContributors(),
             }
           );
         },
@@ -593,12 +619,7 @@ export function createRecordingSessionHandlers(
           scenarioName,
           currentSessionName,
           {
-            contributors: [
-              createRefPointsZipContributor(
-                getCurrentScenarioHandle(),
-                currentSessionName
-              ),
-            ],
+            contributors: buildZipContributors(),
           }
         );
         lastSyncResult = result;
