@@ -31,7 +31,9 @@ Records: `ColmapImageRecord { imageId, pose: ColmapPose, name }`,
   further transform and are already registered with the camera extrinsics.
   (This corrects the plan's earlier §5 wording about converting points "with the
   same transform as cameras" — with this camera convention that would
-  _misregister_ them.)
+  _misregister_ them.) The contributor supplies each point as the **exact
+  per-cell surface centroid** (`OccupancyGrid.getCellPoint`, follow-up Item A),
+  not the 15 cm-lattice center — the serializer is agnostic to which.
 - `qvec` is written in COLMAP order `[qw qx qy qz]` (already produced that way by
   `webxrToColmapPose`).
 - Tracks and keypoint lines are intentionally empty — valid for 3DGS-init

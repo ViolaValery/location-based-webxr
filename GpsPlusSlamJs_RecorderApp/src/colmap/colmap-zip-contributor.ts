@@ -147,7 +147,10 @@ function collectPoints(grid: OccupancyGrid | null): ColmapPoint3DRecord[] {
   const cells = grid.getOccupiedCells();
   return cells.map((cell, i) => ({
     pointId: i + 1,
-    xyz: grid.getCellCenter(cell),
+    // The exact per-cell surface point (follow-up Item A) — hugs the real
+    // surface instead of snapping to the 15 cm lattice; falls back to the
+    // cell center defensively.
+    xyz: grid.getCellPoint(cell) ?? grid.getCellCenter(cell),
     rgb: grid.getCellColor(cell) ?? FALLBACK_RGB,
     error: POINT_ERROR,
   }));

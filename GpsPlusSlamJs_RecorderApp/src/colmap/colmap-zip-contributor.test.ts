@@ -85,6 +85,37 @@ describe('createColmapZipContributor', () => {
     expect(pointLines[0]).toMatch(/^1 \S+ \S+ \S+ 10 20 30 \S+$/);
   });
 
+  it('emits the exact per-cell surface point, not the lattice center (Item A)', async () => {
+    const grid = new OccupancyGrid();
+    // depth 2 at center screen → exact point [0,0,-2]; with 0.15 m cells the
+    // lattice center is [0,0,-1.95], so exact ≠ center.
+    grid.addSample({
+      timestamp: 0,
+      cameraPos: [0, 0, 0],
+      cameraRot: [0, 0, 0, 1],
+      projectionMatrix: PROJECTION,
+      points: [{ screenX: 0.5, screenY: 0.5, depthM: 2 }],
+    });
+    const cell = grid.getOccupiedCells()[0]!;
+    const exact = grid.getCellPoint(cell)!;
+    expect(exact).not.toEqual(grid.getCellCenter(cell)); // sanity
+
+    const { files } = await runContributor({
+      getFrames: () => [frame()],
+      getProjectionMatrix: () => PROJECTION,
+      getOccupancyGrid: () => grid,
+    });
+    const xyz = files
+      .get('sparse/0/points3D.txt')!
+      .split('\n')
+      .find((l) => /^\d+ /.test(l))!
+      .split(' ');
+    // POINT3D_ID X Y Z R G B ERROR
+    expect(Number(xyz[1])).toBeCloseTo(exact[0], 5);
+    expect(Number(xyz[2])).toBeCloseTo(exact[1], 5);
+    expect(Number(xyz[3])).toBeCloseTo(exact[2], 5);
+  });
+
   it('uses the bare image filename as NAME (image_path → images/)', async () => {
     const { files } = await runContributor({
       getFrames: () => [

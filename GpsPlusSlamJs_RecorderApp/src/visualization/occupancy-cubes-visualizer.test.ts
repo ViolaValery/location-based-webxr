@@ -28,13 +28,17 @@ import { WEBXR_TO_NUE } from 'gps-plus-slam-app-framework/ar/webxr-nue-basis';
 function makeGridSource(
   cells: GridCell[],
   cellSizeM = 0.15,
-  getCellColor: OccupancyGridSource['getCellColor'] = () => null
+  getCellColor: OccupancyGridSource['getCellColor'] = () => null,
+  getCellPoint?: OccupancyGridSource['getCellPoint']
 ): OccupancyGridSource & { getOccupiedCells: ReturnType<typeof vi.fn> } {
   return {
     getOccupiedCells: vi.fn(() => cells),
     getCellCenter: (cell: GridCell) =>
       [cell[0] * cellSizeM, cell[1] * cellSizeM, cell[2] * cellSizeM] as const,
     getCellColor,
+    // Optional: when absent, the visualizer falls back to getCellCenter — the
+    // legacy behavior the other tests still assert.
+    ...(getCellPoint ? { getCellPoint } : {}),
   };
 }
 
@@ -99,6 +103,31 @@ describe('OccupancyCubesVisualizer', () => {
       expect(s).toBeCloseTo(0.025);
     }
 
+    visualizer.dispose();
+  });
+
+  it('draws the cube at the exact per-cell point when the grid provides one (Item A)', () => {
+    // With getCellPoint present, the cube sits at the real surface point, NOT
+    // the lattice center (cell [0,0,-1] · 0.5 would be [0,0,-0.5]).
+    const arSpaceNode = new THREE.Group();
+    const visualizer = new OccupancyCubesVisualizer(arSpaceNode);
+    const exact = [0.07, -0.03, -0.42] as const;
+    visualizer.refresh(
+      makeGridSource(
+        [[0, 0, -1]],
+        0.5,
+        () => null,
+        () => exact
+      )
+    );
+    const mesh = findMesh(arSpaceNode);
+    const matrix = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    mesh.getMatrixAt(0, matrix);
+    pos.setFromMatrixPosition(matrix);
+    expect(pos.x).toBeCloseTo(0.07);
+    expect(pos.y).toBeCloseTo(-0.03);
+    expect(pos.z).toBeCloseTo(-0.42);
     visualizer.dispose();
   });
 

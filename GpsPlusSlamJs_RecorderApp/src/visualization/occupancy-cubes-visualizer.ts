@@ -37,6 +37,13 @@ export interface OccupancyGridSource {
   getOccupiedCells(minObservations?: number): readonly GridCell[];
   getCellCenter(cell: GridCell): readonly [number, number, number];
   /**
+   * Per-cell average of the EXACT unprojected surface points (follow-up
+   * Item A), or null when unavailable. Optional so older grid doubles still
+   * satisfy the interface; when present, cubes are drawn here (hugging the
+   * real surface) instead of at the lattice `getCellCenter`.
+   */
+  getCellPoint?(cell: GridCell): readonly [number, number, number] | null;
+  /**
    * Per-cell average camera color (0–255 per channel, Iter 8), or null
    * when the cell carries no color — the cube then falls back to the
    * height ramp.
@@ -143,7 +150,9 @@ export class OccupancyCubesVisualizer {
     for (let i = 0; i < cells.length; i++) {
       const cell = cells[i];
       if (cell === undefined) continue;
-      const [x, y, z] = grid.getCellCenter(cell);
+      // Draw at the exact per-cell surface point when available (Item A),
+      // falling back to the lattice center for grids without it.
+      const [x, y, z] = grid.getCellPoint?.(cell) ?? grid.getCellCenter(cell);
       matrix.makeScale(this.cubeSizeM, this.cubeSizeM, this.cubeSizeM);
       matrix.setPosition(x, y, z);
       this.mesh.setMatrixAt(i, matrix);

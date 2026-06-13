@@ -32,13 +32,28 @@ Iter 3.
 - **NAME = bare filename** (`images/frame-000001.jpg` → `frame-000001.jpg`); the
   user points COLMAP `image_path` at the ZIP's `images/`. Legacy `frames/`
   prefixes are stripped the same way.
-- **World frame:** occupancy-grid centers are passed to `points3D` untransformed
-  — raw WebXR world IS the COLMAP world (Iter-1 camera-only basis change), so
-  points and cameras stay registered.
+- **Point source:** each `points3D` row is the **exact per-cell surface point**
+  (`getCellPoint(cell) ?? getCellCenter(cell)`, follow-up Item A) — the
+  running-average of the measured points in the cell, hugging the real surface
+  instead of snapping to the 15 cm lattice.
+- **World frame:** points are passed to `points3D` untransformed — raw WebXR
+  world IS the COLMAP world (Iter-1 camera-only basis change), so points and
+  cameras stay registered.
 - **Color fallback:** cells with no observed RGB (`getCellColor` → null) emit
   mid-gray `128 128 128` rather than black.
 - **Empty grid:** still emits a valid model (cameras + images) with an empty
   `points3D.txt`.
+
+## Known: scene loads upside-down (manual fix)
+
+The exported world is raw-WebXR **+Y-up**; COLMAP/3DGS viewers (Lichtfeld
+Studio, etc.) conventionally treat the world as **+Y-down gravity**, so the
+reconstruction loads **upside-down** (otherwise consistent — not mirrored, not
+mis-scaled). **Fix in the viewer: rotate the splat 180° about the X axis.** This
+is a deliberate decision (follow-up Item B, Q-B1) to keep the export untouched
+rather than fold a world transform into every file; the analysis of the
+in-export fix (a shared `G = diag(1,−1,−1)` world basis change) is recorded in
+the follow-up plan should we ever want upright-by-default.
 
 ## Wiring
 

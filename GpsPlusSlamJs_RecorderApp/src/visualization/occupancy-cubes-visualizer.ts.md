@@ -9,11 +9,11 @@ Plan: `GpsPlusSlamJs_Docs/docs/2026-06-11-depth-occupancy-grid-port-plan.md` §3
 ## Public API
 
 - **`new OccupancyCubesVisualizer(arSpaceNode, options?)`** — `arSpaceNode` is the node that receives the alignment matrix (`arWorldGroup` live, `replaySceneState.arWorldGroup` in replay), injected (never `getArWorldGroup()` inside the class). Options: `maxInstances` (default 2000), `minObservations` (default 1, forwarded to `getOccupiedCells` as the noise filter), `cubeSizeM` (rendered cube edge length, default 0.025 — deliberately much smaller than the 0.15 m grid cell so voxels stay readable; field-tuned down from the initial 0.1 after on-device review), `rng` (default `Math.random`; injected for deterministic tests).
-- **`refresh(grid: OccupancyGridSource): void`** — redraw from the grid (cubes at `getCellCenter`, scaled to `cubeSizeM`). Over the cap: unbiased partial Fisher–Yates subset.
+- **`refresh(grid: OccupancyGridSource): void`** — redraw from the grid (cubes at the exact per-cell point `getCellPoint(cell)` when the grid provides one, else the lattice `getCellCenter`; follow-up Item A), scaled to `cubeSizeM`. Over the cap: unbiased partial Fisher–Yates subset.
 - **`clear(): void`** — hides all cubes (count 0); the mesh stays for the next refresh (store-swap path).
 - **`dispose(): void`** — removes the mesh from its parent and disposes instance buffers, geometry, material. `refresh` after dispose is a safe no-op.
 - **`getCount(): number`** — cubes currently drawn.
-- **`OccupancyGridSource`** — the read surface required of the grid (`getOccupiedCells`, `getCellCenter`, `getCellColor`); structurally satisfied by the framework's `OccupancyGrid`.
+- **`OccupancyGridSource`** — the read surface required of the grid (`getOccupiedCells`, `getCellCenter`, `getCellColor`, and optional `getCellPoint`); structurally satisfied by the framework's `OccupancyGrid`.
 
 ## Invariants & Assumptions
 
