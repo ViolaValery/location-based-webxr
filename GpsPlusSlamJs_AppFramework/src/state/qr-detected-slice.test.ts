@@ -9,6 +9,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { quat } from 'gl-matrix';
+import type { Quaternion } from 'gps-plus-slam-js';
 import {
   qrDetectedReducer,
   recordQrDetection,
@@ -21,6 +23,8 @@ import {
   selectQrMarker,
   selectQrSize,
   selectResolvedQrSizeM,
+  selectStableQrPose,
+  selectQrPoseStability,
   medianQrPosition,
   DEFAULT_QR_MAX_HISTORY,
   type QrDetectedState,
@@ -217,6 +221,97 @@ describe('qrDetectedReducer', () => {
     expect(Object.keys(s.markers)).toEqual(['B']);
     s = qrDetectedReducer(s, clearAllQrMarkers());
     expect(s.markers).toEqual({});
+  });
+});
+
+/** A detection entry whose world rotation is a yaw of `deg` about +Y. */
+function yawEntry(text: string, t: number, deg: number): QrDetectionEntry {
+  const q = quat.create();
+  quat.setAxisAngle(q, [0, 1, 0], (deg * Math.PI) / 180);
+  quat.normalize(q, q);
+  const rotation: Quaternion = [q[0], q[1], q[2], q[3]];
+  return {
+    text,
+    qrPoseWorld: { position: [0, 0, -1], rotation },
+    qrPoseInCamera: { position: [0, 0, -1], rotation: [0, 0, 0, 1] },
+    reprojectionErrorPx: 0,
+    timestamp: t,
+  };
+}
+
+describe('selectStableQrPose / selectQrPoseStability', () => {
+  const opts = { window: 8, minObservations: 5, maxRotationSpreadDeg: 5 };
+
+  it('is unknown / null for an unseen marker', () => {
+    const s = init();
+    expect(selectQrPoseStability({ qrDetected: s }, 'A', opts).status).toBe(
+      'unknown'
+    );
+    expect(selectStableQrPose({ qrDetected: s }, 'A', opts)).toBeNull();
+  });
+
+  it('stays measuring (null) until enough low-spread observations accumulate', () => {
+    let s = init();
+    for (let t = 1; t <= 4; t++) {
+      s = qrDetectedReducer(s, recordQrDetection(yawEntry('A', t, 30)));
+    }
+    // 4 < minObservations(5) → measuring, not yet trusted.
+    expect(selectQrPoseStability({ qrDetected: s }, 'A', opts).status).toBe(
+      'measuring'
+    );
+    expect(selectStableQrPose({ qrDetected: s }, 'A', opts)).toBeNull();
+  });
+
+  it('returns the filtered pose once the window converges', () => {
+    let s = init();
+    for (let t = 1; t <= 6; t++) {
+      s = qrDetectedReducer(s, recordQrDetection(yawEntry('A', t, 30)));
+    }
+    expect(selectQrPoseStability({ qrDetected: s }, 'A', opts).status).toBe(
+      'stable'
+    );
+    const pose = selectStableQrPose({ qrDetected: s }, 'A', opts);
+    expect(pose).not.toBeNull();
+    expect(pose!.position).toEqual([0, 0, -1]);
+  });
+
+  it('does NOT lock when a single bad-rotation frame is injected into a steady stream', () => {
+    let s = init();
+    for (let t = 1; t <= 5; t++) {
+      s = qrDetectedReducer(s, recordQrDetection(yawEntry('A', t, 30)));
+    }
+    // Already stable; the filtered pose is the steady 30° yaw.
+    const before = selectStableQrPose({ qrDetected: s }, 'A', opts);
+    expect(before).not.toBeNull();
+    // Inject one wild outlier rotation (90° off). The robust mean must reject it
+    // — the stable pose must not swing toward the bad frame (regression for the
+    // reported jitter feeding the vote).
+    s = qrDetectedReducer(s, recordQrDetection(yawEntry('A', 6, 120)));
+    const after = selectStableQrPose({ qrDetected: s }, 'A', opts);
+    expect(after).not.toBeNull();
+    // before/after rotations differ by < 2° despite the injected 90° outlier.
+    const ga = quat.normalize(
+      quat.create(),
+      quat.fromValues(
+        before!.rotation[0],
+        before!.rotation[1],
+        before!.rotation[2],
+        before!.rotation[3]
+      )
+    );
+    const gb = quat.normalize(
+      quat.create(),
+      quat.fromValues(
+        after!.rotation[0],
+        after!.rotation[1],
+        after!.rotation[2],
+        after!.rotation[3]
+      )
+    );
+    const d = quat.dot(ga, gb);
+    const angleDeg =
+      (Math.acos(Math.min(1, Math.max(-1, 2 * d * d - 1))) * 180) / Math.PI;
+    expect(angleDeg).toBeLessThan(2);
   });
 });
 

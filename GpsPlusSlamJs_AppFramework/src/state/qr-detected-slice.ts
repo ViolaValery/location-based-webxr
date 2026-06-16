@@ -34,11 +34,22 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { Vector3 } from 'gps-plus-slam-js';
 import type { Pose } from '../ar/qr-pose.js';
 import type { QrSizeEstimate } from '../ar/qr-size-from-depth.js';
+import {
+  evaluateQrPoseStability,
+  type QrPoseStability,
+  type QrPoseStabilityOptions,
+} from '../ar/qr-pose-aggregation.js';
 
 // Re-exported so consumers of the slice keep importing the size lifecycle types
 // from one place. They are DEFINED in `ar/qr-size-from-depth.ts` (where size is
 // measured) so this slice can use them without `ar` ever importing `state`.
 export type { QrSizeStatus, QrSizeEstimate } from '../ar/qr-size-from-depth.js';
+// Same pattern for the pose-stability lifecycle (defined in `ar/qr-pose-aggregation.ts`).
+export type {
+  QrPoseStabilityStatus,
+  QrPoseStability,
+  QrPoseStabilityOptions,
+} from '../ar/qr-pose-aggregation.js';
 
 /**
  * Default ring-buffer cap per marker. Bounded so an overlay that never prunes
@@ -300,4 +311,43 @@ export function medianQrPosition(
   const ys = entries.map((e) => e.qrPoseWorld.position[1]);
   const zs = entries.map((e) => e.qrPoseWorld.position[2]);
   return [medianOf(xs), medianOf(ys), medianOf(zs)];
+}
+
+/**
+ * The pose-stability lifecycle for a marker, derived from its raw detection ring
+ * buffer (NOT stored separately — the detections are the source of truth, unlike
+ * the depth-measured size which is accumulated outside the buffer). Mirrors the
+ * size lifecycle's `unknown → measuring → stable` shape so the HUD can show
+ * "converging…" vs "stable". See `ar/qr-pose-aggregation.ts`.
+ */
+export function selectQrPoseStability(
+  state: RootWithQrDetected,
+  text: string,
+  options?: QrPoseStabilityOptions
+): QrPoseStability {
+  const marker = state.qrDetected.markers[text];
+  const poses = marker ? marker.detections.map((d) => d.qrPoseWorld) : [];
+  return evaluateQrPoseStability(poses, options);
+}
+
+/**
+ * The robust filtered QR world pose, exposed ONLY once the stability gate is
+ * `stable` (else `null` — "keep accumulating"). This is the pose analogue of
+ * {@link selectResolvedQrSizeM}: the `resolveStablePose`-style bridge an app
+ * injects into the QR controller / demo so the `ar` layer never imports the
+ * slice. The high-weight vote and the smooth overlay consume THIS, never the raw
+ * latest pose (which stays available via {@link selectLatestQrDetection} for
+ * scanning feedback / overlay persistence across misses).
+ *
+ * ```ts
+ * resolveStablePose: (text) => selectStableQrPose(store.getState(), text),
+ * ```
+ */
+export function selectStableQrPose(
+  state: RootWithQrDetected,
+  text: string,
+  options?: QrPoseStabilityOptions
+): Pose | null {
+  const stability = selectQrPoseStability(state, text, options);
+  return stability.status === 'stable' ? stability.pose : null;
 }

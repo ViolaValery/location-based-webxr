@@ -59,6 +59,11 @@ export {
   selectLatestQrDetection,
   selectQrSize,
   selectResolvedQrSizeM,
+  selectStableQrPose,
+  selectQrPoseStability,
+  type QrPoseStabilityStatus,
+  type QrPoseStability,
+  type QrPoseStabilityOptions,
   medianQrPosition,
 } from './qr-detected-slice.js';
 
