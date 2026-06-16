@@ -8,26 +8,61 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { Group } from "three";
+import { Group, Vector3 } from "three";
+import type { Object3D } from "three";
 import type { Pose } from "gps-plus-slam-app-framework/ar";
 import { createQrDebugView } from "./qr-debug-view";
 
 const pose: Pose = { position: [1, 2, -3], rotation: [0, 0, 0, 1] };
 
+/** The axis + cube hang off an internal WEBXR_TO_NUE basis node, not `parent`. */
+function objectsOf(parent: Group): { axis: Object3D; cube: Object3D } {
+  const basis = parent.children[0]!;
+  return { axis: basis.children[0]!, cube: basis.children[1]! };
+}
+
 describe("createQrDebugView", () => {
-  it("adds two hidden objects (axis + cube) to the parent", () => {
+  it("adds two hidden objects (axis + cube) under a basis node", () => {
     const parent = new Group();
     createQrDebugView(parent);
-    expect(parent.children).toHaveLength(2);
-    expect(parent.children.every((c) => c.visible === false)).toBe(true);
+    // One internal basis node under the parent; axis + cube under that.
+    expect(parent.children).toHaveLength(1);
+    const { axis, cube } = objectsOf(parent);
+    expect(axis.visible).toBe(false);
+    expect(cube.visible).toBe(false);
+  });
+
+  /**
+   * Why this test matters (scene-frame bug, 4th recurrence):
+   * The QR pose is in RAW WebXR space (depth-unprojected), but `parent`
+   * (arWorldGroup) local space is NUE. The objects must ride the SAME
+   * `WEBXR_TO_NUE` basis the camera does, or they're East/North axis-swapped
+   * and never line up with the camera/QR on a real device. A raw-WebXR point
+   * [1,0,0] (East) must end up at NUE world [0,0,1] (East), via WEBXR_TO_NUE
+   * (NUE_X=-WebXR_Z, NUE_Y=WebXR_Y, NUE_Z=WebXR_X).
+   */
+  it("places objects through the WEBXR_TO_NUE basis (rides the camera frame)", () => {
+    const parent = new Group(); // arWorldGroup: identity, NUE local space
+    const view = createQrDebugView(parent);
+    view.update({ position: [1, 0, 0], rotation: [0, 0, 0, 1] }, 0.2);
+    parent.updateMatrixWorld(true);
+
+    const { axis } = objectsOf(parent);
+    const world = new Vector3();
+    axis.getWorldPosition(world);
+    expect(world.x).toBeCloseTo(0, 6);
+    expect(world.y).toBeCloseTo(0, 6);
+    expect(world.z).toBeCloseTo(1, 6);
   });
 
   it("reveals + glues the objects to the pose at the measured size on update", () => {
     const parent = new Group();
     const view = createQrDebugView(parent);
     view.update(pose, 0.2);
-    expect(parent.children.every((c) => c.visible)).toBe(true);
-    const cube = parent.children[1]!;
+    const { axis, cube } = objectsOf(parent);
+    expect(axis.visible).toBe(true);
+    expect(cube.visible).toBe(true);
+    // Local pose under the basis node (the raw-WebXR coordinates).
     expect(cube.position.x).toBeCloseTo(1, 6);
     expect(cube.position.y).toBeCloseTo(2, 6);
     // In-plane span equals the measured size (depth is the thin slab dimension).
@@ -43,8 +78,7 @@ describe("createQrDebugView", () => {
     const parent = new Group();
     const view = createQrDebugView(parent);
     view.update(pose, null);
-    const axis = parent.children[0]!;
-    const cube = parent.children[1]!;
+    const { axis, cube } = objectsOf(parent);
     expect(axis.visible).toBe(true);
     expect(axis.position.x).toBeCloseTo(1, 6);
     expect(cube.visible).toBe(false);
@@ -57,7 +91,7 @@ describe("createQrDebugView", () => {
     const view = createQrDebugView(parent);
     view.update(pose, null); // size not measured yet → axis only
     view.update(pose, 0.2); // size arrives → cube appears
-    const cube = parent.children[1]!;
+    const { cube } = objectsOf(parent);
     expect(cube.visible).toBe(true);
     expect(cube.scale.x).toBeCloseTo(0.2, 6);
   });
@@ -67,9 +101,11 @@ describe("createQrDebugView", () => {
     const view = createQrDebugView(parent);
     view.update(pose, 0.2);
     view.clear();
-    expect(parent.children.every((c) => c.visible === false)).toBe(true);
-    expect(parent.children).toHaveLength(2); // still attached (no flicker)
+    const { axis, cube } = objectsOf(parent);
+    expect(axis.visible).toBe(false);
+    expect(cube.visible).toBe(false);
+    expect(parent.children).toHaveLength(1); // basis node still attached (no flicker)
     view.dispose();
-    expect(parent.children).toHaveLength(0);
+    expect(parent.children).toHaveLength(0); // basis node (and its objects) removed
   });
 });

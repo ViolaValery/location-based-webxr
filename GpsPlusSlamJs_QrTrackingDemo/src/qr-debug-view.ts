@@ -9,11 +9,26 @@
  * lock; `clear()` is NOT called on a miss, so the objects keep their last pose
  * and never flicker between throttled detections. They stay hidden until the
  * first `update()`.
+ *
+ * Coordinate space (IMPORTANT): the QR pose is in **raw WebXR** space (the
+ * corners are depth-unprojected with the raw WebXR camera pose), but the
+ * injected `parent` (`arWorldGroup`) local space is **NUE**. So the objects must
+ * ride the SAME `WEBXR_TO_NUE` basis the camera does (`arWorldGroup →
+ * basisChangeNode → arpose → camera`). We mirror that by hanging them off an
+ * internal basis node carrying `WEBXR_TO_NUE`; parenting them directly under
+ * `arWorldGroup` would leave them East/North axis-swapped and they would NOT
+ * line up with the camera/QR on a real device (the recurring scene-frame bug —
+ * see the frame-tile / occupancy-cube / hit-test-reticle precedents). We never
+ * touch the camera; WebXR owns its pose.
  */
 
-import { AxesHelper, BoxGeometry, Mesh, MeshBasicMaterial } from "three";
+import { AxesHelper, BoxGeometry, Group, Mesh, MeshBasicMaterial } from "three";
 import type { Object3D } from "three";
 import type { Pose } from "gps-plus-slam-app-framework/ar";
+// Deep subpath on purpose (same rationale as the recorder's frame-tile
+// visualizer): the /ar barrel eagerly evaluates heavy deps; this module needs
+// only the constant matrix, which depends on three alone.
+import { WEBXR_TO_NUE } from "gps-plus-slam-app-framework/ar/webxr-nue-basis";
 
 /** A thin slab so the cube's front face sits on the printed code (1 cm deep). */
 const CUBE_DEPTH_M = 0.01;
@@ -40,6 +55,16 @@ export interface QrDebugView {
  * start hidden; the first `update()` reveals and positions them.
  */
 export function createQrDebugView(parent: Object3D): QrDebugView {
+  // Static basis node carrying WEBXR_TO_NUE (matrixAutoUpdate=false so Three.js
+  // never recomputes it from position/quaternion/scale). The debug objects hang
+  // off it, so their world pose = parent × WEBXR_TO_NUE × pose — the camera's
+  // chain. Mirrors webxr-session's `basisChangeNode`.
+  const basis = new Group();
+  basis.name = "qr-debug-basis";
+  basis.matrix.copy(WEBXR_TO_NUE);
+  basis.matrixAutoUpdate = false;
+  parent.add(basis);
+
   const axes = new AxesHelper(0.15);
   axes.visible = false;
 
@@ -52,8 +77,8 @@ export function createQrDebugView(parent: Object3D): QrDebugView {
   const cube = new Mesh(new BoxGeometry(1, 1, 1), cubeMaterial);
   cube.visible = false;
 
-  parent.add(axes);
-  parent.add(cube);
+  basis.add(axes);
+  basis.add(cube);
 
   function applyPose(object: Object3D, pose: Pose): void {
     object.position.set(pose.position[0], pose.position[1], pose.position[2]);
@@ -90,8 +115,8 @@ export function createQrDebugView(parent: Object3D): QrDebugView {
       cube.visible = false;
     },
     dispose(): void {
-      parent.remove(axes);
-      parent.remove(cube);
+      // Detach the whole basis subtree (axis + cube ride it) from the parent.
+      parent.remove(basis);
       axes.dispose();
       cube.geometry.dispose();
       cubeMaterial.dispose();

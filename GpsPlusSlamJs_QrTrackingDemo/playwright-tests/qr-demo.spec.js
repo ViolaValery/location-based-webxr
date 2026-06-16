@@ -45,14 +45,19 @@ test.describe("QR-tracking demo — measure + glue flow", () => {
     await feedFrames(page, 12);
 
     const scene = await page.evaluate(() => {
-      const kids = window.__qrDemoTest.worldGroupChildren;
+      // The debug objects hang off an internal WEBXR_TO_NUE basis node, which is
+      // the single child added to arWorldGroup.
+      const top = window.__qrDemoTest.worldGroupChildren;
+      const kids = top[0]?.children ?? [];
       return {
-        count: kids.length,
+        topCount: top.length,
+        kidCount: kids.length,
         lastVisible: kids[kids.length - 1]?.visible,
       };
     });
-    // Two objects (axis + cube) added; revealed after the lock.
-    expect(scene.count).toBe(2);
+    // One basis node under arWorldGroup; axis + cube under it; revealed on lock.
+    expect(scene.topCount).toBe(1);
+    expect(scene.kidCount).toBe(2);
     expect(scene.lastVisible).toBe(true);
   });
 });
@@ -81,8 +86,9 @@ test.describe("QR-tracking demo — axis appears before the size converges", () 
     await expect(page.getByTestId("hud-size")).toHaveText("—");
 
     const scene = await page.evaluate(() => {
-      const kids = window.__qrDemoTest.worldGroupChildren;
-      // children[0] = axis, children[1] = cube (add order in createQrDebugView).
+      // Objects hang off the internal basis node (single child of arWorldGroup);
+      // basis.children[0] = axis, [1] = cube (add order in createQrDebugView).
+      const kids = window.__qrDemoTest.worldGroupChildren[0]?.children ?? [];
       return {
         count: kids.length,
         axisVisible: kids[0]?.visible,

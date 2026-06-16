@@ -2,8 +2,19 @@
 
 **Purpose:** The two §5 verification objects (Note 4): a `THREE.AxesHelper` at
 the solved QR pose and a semi-transparent cube sized to the QR so its front face
-lands on the printed corners. Both parented under `arWorldGroup` so they ride the
-alignment / transform chain like real content.
+lands on the printed corners. Both ride the alignment / transform chain like real
+content.
+
+**Coordinate space (critical):** the QR pose is in **raw WebXR** space (corners
+depth-unprojected with the raw WebXR camera pose), but `arWorldGroup` local space
+is **NUE**. So the objects hang off an internal **`WEBXR_TO_NUE` basis node**
+(matrixAutoUpdate=false) under `arWorldGroup` — mirroring `webxr-session`'s
+`basisChangeNode` — so their world pose = `arWorldGroup × WEBXR_TO_NUE × pose`,
+the SAME chain the camera rides. Parenting the objects directly under
+`arWorldGroup` (as the first version did) leaves them East/North axis-swapped and
+they do NOT line up with the camera/QR on a real device — the recurring
+scene-frame bug (frame-tile / occupancy-cube / hit-test-reticle precedents). The
+camera is owned entirely by WebXR; this module never moves it.
 
 ## Public API
 
@@ -19,6 +30,9 @@ alignment / transform chain like real content.
 
 ## Invariants
 
+- Objects hang off the internal `WEBXR_TO_NUE` basis node, not `arWorldGroup`
+  directly (see Coordinate space above). `dispose` detaches the whole basis
+  subtree.
 - Objects start hidden; first `update` reveals them.
 - **Persistence (Note 3):** `clear` is NOT called on detection misses — the
   objects keep their last pose so they don't flicker between throttled detections.
@@ -26,8 +40,9 @@ alignment / transform chain like real content.
 
 ## Tests
 
-`qr-debug-view.test.ts` — two hidden children added, reveal + glue + size on
+`qr-debug-view.test.ts` — objects added under a basis node, **world pose rides
+`WEBXR_TO_NUE`** (raw-WebXR [1,0,0] → NUE world [0,0,1]), reveal + glue + size on
 update, **axis-shown-but-cube-hidden when `sizeM` is null** + cube revealed once a
-size arrives, `clear` hides-but-keeps, `dispose` detaches. The end-to-end
-"detected but size unknown → axis visible, cube hidden" path is covered by
-`playwright-tests/qr-demo.spec.js` (the non-planar-depth fake).
+size arrives, `clear` hides-but-keeps, `dispose` detaches the basis subtree. The
+end-to-end "detected but size unknown → axis visible, cube hidden" path is covered
+by `playwright-tests/qr-demo.spec.js` (the non-planar-depth fake).
