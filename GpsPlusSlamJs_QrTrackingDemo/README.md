@@ -26,7 +26,11 @@ for the auto-size path; without it the app degrades to a manual size.
 ## Architecture
 
 - **Tested pure logic** (`src/*.ts` + colocated `*.test.ts`): `capability`,
-  `qr-debug-view`, `hud-view`, `demo-store`, `demo-controller`, `seams`.
+  `hud-view`, `demo-store`, `demo-controller`, `seams`.
+- **Shared debug overlay** — the axis+cube view is the framework's
+  `gps-plus-slam-app-framework/ar/qr-debug-view` (the same one the Recorder
+  renders), imported by `main.ts`. It is NOT a local module, so the demo and
+  Recorder cannot drift apart in how a detected QR is visualized.
 - **`main.ts`** — glue only (capability gate → boot → per-frame
   `offerFrame` → HUD). Verified via the faked Playwright e2e and manually on a
   device (`pnpm dev`).

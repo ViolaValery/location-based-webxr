@@ -13,8 +13,9 @@
  *      code. The HUD renders the live size readout.
  *
  * Pure, unit-tested logic lives in the sibling modules (`capability`,
- * `qr-debug-view`, `hud-view`, `demo-store`, `demo-controller`). This file is
- * verified manually via `pnpm dev` on an AR
+ * `hud-view`, `demo-store`, `demo-controller`); the axis+cube overlay is the
+ * shared framework `ar/qr-debug-view` (same view the Recorder renders). This
+ * file is verified manually via `pnpm dev` on an AR
  * device (the §5 on-device gate) and through the faked Playwright e2e.
  */
 
@@ -28,7 +29,14 @@ import { applyChromiumProjectionLayerWorkaround } from "gps-plus-slam-app-framew
 
 import { getSeams } from "./seams.js";
 import { createQrDemoStore, type QrDemoStore } from "./demo-store.js";
-import { createQrDebugView, type QrDebugView } from "./qr-debug-view.js";
+// Shared framework consumer view (deep subpath, NOT the heavy `/ar` barrel —
+// same rationale as the recorder's import). The demo previously shipped a
+// byte-identical local copy; it now renders the SAME overlay as the Recorder so
+// the two can't drift (e.g. the WEBXR_TO_NUE basis handling) over time.
+import {
+  createQrDebugView,
+  type QrDebugView,
+} from "gps-plus-slam-app-framework/ar/qr-debug-view";
 import { createQrDemoController } from "./demo-controller.js";
 import { toHudView, type DemoStatus } from "./hud-view.js";
 import { isDemoSupported, capabilityMessage } from "./capability.js";
