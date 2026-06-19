@@ -581,7 +581,7 @@ No errors</pre
                   class="flex items-center justify-between text-sm"
                 >
                   <span class="flex items-center gap-2">
-                    <span>📁</span>
+                    <span class="emoji-icon">📁</span>
                     <span>File Storage</span>
                   </span>
                   <span
@@ -597,7 +597,7 @@ No errors</pre
                   class="flex items-center justify-between text-sm"
                 >
                   <span class="flex items-center gap-2">
-                    <span>🥽</span>
+                    <span class="emoji-icon">🥽</span>
                     <span>AR + Depth Sensing</span>
                   </span>
                   <span
@@ -613,7 +613,7 @@ No errors</pre
                   class="flex items-center justify-between text-sm"
                 >
                   <span class="flex items-center gap-2">
-                    <span>📷</span>
+                    <span class="emoji-icon">📷</span>
                     <span>Camera</span>
                   </span>
                   <span
@@ -629,7 +629,7 @@ No errors</pre
                   class="flex items-center justify-between text-sm"
                 >
                   <span class="flex items-center gap-2">
-                    <span>🧭</span>
+                    <span class="emoji-icon">🧭</span>
                     <span>Compass</span>
                     <span class="text-xs text-gray-500">(optional)</span>
                   </span>
@@ -646,7 +646,7 @@ No errors</pre
                   class="flex items-center justify-between text-sm"
                 >
                   <span class="flex items-center gap-2">
-                    <span>📍</span>
+                    <span class="emoji-icon">📍</span>
                     <span>Location (GPS)</span>
                   </span>
                   <span
@@ -693,17 +693,22 @@ No errors</pre
                 >
                   💾 Choose Save Location...
                 </button>
-                <p id="save-status" class="text-xs text-gray-500 truncate">
-                  ❌ No save location chosen
-                </p>
+                <!-- Pure status line (D6 item 8): shows the chosen path once
+                     selected. The "no location yet" blocker is stated ONCE, on
+                     the disabled Enter AR button's #enter-ar-hint, so it is not
+                     duplicated here. -->
+                <p id="save-status" class="text-xs text-gray-500 truncate"></p>
               </div>
 
               <!-- Optional: import previous recordings to recover ref points.
                    Collapsed by default; auto-expanded by the app when the
                    chosen scenario has no saved reference points in OPFS. -->
               <details id="folder-import-section" class="space-y-1">
+                <!-- De-emphasised optional/secondary action (D6 item 10): a
+                     muted grey summary so this optional import never competes
+                     with the primary save-location + Enter AR actions. -->
                 <summary
-                  class="cursor-pointer text-xs text-blue-400 hover:text-blue-300 select-none"
+                  class="cursor-pointer text-xs text-gray-400 hover:text-gray-200 select-none"
                 >
                   📂 Import previous recordings / recover reference points
                   (optional)
@@ -790,8 +795,10 @@ No errors</pre
               </div>
             </details>
 
-            <!-- Notes -->
-            <div>
+            <!-- Notes — wrapped in a card (D6 item 7) so the setup screen
+                 reads as consistent sections rather than a mix of card and
+                 bare widgets. -->
+            <div class="bg-gray-700/50 rounded-lg p-3">
               <label class="block text-sm text-gray-400 mb-1"
                 >Session Notes (optional)</label
               >

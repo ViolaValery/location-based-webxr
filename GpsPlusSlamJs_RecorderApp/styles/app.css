@@ -163,6 +163,24 @@ body {
   pointer-events: auto;
 }
 
+/* --- Emoji-as-icon normalization [VISUAL] (D6 item 6, 2026-06-16 feedback) ---
+   Emoji are deliberately kept as iconography in the setup/permission UI (no
+   icon-font dependency, fits the no-build workflow). Their intrinsic glyph size
+   and baseline vary across devices/Android versions, which reads as a prototype.
+   This utility pins a consistent box + vertical alignment so a 📍 and a 🥽
+   occupy the same width and line up with their label text. NOTE: this only
+   normalizes LAYOUT — pinning the glyph SOURCE via an emoji web-font is a
+   separate step deferred to on-device verification (the system Noto Color Emoji
+   is the accepted fallback). */
+.emoji-icon {
+  display: inline-block;
+  width: 1.25em;
+  text-align: center;
+  font-style: normal;
+  line-height: 1;
+  vertical-align: -0.1em;
+}
+
 /* --- Legend color indicators [VISUAL] ---
    Used in the summary-map legend. Colors match VIS_COLORS in vis-colors.ts. */
 .legend-color-raw-gps {

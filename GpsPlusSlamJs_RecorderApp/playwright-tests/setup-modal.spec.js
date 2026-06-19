@@ -129,9 +129,21 @@ test.describe('Setup Modal Flow', () => {
     await expect(folderStatus).toContainText('No folder selected');
   });
 
-  test('save status shows not selected initially', async ({ page }) => {
+  // D6 item 8 (2026-06-16 user feedback): the "choose a save location" blocker
+  // is stated ONCE, on the disabled Enter AR button's hint — NOT duplicated in
+  // #save-status. So #save-status starts empty (it is a pure path-status line)
+  // and the single authoritative blocker lives in #enter-ar-hint.
+  test('save-location blocker is stated once (on the Enter AR hint, not save-status)', async ({
+    page,
+  }) => {
     const saveStatus = page.locator('#save-status');
-    await expect(saveStatus).toContainText('No save location chosen');
+    // Pure status line: empty until a save location is chosen.
+    await expect(saveStatus).toHaveText('');
+
+    // The single authoritative blocker is on the disabled primary action.
+    const enterHint = page.locator('#enter-ar-hint');
+    await expect(enterHint).toBeVisible();
+    await expect(enterHint).toContainText(/save location/i);
   });
 
   test('new scenario name input shown when no existing scenarios', async ({
@@ -182,7 +194,9 @@ test.describe('Setup Modal Flow', () => {
     const folderStatus = page.locator('#folder-status');
     const saveStatus = page.locator('#save-status');
     await expect(folderStatus).toContainText('No folder selected');
-    await expect(saveStatus).toContainText('No save location chosen');
+    // #save-status is a pure path-status line and starts empty (D6 item 8);
+    // the save-location blocker is on #enter-ar-hint instead.
+    await expect(saveStatus).toHaveText('');
   });
 
   test('WebXR warning is hidden when WebXR not checked', async ({ page }) => {
