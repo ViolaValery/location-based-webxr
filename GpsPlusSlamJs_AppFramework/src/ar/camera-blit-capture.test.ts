@@ -1022,6 +1022,41 @@ describe('camera-blit-capture', () => {
       });
     });
 
+    /**
+     * Why this test matters:
+     * `Infinity > 0` is true, so an Infinity camera dimension slips past the
+     * negated `> 0` guard exactly like NaN once did. With a finite maxEdge that
+     * yields `scale = maxEdge / Infinity = 0` → `round(Infinity * 0) = NaN`
+     * (and a NaN/0 partner), i.e. a non-finite render-target size that crashes
+     * allocation downstream. Infinity is "invalid" exactly like NaN/≤ 0, so it
+     * must take the same safe-square fallback.
+     */
+    it('falls back to a maxEdge square for Infinity camera dimensions', () => {
+      expect(computeAspectFitSize(Number.POSITIVE_INFINITY, 480, 512)).toEqual({
+        width: 512,
+        height: 512,
+      });
+      expect(computeAspectFitSize(640, Number.POSITIVE_INFINITY, 512)).toEqual({
+        width: 512,
+        height: 512,
+      });
+    });
+
+    /**
+     * Why this test matters:
+     * `Infinity >= 1` is true, so an Infinity maxEdge slips past the edge guard
+     * and `Math.floor(Infinity) = Infinity` becomes the long edge — producing
+     * {Infinity, Infinity}. An infinite pixel budget is nonsensical, so it must
+     * fall back to the default edge length while preserving aspect, exactly like
+     * the NaN/0 maxEdge cases.
+     */
+    it('falls back to the default edge length when maxEdge is Infinity', () => {
+      expect(computeAspectFitSize(640, 480, Number.POSITIVE_INFINITY)).toEqual({
+        width: DEFAULT_BLIT_CONFIG.width,
+        height: 384,
+      });
+    });
+
     it('floors the longer edge and clamps the shorter to ≥ 1', () => {
       // Extreme aspect: the short edge rounds below 1 → clamped to 1.
       const r = computeAspectFitSize(1000, 1, 512);

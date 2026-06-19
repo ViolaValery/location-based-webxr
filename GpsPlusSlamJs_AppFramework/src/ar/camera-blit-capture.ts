@@ -88,23 +88,35 @@ export function computeCaptureSize(
  * @param maxEdge      - Target length (px) of the longer output edge.
  * @returns Integer dimensions, longer edge == `maxEdge`, aspect preserved
  *   (within rounding), each clamped to ≥ 1. When `maxEdge` itself is invalid
- *   (< 1 / NaN) the longer edge falls back to `DEFAULT_BLIT_CONFIG.width` (still
- *   aspect-preserving). When the camera dimensions are invalid (≤ 0 or NaN) the
- *   aspect is unknown, so it returns a square at the (possibly defaulted) edge.
+ *   (< 1 / NaN / Infinity) the longer edge falls back to
+ *   `DEFAULT_BLIT_CONFIG.width` (still aspect-preserving). When the camera
+ *   dimensions are invalid (≤ 0 / NaN / Infinity) the aspect is unknown, so it
+ *   returns a square at the (possibly defaulted) edge.
  */
 export function computeAspectFitSize(
   cameraWidth: number,
   cameraHeight: number,
   maxEdge: number
 ): { width: number; height: number } {
-  // Guard: nonsensical maxEdge → fall back to the default square edge.
+  // Guard: nonsensical maxEdge → fall back to the default square edge. The
+  // explicit `Number.isFinite` rejects Infinity (which passes `>= 1` yet makes
+  // `Math.floor(Infinity) = Infinity` the long edge → {Infinity, Infinity}).
   const safeEdge =
-    maxEdge >= 1 ? Math.floor(maxEdge) : DEFAULT_BLIT_CONFIG.width;
+    maxEdge >= 1 && Number.isFinite(maxEdge)
+      ? Math.floor(maxEdge)
+      : DEFAULT_BLIT_CONFIG.width;
 
   // Guard: invalid camera dimensions → safe square (aspect unknown). Negated
   // `> 0` checks so NaN (where `NaN <= 0` is false) is also rejected — a NaN
   // dimension would otherwise yield {NaN, NaN} and crash render-target alloc.
-  if (!(cameraWidth > 0) || !(cameraHeight > 0)) {
+  // The explicit `Number.isFinite` additionally rejects Infinity, which passes
+  // `> 0` yet makes `scale = safeEdge / Infinity = 0` → `round(Infinity·0) = NaN`.
+  if (
+    !(cameraWidth > 0) ||
+    !Number.isFinite(cameraWidth) ||
+    !(cameraHeight > 0) ||
+    !Number.isFinite(cameraHeight)
+  ) {
     return { width: safeEdge, height: safeEdge };
   }
 
