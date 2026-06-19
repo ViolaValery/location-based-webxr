@@ -43,6 +43,17 @@ const log = createLogger('LeafletMapOverlay');
 /** Default pixel size of the Leaflet map container */
 export const DEFAULT_LEAFLET_MAP_SIZE_PX = 600;
 
+/**
+ * Diameter (px) of the ref-point markers on the in-AR minimap.
+ *
+ * Enlarged 12 → 20 px (F5-A, 2026-06-16 user feedback): the field tester
+ * reported the minimap "showed the user but not the marker". The markers WERE
+ * rendered — they were just too small to notice on the small CSS3D minimap. A
+ * bigger dot plus a thicker white halo and a drop shadow makes them the most
+ * prominent feature on the minimap (the user-position marker stays 14 px).
+ */
+export const REF_POINT_MARKER_SIZE_PX = 20;
+
 /** Default world-space size in meters (matches old MapOverlay) */
 export const DEFAULT_WORLD_SIZE = 10;
 
@@ -515,12 +526,17 @@ export class LeafletMapOverlay {
     const opacity = isPrior ? 'opacity:0.8;' : '';
     const label = isPrior ? `📌 ${name} (prior)` : name;
 
+    // F5-A: a large dot with a thick white halo + drop shadow so the ref-point
+    // marker is unmistakable on the small CSS3D minimap (was a 12 px dot the
+    // tester could not see).
+    const size = REF_POINT_MARKER_SIZE_PX;
+    const anchor = size / 2;
     return L.marker([lat, lon], {
       icon: L.divIcon({
         className: '',
-        html: `<div style="background:${color};width:12px;height:12px;border-radius:50%;border:2px solid white;${opacity}"></div>`,
-        iconSize: [12, 12],
-        iconAnchor: [6, 6],
+        html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;border:3px solid white;box-shadow:0 0 4px rgba(0,0,0,0.7);${opacity}"></div>`,
+        iconSize: [size, size],
+        iconAnchor: [anchor, anchor],
       }),
     })
       .bindPopup(label)

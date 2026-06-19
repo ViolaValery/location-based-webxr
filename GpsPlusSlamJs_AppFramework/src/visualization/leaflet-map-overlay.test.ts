@@ -21,6 +21,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
+// Resolves to the mocked leaflet (see `vi.mock('leaflet')` below); used to
+// inspect `divIcon` call args in the F5-A marker-prominence tests.
+import L from 'leaflet';
 
 // ---------------------------------------------------------------------------
 // Mock Leaflet — same pattern as summary-map.test.ts
@@ -866,6 +869,52 @@ describe('LeafletMapOverlay', () => {
   // ---------------------------------------------------------------------------
   // DOM hardcoding audit — regression tests
   // ---------------------------------------------------------------------------
+
+  describe('ref-point marker prominence (F5-A)', () => {
+    /**
+     * Why this test matters (F5-A, 2026-06-16 user feedback): the field tester
+     * reported the in-AR minimap "showed the user but not the marker". The
+     * markers were rendered but the 12 px dot was too small to notice on the
+     * small CSS3D minimap. The marker is now drawn large enough to see; this
+     * locks the rendered `divIcon` size so a future tweak can't shrink it back
+     * below a visible threshold.
+     */
+    it('draws current ref-point markers large enough to see on the minimap', () => {
+      const { overlay } = createOverlay();
+      overlay.setGpsPosition(50.1234, 8.5678);
+      overlay.show();
+      vi.mocked(L.divIcon).mockClear();
+
+      overlay.addCurrentMarker(50.1234, 8.5678, 'Bench');
+
+      expect(L.divIcon).toHaveBeenCalled();
+      const opts = vi.mocked(L.divIcon).mock.calls.at(-1)?.[0] as {
+        iconSize: [number, number];
+        html: string;
+      };
+      // Clearly larger than the old 12 px dot and at least as prominent as the
+      // 14 px user-position marker.
+      expect(opts.iconSize[0]).toBeGreaterThanOrEqual(18);
+      expect(opts.iconSize[1]).toBeGreaterThanOrEqual(18);
+      // The coloured dot in the html matches the icon box.
+      expect(opts.html).toContain(`width:${opts.iconSize[0]}px`);
+    });
+
+    it('draws prior ref-point markers at the same prominent size', () => {
+      const { overlay } = createOverlay();
+      overlay.setGpsPosition(50.2, 8.6);
+      overlay.show();
+      vi.mocked(L.divIcon).mockClear();
+
+      overlay.addPriorMarker(50.2, 8.6, 'Door');
+
+      const opts = vi.mocked(L.divIcon).mock.calls.at(-1)?.[0] as {
+        iconSize: [number, number];
+      };
+      expect(opts.iconSize[0]).toBeGreaterThanOrEqual(18);
+      expect(opts.iconSize[1]).toBeGreaterThanOrEqual(18);
+    });
+  });
 
   describe('DOM hardcoding audit regressions', () => {
     /**
