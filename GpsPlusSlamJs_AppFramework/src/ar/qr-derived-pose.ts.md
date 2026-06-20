@@ -37,6 +37,13 @@ null` — pure PnP solve of one observation (intrinsics from its projection + fr
   `deriveQrPlacement` replay over the same sequence (folds each obs once, in order,
   against its as-of depth), but avoids the O(history)-per-store-action cost that
   caused the on-device framerate ramp-down (perf-degradation follow-up / open topic D).
+  **Fold cursor advances only past observations actually folded:** an observation
+  whose as-of depth is not yet available (`resolveDepthAt` returns `null` — the
+  depth stream is separate and may lag the QR stream) is skipped **without**
+  consuming the cursor, so it is retried on a later `update` once its depth lands.
+  In steady state (depth present) the cursor still reaches the newest timestamp, so
+  the O(1)-per-detection cost is unchanged; only a transiently-depth-less tail is
+  re-attempted (bounded by the gap).
 
 ## Invariants & assumptions
 

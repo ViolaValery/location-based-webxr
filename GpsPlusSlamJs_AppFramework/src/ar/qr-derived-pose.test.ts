@@ -398,4 +398,32 @@ describe('createIncrementalQrPlacement', () => {
     expect(inc.update('m', growingHistory(3))).toBeNull();
     expect(inc.update('m', [])).toBeNull();
   });
+
+  /**
+   * Why this test matters: the as-of depth join (`resolveDepthAt`) is fed by a
+   * SEPARATE async stream, so a freshly-detected observation can transiently
+   * have no depth sample ≤ its timestamp yet (returns null) and become resolvable
+   * a tick later. The fold cursor (`lastFoldedTs`) must only advance past
+   * observations it actually folded — otherwise a depth-less observation is
+   * permanently skipped (its size contribution lost forever) even once its depth
+   * arrives, because F1 short-circuits on `newestTs <= foldedTs`.
+   */
+  it('retries depth-less observations once their depth becomes available', () => {
+    let depthReady = false;
+    const inc = createIncrementalQrPlacement({
+      resolveDepthAt: () => (depthReady ? constantDepthContext(DIST) : null),
+      solver: new PlanarPnpSquare(),
+    });
+    const obs = growingHistory(5);
+
+    // First pass: depth not yet available → every observation is skipped, so the
+    // marker is not sizeable and the cursor must NOT advance past them.
+    expect(inc.update('m', obs)).toBeNull();
+
+    // Depth now available: the SAME observations must be folded and solved.
+    depthReady = true;
+    const placement = inc.update('m', obs);
+    expect(placement).not.toBeNull();
+    expect(placement!.sizeM).toBeCloseTo(SIZE, 2);
+  });
 });

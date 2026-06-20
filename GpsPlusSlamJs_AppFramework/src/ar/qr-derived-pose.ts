@@ -247,8 +247,14 @@ export function createIncrementalQrPlacement(
       // F1: nothing new for this marker → return the cached placement untouched.
       if (newestTs <= foldedTs) return lastPlacement.get(text) ?? null;
 
-      // F2: fold ONLY the observations newer than the last fold (each obs once
-      // across the marker's lifetime), each against its own as-of depth.
+      // F2: fold ONLY the observations newer than the last fold (each obs at most
+      // once across the marker's lifetime), each against its own as-of depth.
+      // The cursor advances ONLY to the last observation we actually folded — an
+      // observation whose as-of depth is not yet available (the depth stream is
+      // separate and may lag) is skipped WITHOUT consuming the cursor, so it is
+      // retried on a future update once its depth arrives. Advancing to `newestTs`
+      // unconditionally would drop those observations' size contribution forever.
+      let maxFoldedTs = foldedTs;
       for (const o of observations) {
         if (o.timestamp <= foldedTs) continue;
         const ctx = deps.resolveDepthAt(o.timestamp);
@@ -259,8 +265,9 @@ export function createIncrementalQrPlacement(
           { width: o.imageWidth, height: o.imageHeight },
           ctx
         );
+        maxFoldedTs = o.timestamp;
       }
-      lastFoldedTs.set(text, newestTs);
+      lastFoldedTs.set(text, maxFoldedTs);
 
       // Solve the LATEST observation with the accumulated running-median size.
       const sizeM = measurer.current(text).estimateM;
