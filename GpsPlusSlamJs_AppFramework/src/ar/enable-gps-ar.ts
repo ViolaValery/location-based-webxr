@@ -316,15 +316,33 @@ export function createEnableGpsArController(
       // re-enters enable() without cleaning up, so without this the session and
       // watch leak and accumulate. A pre-initAR failure leaves nothing to undo.
       if (sessionStarted) {
-        try {
-          if (gpsWatchActive) {
+        // Each cleanup step is isolated: a throw in one (e.g. stopGpsWatch) must
+        // not bypass the others — most importantly endARSession, whose skip would
+        // strand the WebXR session and leak the renderer. Errors are logged, not
+        // rethrown, so every step always runs.
+        if (gpsWatchActive) {
+          try {
             resolved.stopGpsWatch();
-            gpsWatchActive = false;
+          } catch (cleanupErr) {
+            log.error(
+              'stopGpsWatch during enable() cleanup threw:',
+              cleanupErr
+            );
           }
-          if (orientationWatchActive) {
+          gpsWatchActive = false;
+        }
+        if (orientationWatchActive) {
+          try {
             resolved.stopOrientationWatch();
-            orientationWatchActive = false;
+          } catch (cleanupErr) {
+            log.error(
+              'stopOrientationWatch during enable() cleanup threw:',
+              cleanupErr
+            );
           }
+          orientationWatchActive = false;
+        }
+        try {
           await resolved.endARSession();
         } catch (cleanupErr) {
           log.error(

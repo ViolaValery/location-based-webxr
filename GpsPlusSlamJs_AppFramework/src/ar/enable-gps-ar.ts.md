@@ -69,7 +69,10 @@ on teardown; any failure routes to `error`; an unsupported probe routes to
   to `error`. Without this the session + watch would strand, because `disable()`
   only runs from `running` and a retry from `error` re-enters `enable()` without
   cleaning up first (so the leak would accumulate). A failure **before** `initAR`
-  (e.g. a permission denial) starts no session, so nothing is torn down.
+  (e.g. a permission denial) starts no session, so nothing is torn down. Each
+  rollback step (`stopGpsWatch`, `stopOrientationWatch`, `endARSession`) is
+  wrapped in its **own** try/catch, so a throw in one cannot bypass the others —
+  most importantly `endARSession`, whose skip would strand the WebXR session.
 - **Teardown resilience:** `disable()` catches and logs `endARSession` rejections
   (e.g. session already ended externally) and still transitions to `ready`, so a
   failing teardown cannot strand the controller in `stopping`.

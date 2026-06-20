@@ -394,6 +394,39 @@ describe('createEnableGpsArController — enable() failure paths', () => {
     expect(deps.startGpsWatch).not.toHaveBeenCalled();
     expect(deps.startOrientationWatch).not.toHaveBeenCalled();
   });
+
+  // Why this test matters: a *later* enable() failure (after initAR resolved)
+  // rolls back the started session + watches. Those cleanup steps must be
+  // isolated — if stopGpsWatch() throws, the previously-shared try block bypassed
+  // endARSession(), stranding the WebXR session and leaking the renderer. The
+  // most important cleanup step (ending the session) must always run.
+  it('still ends the AR session when a watch-stop throws during cleanup', async () => {
+    const deps = makeDeps({
+      // Fails the enable() *after* initAR + startGpsWatch succeeded, so cleanup
+      // runs with gpsWatchActive === true.
+      startOrientationWatch: vi.fn(() => {
+        throw new Error('orientation watch failed to start');
+      }),
+      // The cleanup step that previously masked the rest when it threw.
+      stopGpsWatch: vi.fn(() => {
+        throw new Error('stopGpsWatch blew up');
+      }),
+    });
+    const controller = createEnableGpsArController(deps);
+
+    const result = await controller.enable({
+      container: fakeContainer(),
+      onGpsPosition: vi.fn(),
+      onOrientation: vi.fn(),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(deps.startGpsWatch).toHaveBeenCalledTimes(1);
+    expect(deps.stopGpsWatch).toHaveBeenCalledTimes(1);
+    // The bug: a throwing stopGpsWatch bypassed endARSession, leaking the session.
+    expect(deps.endARSession).toHaveBeenCalledTimes(1);
+    expect(controller.getState().status).toBe('error');
+  });
 });
 
 describe('createEnableGpsArController — idempotency', () => {
