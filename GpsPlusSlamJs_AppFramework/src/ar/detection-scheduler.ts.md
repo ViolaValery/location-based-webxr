@@ -28,6 +28,13 @@ so a future object detector (YOLO) reuses it unchanged. It gates nothing on QR.
   `requiredLockCount`), resets to 0 on a miss or a rejected `detect`. `onLocked`
   fires on every success once `locked` (so a locked detection keeps voting —
   fresh, time-decayed votes per §12), `onMiss`/`onError` on the respective settle.
+- **Callback isolation:** `onLocked`/`onMiss`/`onError` are user code; each is
+  invoked inside its own `try/catch` (errors logged, not rethrown). A throwing
+  `onLocked`/`onMiss` therefore cannot fall through to the `.catch` (which would
+  wrongly reset `consecutiveLocks` and fire `onError`, making the lock flap and
+  misreporting a callback bug as a detection failure); a throwing `onError`
+  cannot become an unhandled rejection. The scheduler's own state stays correct
+  regardless of what the callbacks do.
 - **`detect` failures never wedge the scheduler:** `inFlight` is set true before
   `detect` is called, so a **synchronous** throw (one that escapes before the
   promise is returned — e.g. a dead-worker transport or a sync precondition
@@ -44,9 +51,10 @@ so a future object detector (YOLO) reuses it unchanged. It gates nothing on QR.
 
 - `detection-scheduler.test.ts` — throttle, coalesce, lock-after-N + cap +
   miss-reset, error-resets + clears in-flight, **synchronous-throw recovery**
-  (offerFrame does not throw, inFlight clears, scheduler stays usable) (via the
-  QR specialization); plus a generality test proving a non-QR result type +
-  custom frame type work.
+  (offerFrame does not throw, inFlight clears, scheduler stays usable),
+  **callback isolation** (a throwing `onLocked`/`onMiss` does not reset the
+  counter or fire `onError`) (via the QR specialization); plus a generality test
+  proving a non-QR result type + custom frame type work.
 
 ## Related
 

@@ -208,6 +208,64 @@ describe('createQrDetectionScheduler', () => {
     expect(onError).toHaveBeenCalledTimes(1);
     expect(s.inFlight).toBe(false);
   });
+
+  // Why this test matters: onLocked/onMiss/onError are user-supplied application
+  // code that can throw. The success and miss branches run inside the SAME
+  // promise chain as the .catch, so a throwing onLocked would propagate to that
+  // .catch — which resets consecutiveLocks to 0 AND calls onError, corrupting the
+  // documented N-consecutive-lock state machine (the lock would flap) and
+  // misreporting a callback bug as a detection failure. Callbacks must be isolated.
+  it('isolates a throwing onLocked callback from the scheduler state machine', async () => {
+    let t = 0;
+    const onError = vi.fn();
+    const onLocked = vi.fn(() => {
+      throw new Error('onLocked blew up');
+    });
+    const { detect, settle } = controllableDetect();
+    const s = createQrDetectionScheduler({
+      detect,
+      minIntervalMs: 0,
+      requiredLockCount: 1,
+      now: () => t,
+      onLocked,
+      onError,
+    });
+
+    t = 1;
+    s.offerFrame(image);
+    await settle(solution); // success → locked → onLocked throws
+
+    expect(onLocked).toHaveBeenCalledTimes(1);
+    expect(s.consecutiveLocks).toBe(1); // not reset by the callback throw
+    expect(s.locked).toBe(true);
+    expect(onError).not.toHaveBeenCalled(); // callback bug ≠ detection failure
+    expect(s.inFlight).toBe(false);
+  });
+
+  it('isolates a throwing onMiss callback from the scheduler error path', async () => {
+    let t = 0;
+    const onError = vi.fn();
+    const onMiss = vi.fn(() => {
+      throw new Error('onMiss blew up');
+    });
+    const { detect, settle } = controllableDetect();
+    const s = createQrDetectionScheduler({
+      detect,
+      minIntervalMs: 0,
+      requiredLockCount: 2,
+      now: () => t,
+      onMiss,
+      onError,
+    });
+
+    t = 1;
+    s.offerFrame(image);
+    await settle(null); // miss → onMiss throws
+
+    expect(onMiss).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled(); // not re-reported as a detection error
+    expect(s.inFlight).toBe(false);
+  });
 });
 
 describe('createDetectionScheduler<T> generality (Note 1)', () => {

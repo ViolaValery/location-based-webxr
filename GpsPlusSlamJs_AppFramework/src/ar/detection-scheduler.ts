@@ -28,6 +28,9 @@
 
 import type { QrPoseSolution } from './qr-pose.js';
 import type { RgbaImage } from './qr-frontend.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('DetectionScheduler');
 
 export interface DetectionSchedulerConfig<TResult, TImage = RgbaImage> {
   /** The full detect→solve step; resolves to a result or `null` (no hit / rejected). */
@@ -107,6 +110,13 @@ export function createDetectionScheduler<TResult, TImage = RgbaImage>(
       // the .catch below — preserving the original thrown value.
       const started: Promise<TResult | null> = (async () => detect(image))();
 
+      // Isolate each user callback in its own try/catch. They are application
+      // code that can throw; an unguarded throw in onLocked/onMiss would
+      // propagate to the .catch below — resetting consecutiveLocks AND calling
+      // onError — corrupting the lock state machine (the lock would flap) and
+      // misreporting a callback bug as a detection failure. A throwing onError
+      // would likewise surface as an unhandled rejection. We log and move on so
+      // the scheduler's own state stays correct regardless of callback behavior.
       started
         .then((result) => {
           if (result) {
@@ -114,15 +124,29 @@ export function createDetectionScheduler<TResult, TImage = RgbaImage>(
               consecutiveLocks + 1,
               requiredLockCount
             );
-            if (consecutiveLocks >= requiredLockCount) onLocked?.(result);
+            if (consecutiveLocks >= requiredLockCount) {
+              try {
+                onLocked?.(result);
+              } catch (err) {
+                log.error('onLocked callback threw:', err);
+              }
+            }
           } else {
             consecutiveLocks = 0;
-            onMiss?.();
+            try {
+              onMiss?.();
+            } catch (err) {
+              log.error('onMiss callback threw:', err);
+            }
           }
         })
         .catch((err: unknown) => {
           consecutiveLocks = 0;
-          onError?.(err);
+          try {
+            onError?.(err);
+          } catch (callbackErr) {
+            log.error('onError callback threw:', callbackErr);
+          }
         })
         .finally(() => {
           inFlight = false;
