@@ -1,4 +1,4 @@
-import { IFeatureView, FeatureType } from './kml-document';
+import { IFeatureView, FeatureType } from './document-model';
 import { FeatureId } from './type';
 import { IAssetProvider } from './kmz-container';
 import { IGeoBridge } from './geo-bridge';

@@ -1,4 +1,4 @@
-import { IKmlDocument } from './kml-document';
+import { IKmlDocument } from './document-model';
 import { IKmzContainer } from './kmz-container';
 import { ICommandStack, ICommand } from './commands';
 import { IGeoBridge } from './geo-bridge';

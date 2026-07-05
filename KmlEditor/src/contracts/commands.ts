@@ -1,5 +1,5 @@
 import { FeatureId } from './type';
-import { IKmlDocument } from './kml-document';
+import { IKmlDocument } from './document-model';
 import { IGeoBridge } from './geo-bridge';
 
 export interface ICommand {
