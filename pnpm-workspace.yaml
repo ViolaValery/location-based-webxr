@@ -4,3 +4,4 @@ packages:
   - GpsPlusSlamJs_MinimalExample
   - GpsPlusSlamJs_AnchorStarter
   - GpsPlusSlamJs_QrTrackingDemo
+  - KmlEditor
