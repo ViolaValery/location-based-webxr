@@ -59,3 +59,9 @@ export type FeatureTemplate =
     | { type: 'line'; name: string; coordinates: GeoPosition[] }
     | { type: 'ground-overlay'; name: string; imageHref: string; latLonBox: LatLonBox }
     | { type: 'model'; name: string; modelHref: string; location: GeoPosition; orientation?: ModelOrientation; scale?: ModelScale };
+
+/** Entry to be written to a ZIP archive (used by kmz-io) */
+export interface ZipArchiveEntry {
+    path: string;
+    data: Uint8Array;
+}
