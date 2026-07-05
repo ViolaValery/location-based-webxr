@@ -1,3 +1,7 @@
+# Interfaces
+
+<img width="811" height="901" alt="Interfaces" src="https://github.com/user-attachments/assets/e776dba0-f2a8-4df2-8087-07706b802dbf" />
+
 # KmlEditor — Ordnerstruktur
 
 ## `src/` — Quellcode (8 Komponenten + Contracts)
