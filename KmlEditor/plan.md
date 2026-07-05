@@ -1,6 +1,6 @@
 # Interfaces
 
-<img width="811" height="901" alt="Interfaces" src="https://github.com/user-attachments/assets/e776dba0-f2a8-4df2-8087-07706b802dbf" />
+<img width="810" height="901" alt="Interfaces" src="https://github.com/user-attachments/assets/aa3f289b-b1c3-44d2-9be2-fba883f5ca75" />
 
 # KmlEditor — Ordnerstruktur
 
