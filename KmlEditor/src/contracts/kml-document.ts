@@ -1,0 +1,69 @@
+// Lossless KML-Dokumentmodell mit typed Feature View
+
+interface IKmlDocument {
+    /** Parst einen KML-String in das interne Modell */
+    parse(kmlString: string): void;
+
+    /** Serialisiert zurück — byte-faithful für unberührte Knoten */
+    serialize(): string;
+
+    /** Gibt alle Features als typisierte Views zurück */
+    getFeatures(): IFeatureView[];
+
+    /** Feature nach ID finden */
+    getFeatureById(id: FeatureId): IFeatureView | null;
+
+    /** Neues Feature einfügen, gibt die zugewiesene ID zurück */
+    insertFeature(template: FeatureTemplate, afterId?: FeatureId): FeatureId;
+
+    /** Feature entfernen, gibt den entfernten KML-Knoten-Snapshot zurück (für Undo) */
+    removeFeature(id: FeatureId): FeatureSnapshot;
+
+    /** Feature aus Snapshot wiederherstellen (Undo von Delete) */
+    restoreFeature(snapshot: FeatureSnapshot, afterId?: FeatureId): void;
+}
+
+// Basis-Interface für alle Feature-Typen
+interface IFeatureView {
+    readonly id: FeatureId;
+    readonly type: FeatureType;
+    name: string;
+    description: string;
+    readonly kmlId?: string;  // Original-KML-Id-Attribut, falls vorhanden
+}
+
+// Typ-Diskriminator
+type FeatureType = 'marker' | 'line' | 'ground-overlay' | 'model';
+
+// Marker (Placemark → Point)
+interface IMarkerFeature extends IFeatureView {
+    readonly type: 'marker';
+    position: GeoPosition;           // lon, lat, alt
+    iconHref: string | null;         // KML IconStyle href
+    iconScale: number;               // KML IconStyle scale
+}
+
+// Linie (Placemark → LineString)
+interface ILineFeature extends IFeatureView {
+    readonly type: 'line';
+    coordinates: GeoPosition[];      // geordnete Vertex-Liste
+}
+
+// Ground Overlay
+interface IGroundOverlayFeature extends IFeatureView {
+    readonly type: 'ground-overlay';
+    imageHref: string;
+    latLonBox: LatLonBox;
+    altitude: number;
+    altitudeMode: AltitudeMode;
+}
+
+// 3D Model
+interface IModelFeature extends IFeatureView {
+    readonly type: 'model';
+    location: GeoPosition;
+    orientation: ModelOrientation;    // heading, tilt, roll
+    scale: ModelScale;                // x, y, z
+    modelHref: string;                // Pfad zum .dae / COLLADA
+    altitudeMode: AltitudeMode;
+}
