@@ -1,8 +1,8 @@
-// File System Access Persistence mit Autosave
+import { IKmzContainer } from './kmz-container';
 
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
-interface IPersistenceService {
+export interface IPersistenceService {
     /** Öffnet eine Datei (File System Access API oder Fallback) */
     open(file?: File): Promise<IKmzContainer>;
 

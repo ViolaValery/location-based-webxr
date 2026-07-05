@@ -1,6 +1,6 @@
-// Pure Funktionen: Geo ↔ World Koordinaten-Transformation
+import { GeoPosition, AltitudeMode, WorldPosition } from './type';
 
-interface IGeoBridge {
+export interface IGeoBridge {
     /** Setzt den Welt-Anker (GPS-Position die dem Three.js-Ursprung entspricht) */
     setAnchor(anchor: GeoAnchor): void;
 
@@ -14,7 +14,7 @@ interface IGeoBridge {
     formatCoordinate(value: number, originalString?: string): string;
 }
 
-interface GeoAnchor {
+export interface GeoAnchor {
     /** Geo-Position des Weltkoordinaten-Ursprungs */
     position: GeoPosition;
     /** Ausrichtung (Heading in Grad, 0=Nord, im Uhrzeigersinn) */

@@ -1,6 +1,6 @@
-// Lossless KML-Dokumentmodell mit typed Feature View
+import { FeatureId, FeatureSnapshot, FeatureTemplate, GeoPosition, LatLonBox, AltitudeMode, ModelOrientation, ModelScale } from './type';
 
-interface IKmlDocument {
+export interface IKmlDocument {
     /** Parst einen KML-String in das interne Modell */
     parse(kmlString: string): void;
 
@@ -24,7 +24,7 @@ interface IKmlDocument {
 }
 
 // Basis-Interface für alle Feature-Typen
-interface IFeatureView {
+export interface IFeatureView {
     readonly id: FeatureId;
     readonly type: FeatureType;
     name: string;
@@ -33,10 +33,10 @@ interface IFeatureView {
 }
 
 // Typ-Diskriminator
-type FeatureType = 'marker' | 'line' | 'ground-overlay' | 'model';
+export type FeatureType = 'marker' | 'line' | 'ground-overlay' | 'model';
 
 // Marker (Placemark → Point)
-interface IMarkerFeature extends IFeatureView {
+export interface IMarkerFeature extends IFeatureView {
     readonly type: 'marker';
     position: GeoPosition;           // lon, lat, alt
     iconHref: string | null;         // KML IconStyle href
@@ -44,13 +44,13 @@ interface IMarkerFeature extends IFeatureView {
 }
 
 // Linie (Placemark → LineString)
-interface ILineFeature extends IFeatureView {
+export interface ILineFeature extends IFeatureView {
     readonly type: 'line';
     coordinates: GeoPosition[];      // geordnete Vertex-Liste
 }
 
 // Ground Overlay
-interface IGroundOverlayFeature extends IFeatureView {
+export interface IGroundOverlayFeature extends IFeatureView {
     readonly type: 'ground-overlay';
     imageHref: string;
     latLonBox: LatLonBox;
@@ -59,7 +59,7 @@ interface IGroundOverlayFeature extends IFeatureView {
 }
 
 // 3D Model
-interface IModelFeature extends IFeatureView {
+export interface IModelFeature extends IFeatureView {
     readonly type: 'model';
     location: GeoPosition;
     orientation: ModelOrientation;    // heading, tilt, roll

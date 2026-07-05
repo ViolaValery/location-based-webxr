@@ -1,6 +1,6 @@
 // Interfaces für KMZ/KML-Datei-I/O und Asset-Auflösung
 
-interface IKmzContainer {
+export interface IKmzContainer {
     /** Öffnet eine .kmz oder .kml Datei */
     open(source: File | ArrayBuffer): Promise<void>;
 
@@ -23,7 +23,7 @@ interface IKmzContainer {
     dispose(): void;
 }
 
-interface IAssetProvider {
+export interface IAssetProvider {
     /** Löst einen KML-href zu einer Blob-URL auf (für <img>, ColladaLoader, etc.) */
     getAssetUrl(href: string): Promise<string>;
 
@@ -37,7 +37,7 @@ interface IAssetProvider {
     dispose(): void;
 }
 
-interface AssetEntry {
+export interface AssetEntry {
     /** Pfad relativ zum KMZ-Root (z.B. "images/icon.png") */
     path: string;
     /** Dateigröße in Bytes */

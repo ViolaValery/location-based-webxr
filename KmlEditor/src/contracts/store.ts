@@ -1,6 +1,16 @@
-// Zentraler Editor-State (verbindet alle Komponenten)
+import { IKmlDocument } from './kml-document';
+import { IKmzContainer } from './kmz-container';
+import { ICommandStack, ICommand } from './commands';
+import { IGeoBridge } from './geo-bridge';
+import { FeatureId } from './type';
 
-interface IEditorStore {
+export interface EditorState {
+    document: IKmlDocument | null;
+    container: IKmzContainer | null;
+    selectedFeatureId: FeatureId | null;
+}
+
+export interface IEditorStore {
     /** Aktuell geladenes Dokument */
     readonly document: IKmlDocument | null;
     /** Aktueller Container */

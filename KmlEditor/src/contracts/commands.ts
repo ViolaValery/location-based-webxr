@@ -1,6 +1,8 @@
-// Edit-Commands mit Undo/Redo
+import { FeatureId } from './type';
+import { IKmlDocument } from './kml-document';
+import { IGeoBridge } from './geo-bridge';
 
-interface ICommand {
+export interface ICommand {
     readonly type: CommandType;
     readonly featureId: FeatureId;
     readonly description: string;  // Für UI/Log ("Move marker 'Rathaus'")
@@ -12,7 +14,7 @@ interface ICommand {
     undo(document: IKmlDocument, geoBridge: IGeoBridge): void;
 }
 
-type CommandType =
+export type CommandType =
     | 'move-marker'
     | 'move-line-vertex'
     | 'add-line-vertex'
@@ -28,7 +30,7 @@ type CommandType =
     | 'create-feature'
     | 'delete-feature';
 
-interface ICommandStack {
+export interface ICommandStack {
     /** Führt einen Command aus und legt ihn auf den Undo-Stack */
     execute(command: ICommand): void;
 

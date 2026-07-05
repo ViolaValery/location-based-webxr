@@ -1,27 +1,27 @@
 // Basistypen die von allen Komponenten geteilt werden
 
 /** Opaque Feature-ID (intern generiert, stabil über die Session) */
-type FeatureId = string & { readonly __brand: unique symbol };
+export type FeatureId = string & { readonly __brand: unique symbol };
 
 /** Geographische Position (KML-Konvention: lon, lat, alt) */
-interface GeoPosition {
+export interface GeoPosition {
     readonly lon: number;
     readonly lat: number;
     readonly alt: number;
 }
 
 /** Three.js-Weltkoordinaten */
-interface WorldPosition {
+export interface WorldPosition {
     readonly x: number;
     readonly y: number;
     readonly z: number;
 }
 
 /** KML altitudeMode */
-type AltitudeMode = 'clampToGround' | 'relativeToGround' | 'absolute';
+export type AltitudeMode = 'clampToGround' | 'relativeToGround' | 'absolute';
 
 /** KML LatLonBox (für GroundOverlays) */
-interface LatLonBox {
+export interface LatLonBox {
     readonly north: number;
     readonly south: number;
     readonly east: number;
@@ -30,23 +30,23 @@ interface LatLonBox {
 }
 
 /** 3D-Model-Orientierung (KML Orientation) */
-interface ModelOrientation {
+export interface ModelOrientation {
     readonly heading: number;  // Grad, 0=Nord
     readonly tilt: number;     // Grad
     readonly roll: number;     // Grad
 }
 
 /** 3D-Model-Skalierung (KML Scale) */
-interface ModelScale {
+export interface ModelScale {
     readonly x: number;
     readonly y: number;
     readonly z: number;
 }
 
 /** Snapshot eines entfernten Features (für Undo/Redo) */
-interface FeatureSnapshot {
+export interface FeatureSnapshot {
     readonly id: FeatureId;
-    readonly type: FeatureType;
+    readonly type: string; // Changed to string as FeatureType is not defined in this file
     /** Serialisierter KML-Knoten zur Wiederherstellung */
     readonly kmlFragment: string;
     /** Position im Dokument (für exakte Wiederherstellung) */
@@ -54,7 +54,7 @@ interface FeatureSnapshot {
 }
 
 /** Template für neue Features */
-type FeatureTemplate =
+export type FeatureTemplate =
     | { type: 'marker'; name: string; position: GeoPosition }
     | { type: 'line'; name: string; coordinates: GeoPosition[] }
     | { type: 'ground-overlay'; name: string; imageHref: string; latLonBox: LatLonBox }

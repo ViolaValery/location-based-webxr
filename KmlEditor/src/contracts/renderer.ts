@@ -1,6 +1,9 @@
-// Feature Renderer — einer pro KML-Typ, engine-agnostisch konzipiert
+import { IFeatureView, FeatureType } from './kml-document';
+import { FeatureId } from './type';
+import { IAssetProvider } from './kmz-container';
+import { IGeoBridge } from './geo-bridge';
 
-interface IFeatureRenderer<T extends IFeatureView = IFeatureView, TNative3D = unknown> {
+export interface IFeatureRenderer<T extends IFeatureView = IFeatureView, TNative3D = unknown> {
     /** Erzeugt/aktualisiert das 3D-Objekt für ein Feature */
     update(feature: T, assetProvider: IAssetProvider, geoBridge: IGeoBridge): Promise<void>;
 
@@ -14,6 +17,6 @@ interface IFeatureRenderer<T extends IFeatureView = IFeatureView, TNative3D = un
     dispose(): void;
 }
 
-interface IRendererFactory<TNative3D = unknown> {
+export interface IRendererFactory<TNative3D = unknown> {
     createRenderer(featureType: FeatureType): IFeatureRenderer<IFeatureView, TNative3D>;
 }
