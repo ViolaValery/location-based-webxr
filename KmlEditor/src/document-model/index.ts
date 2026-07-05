@@ -1,14 +1,9 @@
-import { IKmlDocument, IMarkerFeature } from '../contracts/document-model';
-import { FeatureId, FeatureSnapshot, FeatureTemplate } from '../contracts/type';
+export { createKmlDocument } from './model';
 
-export function createKmlDocument(): IKmlDocument {
-    return {
-        parse: (kmlString: string) => { throw new Error('Not implemented'); },
-        serialize: () => { throw new Error('Not implemented'); },
-        getFeatures: () => { throw new Error('Not implemented'); },
-        getFeatureById: (id: FeatureId) => null,
-        insertFeature: (template: FeatureTemplate, afterId?: FeatureId) => { throw new Error('Not implemented'); },
-        removeFeature: (id: FeatureId) => { throw new Error('Not implemented'); },
-        restoreFeature: (snapshot: FeatureSnapshot, afterId?: FeatureId) => { throw new Error('Not implemented'); }
-    };
-}
+/**
+ * Document model for parsing, mutating, and serializing KML documents.
+ *
+ * This module exposes the public factory used by the rest of the editor.
+ * The concrete implementation lives in model.ts so the entry point stays
+ * lightweight and easy to import.
+ */
