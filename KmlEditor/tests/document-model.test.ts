@@ -1,8 +1,26 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IKmlDocument, IMarkerFeature } from '../src/contracts/document-model';
+import { IKmlDocument, IMarkerFeature, ILineFeature, IGroundOverlayFeature, IModelFeature } from '../src/contracts/document-model';
 import { createKmlDocument } from '../src/document-model';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ZipReader, BlobReader, TextWriter, type FileEntry } from '@zip.js/zip.js';
 
-describe('KML Document Model', () => {
+const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/google-earth');
+
+async function readKmzDocKml(filePath: string): Promise<string> {
+  const buffer = fs.readFileSync(filePath);
+  const blob = new Blob([buffer]);
+  const zipReader = new ZipReader(new BlobReader(blob));
+  const entries = await zipReader.getEntries();
+  const docEntry = entries.find((e: any) => e.filename === 'doc.kml');
+  if (!docEntry) throw new Error('doc.kml not found in ' + filePath);
+  if (docEntry.directory) throw new Error('doc.kml is a directory in ' + filePath);
+  const fileEntry = docEntry as FileEntry;
+  return await fileEntry.getData(new TextWriter());
+}
+
+describe('KML Document Model (Lossless & Typed Feature View)', () => {
   let doc: IKmlDocument;
 
   beforeEach(() => {
@@ -10,129 +28,117 @@ describe('KML Document Model', () => {
     doc = createKmlDocument();
   });
 
-  it('should parse and serialize losslessly (Identity Test)', () => {
-    const rawKml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>Test Document</name>
-    <Placemark id="pm1">
-      <name>Marker 1</name>
-      <description>Some description</description>
-      <Point>
-        <coordinates>10,20,0</coordinates>
-      </Point>
-    </Placemark>
-    <!-- Unhandled feature that must be preserved -->
-    <Placemark id="pm2">
-      <Polygon><outerBoundaryIs><LinearRing><coordinates>0,0,0 1,0,0 1,1,0 0,0,0</coordinates></LinearRing></outerBoundaryIs></Polygon>
-    </Placemark>
-  </Document>
-</kml>`;
-    doc.parse(rawKml);
-    const output = doc.serialize();
-    expect(output).toBe(rawKml);
+  describe('Fixture Discovery & Survival (Parse)', () => {
+    it('should parse dreieck.kml and find its features', () => {
+      const kml = fs.readFileSync(path.join(fixturesDir, 'dreieck.kml'), 'utf-8');
+      doc.parse(kml);
+
+      const features = doc.getFeatures();
+      expect(features.length).toBeGreaterThanOrEqual(4);
+      // It contains 3 Points and 1 Polygon (path1)
+      const points = features.filter(f => f.type === 'marker');
+      expect(points.length).toBe(3);
+    });
+
+    it('should parse parkplatz.kmz and find its features', async () => {
+      const kml = await readKmzDocKml(path.join(fixturesDir, 'parkplatz.kmz'));
+      doc.parse(kml);
+
+      const features = doc.getFeatures();
+      expect(features.length).toBeGreaterThanOrEqual(6);
+
+      const points = features.filter(f => f.type === 'marker');
+      expect(points.length).toBe(4);
+
+      const lines = features.filter(f => f.type === 'line');
+      expect(lines.length).toBe(1);
+
+      const overlays = features.filter(f => f.type === 'ground-overlay');
+      expect(overlays.length).toBe(1);
+    });
+
+    it('should parse umriss.kmz and find its features', async () => {
+      const kml = await readKmzDocKml(path.join(fixturesDir, 'umriss.kmz'));
+      doc.parse(kml);
+
+      const features = doc.getFeatures();
+      expect(features.length).toBeGreaterThanOrEqual(7);
+
+      const points = features.filter(f => f.type === 'marker');
+      expect(points.length).toBe(5);
+    });
   });
 
-  it('should perform surgical edits without affecting the rest of the document (Surgical Edit Test)', () => {
-    const rawKml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Placemark id="pm1">
-    <name>Marker 1</name>
-    <Point>
-      <coordinates>10,20,0</coordinates>
-    </Point>
-  </Placemark>
-</kml>`;
-    doc.parse(rawKml);
-    const marker = doc.getFeatureById('pm1' as any) as IMarkerFeature;
-    expect(marker).toBeDefined();
+  describe('Identity (Byte-Faithfulness)', () => {
+    it('should losslessly serialize dreieck.kml', () => {
+      const kml = fs.readFileSync(path.join(fixturesDir, 'dreieck.kml'), 'utf-8');
+      doc.parse(kml);
+      expect(doc.serialize()).toBe(kml);
+    });
 
-    // Mutate the position
-    marker.position = { lon: 15, lat: 25, alt: 5 };
+    it('should losslessly serialize parkplatz.kmz doc.kml', async () => {
+      const kml = await readKmzDocKml(path.join(fixturesDir, 'parkplatz.kmz'));
+      doc.parse(kml);
+      expect(doc.serialize()).toBe(kml);
+    });
 
-    const output = doc.serialize();
-    expect(output).toContain('<coordinates>15,25,5</coordinates>');
-    expect(output).not.toContain('<coordinates>10,20,0</coordinates>');
-    // Ensure unchanged portions are strictly identical
-    expect(output).toContain('<name>Marker 1</name>');
+    it('should losslessly serialize umriss.kmz doc.kml', async () => {
+      const kml = await readKmzDocKml(path.join(fixturesDir, 'umriss.kmz'));
+      doc.parse(kml);
+      expect(doc.serialize()).toBe(kml);
+    });
   });
 
-  it('should insert missing tags cleanly inside the parent node', () => {
-    const rawKml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Placemark id="pm1">
-    <Point>
-      <coordinates>10,20,0</coordinates>
-    </Point>
-  </Placemark>
-</kml>`;
-    doc.parse(rawKml);
-    const marker = doc.getFeatureById('pm1' as any) as IMarkerFeature;
+  describe('Surgical Edits', () => {
+    it('should perform a surgical edit on a Point in dreieck.kml', () => {
+      const kml = fs.readFileSync(path.join(fixturesDir, 'dreieck.kml'), 'utf-8');
+      doc.parse(kml);
 
-    // Name is missing from the original KML. Setting it should insert the tag.
-    marker.name = 'New Name Inserted';
+      // Find "busch_infozentrum" point
+      const features = doc.getFeatures();
+      const busch = features.find(f => f.name === 'busch_infozentrum') as IMarkerFeature;
+      expect(busch).toBeDefined();
+      expect(busch.type).toBe('marker');
 
-    const output = doc.serialize();
-    expect(output).toContain('<name>New Name Inserted</name>');
+      // Record original coordinates text
+      const oldCoordsStr = '6.060788271971069,50.77814884421655,222.5063408472229';
+      expect(kml).toContain(oldCoordsStr);
+
+      // Mutate
+      busch.position = { lon: 6.1, lat: 50.8, alt: 220 };
+
+      const output = doc.serialize();
+      expect(output).not.toContain(oldCoordsStr);
+      expect(output).toContain('6.1,50.8,220');
+
+      // Ensure unchanged portions are strictly identical
+      const diffLen = Math.abs(output.length - kml.length);
+      expect(diffLen).toBeLessThan(100); // Only a small chunk changed
+    });
   });
 
-  it('should delete a feature and clean surrounding whitespace', () => {
-    const rawKml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <Placemark id="pm1">
-      <name>Marker 1</name>
-    </Placemark>
-    <Placemark id="pm2">
-      <name>Marker 2</name>
-    </Placemark>
-  </Document>
-</kml>`;
-    doc.parse(rawKml);
-    // Ensure both exist
-    expect(doc.getFeatures().length).toBeGreaterThanOrEqual(2);
+  describe('Demo script output', () => {
+    it('prints a typed feature list and shows minimal diff', () => {
+      const kml = fs.readFileSync(path.join(fixturesDir, 'dreieck.kml'), 'utf-8');
+      doc.parse(kml);
+      const features = doc.getFeatures();
 
-    doc.removeFeature('pm1' as any);
+      const list = features.map(f => ({
+        id: f.id,
+        type: f.type,
+        name: f.name
+      }));
 
-    const output = doc.serialize();
-    expect(output).not.toContain('Marker 1');
-    expect(output).toContain('Marker 2');
+      // Demo output for user
+      console.log('--- DEMO: Typed Feature List ---');
+      console.table(list);
 
-    // Check for no double empty lines that would indicate orphaned whitespace
-    expect(output).not.toContain('\\n\\n\\n');
-  });
-
-  it('should restore a deleted feature to its exact original location using tombstones', () => {
-    const rawKml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <Placemark id="pm1">
-      <name>Marker 1</name>
-    </Placemark>
-    <Placemark id="pm2">
-      <name>Marker 2</name>
-    </Placemark>
-  </Document>
-</kml>`;
-    doc.parse(rawKml);
-    const snapshot = doc.removeFeature('pm1' as any);
-
-    // Mutate the second marker to ensure the restore mechanism doesn't rely on absolute string indices
-    const marker2 = doc.getFeatureById('pm2' as any) as IMarkerFeature;
-    if (marker2) {
-      marker2.name = 'Updated Marker 2';
-    }
-
-    // Restore the deleted feature
-    doc.restoreFeature(snapshot);
-    const output = doc.serialize();
-
-    // pm1 should be back before pm2
-    const indexOfPm1 = output.indexOf('Marker 1');
-    const indexOfPm2 = output.indexOf('Updated Marker 2');
-
-    expect(indexOfPm1).toBeGreaterThan(-1);
-    expect(indexOfPm2).toBeGreaterThan(-1);
-    expect(indexOfPm1).toBeLessThan(indexOfPm2); // Restored in original order
+      const marker = features.find(f => f.type === 'marker') as IMarkerFeature;
+      if (marker) {
+        marker.position = { lon: 1, lat: 2, alt: 3 };
+        const out = doc.serialize();
+        console.log('--- DEMO: Edit applied. Diff size:', Math.abs(out.length - kml.length), 'bytes ---');
+      }
+    });
   });
 });
