@@ -122,6 +122,7 @@
 
       function renderFeatureList() {
         if (!featureSelect) return;
+        const selectedId = featureSelect.value || (features[0]?.id ?? null);
         featureSelect.innerHTML = '';
         features.forEach((feature) => {
           const option = document.createElement('option');
@@ -131,7 +132,7 @@
           featureSelect.appendChild(option);
         });
         if (features.length) {
-          featureSelect.value = features[0].id;
+          featureSelect.value = selectedId && features.some((feature) => feature.id === selectedId) ? selectedId : features[0].id;
           updateFeatureSelection();
         }
       }
@@ -177,7 +178,8 @@
       }
 
       function applyEdit() {
-        const feature = features.find((item) => item.id === featureSelect.value);
+        const selectedId = featureSelect.value;
+        const feature = features.find((item) => item.id === selectedId);
         if (!feature) return;
 
         if (propertySelect.value === 'position' && feature.type === 'marker') {
@@ -187,6 +189,8 @@
           feature.name = valueInput.value;
         }
 
+        features = documentModel.getFeatures();
+        renderFeatureList();
         output.value = documentModel.serialize();
         status.textContent = 'Edit applied; serialized output updated.';
       }
