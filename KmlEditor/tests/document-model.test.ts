@@ -90,6 +90,22 @@ describe('KML Document Model (Lossless & Typed Feature View)', () => {
   });
 
   describe('Surgical Edits', () => {
+    it('should use the original KML id for feature views and reflect name changes in serialization', () => {
+      const kml = fs.readFileSync(path.join(fixturesDir, 'dreieck.kml'), 'utf-8');
+      doc.parse(kml);
+
+      const features = doc.getFeatures();
+      const feature = features.find((item) => item.name === 'busch_infozentrum');
+      expect(feature).toBeDefined();
+      expect(feature?.id).toBe('0DE3B1799F402F179797');
+
+      feature!.name = 'Renamed Feature';
+
+      const output = doc.serialize();
+      expect(output).toContain('<name>Renamed Feature</name>');
+      expect(output).toContain('0DE3B1799F402F179797');
+    });
+
     it('should perform a surgical edit on a Point in dreieck.kml', () => {
       const kml = fs.readFileSync(path.join(fixturesDir, 'dreieck.kml'), 'utf-8');
       doc.parse(kml);

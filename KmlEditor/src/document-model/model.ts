@@ -51,8 +51,8 @@ function parseCoordinatesText(text: string): GeoPosition[] {
 
 class BaseFeatureView implements IFeatureView {
     public readonly id: FeatureId;
-    public name: string;
-    public description: string;
+    private _name: string;
+    private _description: string;
     public readonly kmlId?: string;
     public readonly type: FeatureType;
 
@@ -65,14 +65,40 @@ class BaseFeatureView implements IFeatureView {
         this.featureIndex = featureIndex;
         this.type = type;
         this.id = id;
-        this.name = name;
-        this.description = description;
+        this._name = name;
+        this._description = description;
         this.kmlId = kmlId;
         this.featureTagName = featureTagName;
     }
 
+    public get name(): string {
+        return this._name;
+    }
+
+    public set name(value: string) {
+        this._name = value;
+        this.replaceTagValue('name', this.escapeXml(value));
+    }
+
+    public get description(): string {
+        return this._description;
+    }
+
+    public set description(value: string) {
+        this._description = value;
+        this.replaceTagValue('description', this.escapeXml(value));
+    }
+
     protected replaceTagValue(tagName: string, newValue: string): void {
         this.document.replaceTagValue(this.featureIndex, tagName, newValue);
+    }
+
+    protected escapeXml(value: string): string {
+        return value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
     }
 }
 
@@ -244,10 +270,10 @@ class KmlDocumentImpl implements IKmlDocument {
     }
 
     private createFeatureView(index: number, fragment: string, tagName: string): IFeatureView | null {
-        const id = `feature-${index + 1}` as FeatureId;
+        const kmlId = this.extractAttribute(fragment, 'id');
+        const id = (kmlId ?? `feature-${index + 1}`) as FeatureId;
         const name = this.extractText(fragment, 'name');
         const description = this.extractText(fragment, 'description');
-        const kmlId = this.extractAttribute(fragment, 'id');
 
         if (tagName === 'GroundOverlay') {
             return new GroundOverlayFeatureView(
