@@ -6,6 +6,8 @@ export class KmzContainer implements IKmzContainer {
   private docKml = '';
   private assets = new Map<string, Uint8Array>();
   private assetEntries: AssetEntry[] = [];
+  private hrefReferences: string[] = [];
+  private docEntryPath = 'doc.kml';
   private provider: AssetProvider;
   private kind: 'kmz' | 'kml' = 'kml';
   private readonly zipAdapter = new SimpleZipAdapter();
@@ -20,17 +22,19 @@ export class KmzContainer implements IKmzContainer {
 
     if (this.kind === 'kmz') {
       const archive = await this.zipAdapter.readArchive(bytes);
-      const doc = archive.get('doc.kml');
-      if (!doc) {
+      const docEntry = this.resolveDocEntry(archive);
+      if (!docEntry) {
         throw new KmzContainerError('doc.kml missing');
       }
 
-      this.docKml = this.decodeText(doc);
+      this.docKml = this.decodeText(docEntry.data);
+      this.docEntryPath = docEntry.path;
       this.assets = new Map();
       this.assetEntries = [];
+      this.hrefReferences = this.extractHrefReferences(this.docKml);
 
       for (const [path, data] of archive.entries()) {
-        if (path === 'doc.kml') {
+        if (path === docEntry.path) {
           continue;
         }
         this.assets.set(path, data);
@@ -44,8 +48,10 @@ export class KmzContainer implements IKmzContainer {
     }
 
     this.docKml = this.decodeText(bytes);
+    this.docEntryPath = 'doc.kml';
     this.assets = new Map();
     this.assetEntries = [];
+    this.hrefReferences = this.extractHrefReferences(this.docKml);
   }
 
   getDocKml(): string {
@@ -62,7 +68,7 @@ export class KmzContainer implements IKmzContainer {
 
   async save(): Promise<ArrayBuffer> {
     if (this.kind === 'kmz') {
-      const entries = [{ path: 'doc.kml', data: this.encodeText(this.docKml) }];
+      const entries = [{ path: this.docEntryPath, data: this.encodeText(this.docKml) }];
       for (const asset of this.assetEntries) {
         const data = this.assets.get(asset.path);
         if (data) {
@@ -88,11 +94,21 @@ export class KmzContainer implements IKmzContainer {
   }
 
   getAssetBytesInternal(href: string): Uint8Array | undefined {
-    return this.assets.get(href);
+    for (const candidate of this.resolveAssetCandidates(href)) {
+      const bytes = this.assets.get(candidate);
+      if (bytes) {
+        return bytes;
+      }
+    }
+    return undefined;
   }
 
   hasAssetInternal(href: string): boolean {
-    return this.assets.has(href);
+    return this.resolveAssetCandidates(href).some((candidate) => this.assets.has(candidate));
+  }
+
+  getHrefReferences(): string[] {
+    return [...this.hrefReferences];
   }
 
   private detectFormat(bytes: Uint8Array): 'kmz' | 'kml' {
@@ -109,6 +125,63 @@ export class KmzContainer implements IKmzContainer {
   private encodeText(value: string): Uint8Array {
     return new TextEncoder().encode(value);
   }
+
+  private extractHrefReferences(kml: string): string[] {
+    return Array.from(kml.matchAll(/<href>([^<]+)<\/href>/gi), (match) => this.normalizeHref(match[1]));
+  }
+
+  private resolveDocEntry(archive: Map<string, Uint8Array>): { path: string; data: Uint8Array } | undefined {
+    const candidates = ['doc.kml', 'Doc.kml', 'doc.KML', 'kml/doc.kml', 'doc.kml/'];
+    for (const candidate of candidates) {
+      const data = archive.get(candidate);
+      if (data) {
+        return { path: candidate, data };
+      }
+    }
+
+    for (const [path, data] of archive.entries()) {
+      const normalized = path.toLowerCase();
+      if (normalized.endsWith('/doc.kml') || normalized === 'doc.kml') {
+        return { path, data };
+      }
+    }
+
+    return undefined;
+  }
+
+  private normalizeHref(href: string): string {
+    const trimmed = href.trim();
+    if (trimmed.startsWith('./')) {
+      return trimmed.slice(2);
+    }
+    return trimmed.replace(/^\/+/, '');
+  }
+
+  private resolveAssetCandidates(href: string): string[] {
+    const normalizedHref = this.normalizeHref(href);
+    if (this.isRemoteHref(normalizedHref)) {
+      return [];
+    }
+
+    const candidates = [normalizedHref, this.stripLeadingSlash(normalizedHref)];
+    const docDirectory = this.docEntryPath.includes('/')
+      ? this.docEntryPath.slice(0, this.docEntryPath.lastIndexOf('/') + 1)
+      : '';
+
+    if (docDirectory && !normalizedHref.startsWith(docDirectory)) {
+      candidates.push(`${docDirectory}${normalizedHref}`);
+    }
+
+    return Array.from(new Set(candidates.filter(Boolean)));
+  }
+
+  private stripLeadingSlash(href: string): string {
+    return href.replace(/^\/+/, '');
+  }
+
+  private isRemoteHref(href: string): boolean {
+    return /^https?:\/\//i.test(href);
+  }
 }
 
 class AssetProvider implements IAssetProvider {
@@ -120,6 +193,10 @@ class AssetProvider implements IAssetProvider {
   }
 
   async getAssetUrl(href: string): Promise<string> {
+    if (this.isRemoteHref(href)) {
+      return href;
+    }
+
     if (!this.hasAsset(href)) {
       throw new KmzContainerError(`requested asset missing: ${href}`);
     }
@@ -132,9 +209,8 @@ class AssetProvider implements IAssetProvider {
   }
 
   async getAssetBytes(href: string): Promise<Uint8Array> {
-    // Remote URLs are not available locally; return empty array
-    if (href.startsWith('http://') || href.startsWith('https://')) {
-      return new Uint8Array(0);
+    if (this.isRemoteHref(href)) {
+      throw new KmzContainerError(`remote asset bytes are not packaged: ${href}`);
     }
 
     if (!this.hasAsset(href)) {
@@ -149,8 +225,7 @@ class AssetProvider implements IAssetProvider {
   }
 
   hasAsset(href: string): boolean {
-    // Remote URLs (http/https) are not in the local archive
-    if (href.startsWith('http://') || href.startsWith('https://')) {
+    if (this.isRemoteHref(href)) {
       return false;
     }
     return this.container.hasAssetInternal(href);
@@ -161,6 +236,10 @@ class AssetProvider implements IAssetProvider {
       URL.revokeObjectURL(url);
     }
     this.objectUrls.clear();
+  }
+
+  private isRemoteHref(href: string): boolean {
+    return /^https?:\/\//i.test(href.trim());
   }
 }
 
