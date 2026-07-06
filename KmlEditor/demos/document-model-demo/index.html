@@ -6,14 +6,22 @@
     <title>KML Document Model Demo</title>
     <style>
       :root {
-        color-scheme: light dark;
+        color-scheme: dark;
         font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --bg: #1A1A2E;
+        --panel: #16213E;
+        --panel-2: #0F3460;
+        --accent: #E94560;
+        --accent-2: #533483;
+        --text: #f8fafc;
+        --muted: #cbd5e1;
+        --border: rgba(255,255,255,0.14);
       }
       body {
         margin: 0;
         padding: 1.25rem;
-        background: #111827;
-        color: #f9fafb;
+        background: linear-gradient(135deg, var(--bg) 0%, var(--panel) 100%);
+        color: var(--text);
       }
       .layout {
         display: grid;
@@ -21,10 +29,11 @@
         grid-template-columns: minmax(280px, 380px) 1fr;
       }
       .panel {
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.14);
-        border-radius: 12px;
+        background: rgba(22, 33, 62, 0.92);
+        border: 1px solid var(--border);
+        border-radius: 14px;
         padding: 1rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
       }
       textarea {
         width: 100%;
@@ -32,21 +41,21 @@
         resize: vertical;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         font-size: 0.9rem;
-        border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.16);
-        background: #020617;
-        color: #f8fafc;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #0b1020;
+        color: var(--text);
         padding: 0.75rem;
         box-sizing: border-box;
       }
       select,
       input {
-        width: 100%;
-        padding: 0.6rem 0.7rem;
-        border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.16);
-        background: #0f172a;
-        color: #f8fafc;
+        width: 85%;
+        padding: 0.65rem 0.75rem;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: var(--panel-2);
+        color: var(--text);
         margin-top: 0.35rem;
       }
       .controls {
@@ -54,19 +63,20 @@
         gap: 0.75rem;
       }
       .muted {
-        color: #cbd5e1;
+        color: var(--muted);
         font-size: 0.9rem;
       }
       button {
-        padding: 0.7rem 0.9rem;
+        padding: 0.75rem 0.95rem;
         border: none;
-        border-radius: 8px;
-        background: #2563eb;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
         color: white;
         cursor: pointer;
+        font-weight: 600;
       }
       button:hover {
-        background: #1d4ed8;
+        filter: brightness(1.08);
       }
     </style>
   </head>
