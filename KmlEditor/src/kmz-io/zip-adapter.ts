@@ -1,7 +1,4 @@
-export interface ZipArchiveEntry {
-  path: string;
-  data: Uint8Array;
-}
+import type { ZipArchiveEntry } from '../contracts/type';
 
 export interface ZipAdapter {
   readArchive(bytes: Uint8Array): Promise<Map<string, Uint8Array>>;
@@ -28,16 +25,53 @@ function writeUInt32LE(value: number, bytes: Uint8Array, offset: number): void {
   bytes[offset + 3] = (value >>> 24) & 0xff;
 }
 
+async function decompressDeflate(compressedData: Uint8Array): Promise<Uint8Array> {
+  const stream = new DecompressionStream('deflate-raw');
+  const writer = stream.writable.getWriter();
+  const reader = stream.readable.getReader();
+
+  await writer.write(compressedData as unknown as BufferSource);
+  await writer.close();
+
+  const chunks: Uint8Array[] = [];
+  let result = await reader.read();
+  while (!result.done) {
+    chunks.push(new Uint8Array(result.value));
+    result = await reader.read();
+  }
+
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const output = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return output;
+}
+
 export class SimpleZipAdapter implements ZipAdapter {
   async readArchive(bytes: Uint8Array): Promise<Map<string, Uint8Array>> {
-    const signature = readUInt32LE(bytes, bytes.length - 22);
-    if (signature !== 0x06054b50) {
-      throw new Error('invalid ZIP');
+    // Find End of Central Directory record (EOCD)
+    // EOCD signature is 0x06054b50 and can be at variable offset due to comments
+    const maxCommentSize = 65535;
+    const searchStart = Math.max(0, bytes.length - 22 - maxCommentSize);
+    let eocdOffset = -1;
+
+    for (let i = bytes.length - 22; i >= searchStart; i--) {
+      if (readUInt32LE(bytes, i) === 0x06054b50) {
+        eocdOffset = i;
+        break;
+      }
     }
 
-    const cdOffset = readUInt32LE(bytes, bytes.length - 16);
-    const cdSize = readUInt32LE(bytes, bytes.length - 12);
-    const entryCount = readUInt16LE(bytes, bytes.length - 10);
+    if (eocdOffset === -1) {
+      throw new Error('invalid ZIP: no EOCD found');
+    }
+
+    const cdOffset = readUInt32LE(bytes, eocdOffset + 16);
+    const cdSize = readUInt32LE(bytes, eocdOffset + 12);
+    const entryCount = readUInt16LE(bytes, eocdOffset + 8);
 
     const archive = new Map<string, Uint8Array>();
     let offset = cdOffset;
@@ -56,8 +90,8 @@ export class SimpleZipAdapter implements ZipAdapter {
       const fileNameBytes = bytes.subarray(offset + 46, offset + 46 + fileNameLength);
       const fileName = new TextDecoder('utf-8').decode(fileNameBytes).replace(/\\/g, '/');
 
-      if (compressionMethod !== 0) {
-        throw new Error('unsupported compression');
+      if (compressionMethod !== 0 && compressionMethod !== 8) {
+        throw new Error('unsupported compression method');
       }
 
       const localHeaderSignature = readUInt32LE(bytes, localHeaderOffset);
@@ -68,8 +102,22 @@ export class SimpleZipAdapter implements ZipAdapter {
       const localFileNameLength = readUInt16LE(bytes, localHeaderOffset + 26);
       const localExtraLength = readUInt16LE(bytes, localHeaderOffset + 28);
       const compressedSize = readUInt32LE(bytes, localHeaderOffset + 18);
+      const uncompressedSize = readUInt32LE(bytes, localHeaderOffset + 22);
       const localDataOffset = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
-      const data = bytes.subarray(localDataOffset, localDataOffset + compressedSize);
+      const compressedData = bytes.subarray(localDataOffset, localDataOffset + compressedSize);
+
+      let data: Uint8Array;
+      if (compressionMethod === 0) {
+        // Store (uncompressed)
+        data = new Uint8Array(compressedData);
+      } else {
+        // Deflate compression (method 8)
+        data = await decompressDeflate(compressedData);
+        if (data.length !== uncompressedSize) {
+          throw new Error(`decompressed size mismatch for ${fileName}`);
+        }
+      }
+
       archive.set(fileName, data);
       offset += 46 + fileNameLength + extraLength + commentLength;
     }
@@ -86,39 +134,39 @@ export class SimpleZipAdapter implements ZipAdapter {
     for (const entry of entries) {
       const nameBytes = encoder.encode(entry.path);
       const localHeader = new Uint8Array(30 + nameBytes.byteLength);
-      writeUInt32LE(0x04034b50, localHeader, 0);
-      writeUInt16LE(20, localHeader, 4);
-      writeUInt16LE(0, localHeader, 6);
-      writeUInt16LE(0, localHeader, 8);
-      writeUInt16LE(0, localHeader, 10);
-      writeUInt16LE(0, localHeader, 12);
-      writeUInt16LE(0, localHeader, 14);
-      writeUInt16LE(0, localHeader, 16);
-      writeUInt32LE(entry.data.byteLength, localHeader, 18);
-      writeUInt32LE(entry.data.byteLength, localHeader, 22);
-      writeUInt16LE(nameBytes.byteLength, localHeader, 26);
-      writeUInt16LE(0, localHeader, 28);
+      writeUInt32LE(0x04034b50, localHeader, 0);       // signature
+      writeUInt16LE(20, localHeader, 4);               // version needed to extract
+      writeUInt16LE(0, localHeader, 6);                // general purpose bit flag
+      writeUInt16LE(0, localHeader, 8);                // compression method (0 = store)
+      writeUInt16LE(0, localHeader, 10);               // last mod file time
+      writeUInt16LE(0, localHeader, 12);               // last mod file date
+      writeUInt32LE(0, localHeader, 14);               // crc-32 (0 for now)
+      writeUInt32LE(entry.data.byteLength, localHeader, 18);  // compressed size
+      writeUInt32LE(entry.data.byteLength, localHeader, 22);  // uncompressed size
+      writeUInt16LE(nameBytes.byteLength, localHeader, 26);   // file name length
+      writeUInt16LE(0, localHeader, 28);               // extra field length
       localHeader.set(nameBytes, 30);
       localChunks.push(localHeader);
       localChunks.push(entry.data);
 
       const centralDirectoryEntry = new Uint8Array(46 + nameBytes.byteLength);
-      writeUInt32LE(0x02014b50, centralDirectoryEntry, 0);
-      writeUInt16LE(20, centralDirectoryEntry, 4);
-      writeUInt16LE(20, centralDirectoryEntry, 6);
-      writeUInt16LE(0, centralDirectoryEntry, 8);
-      writeUInt16LE(0, centralDirectoryEntry, 10);
-      writeUInt16LE(0, centralDirectoryEntry, 12);
-      writeUInt16LE(0, centralDirectoryEntry, 14);
-      writeUInt16LE(0, centralDirectoryEntry, 16);
-      writeUInt32LE(entry.data.byteLength, centralDirectoryEntry, 18);
-      writeUInt32LE(entry.data.byteLength, centralDirectoryEntry, 22);
-      writeUInt16LE(nameBytes.byteLength, centralDirectoryEntry, 28);
-      writeUInt16LE(0, centralDirectoryEntry, 30);
-      writeUInt16LE(0, centralDirectoryEntry, 32);
-      writeUInt16LE(0, centralDirectoryEntry, 34);
-      writeUInt32LE(0, centralDirectoryEntry, 42);
-      writeUInt32LE(offset, centralDirectoryEntry, 42);
+      writeUInt32LE(0x02014b50, centralDirectoryEntry, 0);    // signature
+      writeUInt16LE(20, centralDirectoryEntry, 4);            // version made by
+      writeUInt16LE(20, centralDirectoryEntry, 6);            // version needed to extract
+      writeUInt16LE(0, centralDirectoryEntry, 8);             // general purpose bit flag
+      writeUInt16LE(0, centralDirectoryEntry, 10);            // compression method (0 = store)
+      writeUInt16LE(0, centralDirectoryEntry, 12);            // last mod file time
+      writeUInt16LE(0, centralDirectoryEntry, 14);            // last mod file date
+      writeUInt32LE(0, centralDirectoryEntry, 16);            // crc-32 (0 for now)
+      writeUInt32LE(entry.data.byteLength, centralDirectoryEntry, 20);  // compressed size
+      writeUInt32LE(entry.data.byteLength, centralDirectoryEntry, 24);  // uncompressed size
+      writeUInt16LE(nameBytes.byteLength, centralDirectoryEntry, 28);   // file name length
+      writeUInt16LE(0, centralDirectoryEntry, 30);            // extra field length
+      writeUInt16LE(0, centralDirectoryEntry, 32);            // file comment length
+      writeUInt16LE(0, centralDirectoryEntry, 34);            // disk number start
+      writeUInt16LE(0, centralDirectoryEntry, 36);            // internal file attributes
+      writeUInt32LE(0, centralDirectoryEntry, 38);            // external file attributes
+      writeUInt32LE(offset, centralDirectoryEntry, 42);       // relative offset of local header
       centralDirectoryEntry.set(nameBytes, 46);
       centralDirectory.push(centralDirectoryEntry);
       offset += localHeader.byteLength + entry.data.byteLength;

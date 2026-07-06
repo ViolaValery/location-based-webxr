@@ -132,6 +132,11 @@ class AssetProvider implements IAssetProvider {
   }
 
   async getAssetBytes(href: string): Promise<Uint8Array> {
+    // Remote URLs are not available locally; return empty array
+    if (href.startsWith('http://') || href.startsWith('https://')) {
+      return new Uint8Array(0);
+    }
+
     if (!this.hasAsset(href)) {
       throw new KmzContainerError(`requested asset missing: ${href}`);
     }
@@ -144,6 +149,10 @@ class AssetProvider implements IAssetProvider {
   }
 
   hasAsset(href: string): boolean {
+    // Remote URLs (http/https) are not in the local archive
+    if (href.startsWith('http://') || href.startsWith('https://')) {
+      return false;
+    }
     return this.container.hasAssetInternal(href);
   }
 
