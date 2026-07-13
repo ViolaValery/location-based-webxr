@@ -11,3 +11,7 @@ Fragen nach Task 1:
 - Warum schweben überall grüne? Punkte in der Luft herum?
 - Warum sehen wir kein feedback über unsere observations (ob man die observation gemacht hat)?
 - how can we extract and look at the saved kml file? google earth webapp only allows to download as kml file not kmz, saving in google earth pro desktop app allows to save as kmz but not as a extractable zip with doc.kml or xml elements
+
+Fragen nach Implementierung von Komponente 1:
+- Was ist mit b2b tests gemeint? -> Unseren Kml Viewer im Kontext von der gesamten Anwendung testen
+- Müssen wir für jede Komponente mehrere Implementierungen erstellen und daraus die beste auswählen? -> Nein, nur für komplexe Komponenten.
