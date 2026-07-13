@@ -94,7 +94,7 @@ Instead explain exactly HOW.
 Required Sections
 ------------------------------------
 
-# Overview
+## Overview
 
 Explain the precise responsibility of this component.
 
@@ -107,7 +107,7 @@ List explicitly:
 • Which contracts it consumes
 • Which contracts it implements
 
-# Internal Architecture
+## Internal Architecture
 
 Design the internal modules.
 
@@ -123,7 +123,7 @@ For each unit explain:
 
 Explain why this decomposition minimizes coupling.
 
-# Runtime Data Flow
+## Runtime Data Flow
 
 Describe every important execution flow.
 
@@ -147,7 +147,7 @@ error handling
 
 Describe step-by-step how data moves through the component.
 
-# Public Surface
+## Public Surface
 
 Describe every public class/function/module that will exist.
 
@@ -155,7 +155,7 @@ Do NOT redesign interfaces.
 
 Instead explain how each contract implementation will internally work.
 
-# Algorithms
+## Algorithms
 
 Identify every non-trivial algorithm.
 
@@ -195,7 +195,7 @@ resource caching
 
 etc.
 
-# State Management
+## State Management
 
 Explain every piece of mutable state.
 
@@ -211,7 +211,7 @@ Caching.
 
 Invalidation.
 
-# Error Strategy
+## Error Strategy
 
 Enumerate every expected failure.
 
@@ -239,7 +239,7 @@ Explain exact recovery behavior.
 
 Never use generic "throw error".
 
-# Performance Strategy
+## Performance Strategy
 
 Discuss:
 
@@ -263,7 +263,7 @@ garbage generation
 
 Explain why each optimization is or is not necessary.
 
-# Testing Strategy
+## Testing Strategy
 
 Provide a complete testing hierarchy.
 
@@ -285,7 +285,7 @@ Failure cases
 
 For every important behavior specify what is verified.
 
-# Demo
+## Demo
 
 Describe the standalone demo for this component.
 
@@ -293,7 +293,7 @@ Exactly what can be interacted with.
 
 Exactly what proves the component works.
 
-# Dependencies
+## Dependencies
 
 List external libraries.
 
@@ -305,7 +305,7 @@ why alternatives were rejected
 
 what assumptions are made
 
-# Risks
+## Risks
 
 List implementation risks ordered by severity.
 
@@ -319,7 +319,7 @@ mitigation
 
 fallback plan
 
-# Milestones
+## Milestones
 
 Split implementation into incremental milestones.
 
@@ -368,7 +368,7 @@ Assume the reader is an experienced TypeScript engineer.
 The goal is that after reading plan.md there should be almost no remaining architectural uncertainty for this component.
 
 
-# Prompts for iterations of plan.md
+## Prompts for iterations of plan.md
 Best-practice review process
 
 After PLAN.md is generated, run at least three separate review passes:
