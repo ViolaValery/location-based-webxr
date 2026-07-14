@@ -251,39 +251,53 @@ describe('commands', () => {
     });
 
     it('creates features with a post-execute id and deletes them with undo support', () => {
-        const stack = createCommandStack(document, bridge);
-        const originalCount = document.getFeatures().length;
-        const template = {
-            type: 'marker' as const,
-            name: 'Created Marker',
-            position: { lon: 10.2, lat: 50.2, alt: 110 },
-        };
-        const createCommand = createCreateFeatureCommand(template);
+      const createdIds: string[] = [];
+      const fakeDocument = {
+        parse: vi.fn(),
+        serialize: vi.fn(),
+        getFeatures: vi.fn().mockReturnValue([]),
+        getFeatureById: vi.fn(),
+        insertFeature: vi.fn(() => {
+          const nextId = `created-${createdIds.length + 1}` as FeatureId;
+          createdIds.push(nextId);
+          return nextId;
+        }),
+        removeFeature: vi.fn((id: FeatureId) => ({
+          id,
+          type: 'marker',
+          kmlFragment: '<Placemark />',
+          insertionIndex: 0,
+        })),
+        restoreFeature: vi.fn(),
+      } satisfies IKmlDocument;
+      const stack = createCommandStack(fakeDocument, bridge);
+      const template = {
+        type: 'marker' as const,
+        name: 'Created Marker',
+        position: { lon: 10.2, lat: 50.2, alt: 110 },
+      };
+      const createCommand = createCreateFeatureCommand(template);
 
-        stack.execute(createCommand);
+      stack.execute(createCommand);
+      const firstCreatedId = createCommand.featureId;
 
-        expect(createCommand.featureId).toBeTruthy();
-        expect(document.getFeatures()).toHaveLength(originalCount + 1);
-        const firstCreatedId = createCommand.featureId;
-        expect(document.getFeatureById(firstCreatedId)).not.toBeNull();
+      expect(firstCreatedId).toBe('created-1');
+      expect(fakeDocument.insertFeature).toHaveBeenCalledTimes(1);
 
-        stack.undo();
-        expect(document.getFeatures()).toHaveLength(originalCount);
-        expect(document.getFeatureById(createCommand.featureId)).toBeNull();
+      stack.undo();
+      expect(fakeDocument.removeFeature).toHaveBeenCalledWith(firstCreatedId);
 
-        stack.redo();
-        expect(createCommand.featureId).not.toBe(firstCreatedId);
-        expect(document.getFeatures()).toHaveLength(originalCount + 1);
-        expect(document.getFeatureById(createCommand.featureId)).not.toBeNull();
+      stack.redo();
+      expect(createCommand.featureId).toBe('created-2');
+      expect(fakeDocument.insertFeature).toHaveBeenCalledTimes(2);
 
-        const createdId = createCommand.featureId;
-        const deleteCommand = createDeleteFeatureCommand(createdId);
-        stack.execute(deleteCommand);
+      const deleteCommand = createDeleteFeatureCommand(createCommand.featureId);
+      stack.execute(deleteCommand);
 
-        expect(document.getFeatureById(createdId)).toBeNull();
+      expect(fakeDocument.removeFeature).toHaveBeenCalledWith('created-2');
 
-        stack.undo();
-        expect(document.getFeatureById(createdId)).not.toBeNull();
+      stack.undo();
+      expect(fakeDocument.restoreFeature).toHaveBeenCalledWith(expect.objectContaining({ id: 'created-2' }), undefined);
     });
 
     it('rejects invalid targets without changing the stack or notifying listeners', () => {
