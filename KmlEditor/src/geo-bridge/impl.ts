@@ -3,6 +3,7 @@ import { formatCoordinate } from './format';
 import {
     geoToLocalOffset,
     localOffsetToGeo,
+    inverseRotateHorizontal,
     rotateHorizontal,
     validateGeoPosition,
     validateWorldPosition,
@@ -56,8 +57,8 @@ export class GeoBridgeImpl implements IGeoBridge {
             throw new InvalidWorldPositionError(error instanceof Error ? error.message : 'Invalid world position');
         }
 
-        const unrotated = rotateHorizontal(position.x, position.z, anchor.heading * Math.PI / 180);
-        const geo = localOffsetToGeo(anchor.position, unrotated.x, unrotated.z);
+        const unrotated = inverseRotateHorizontal(position.x, position.z, anchor.heading * Math.PI / 180);
+        const geo = localOffsetToGeo(anchor.position, unrotated.east, unrotated.north);
 
         return {
             lon: geo.lon,
