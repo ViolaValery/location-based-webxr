@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Store Component Demo</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 { margin-top: 0; }
+    .section {
+      margin: 20px 0;
+      padding: 16px;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+    }
+    .section h2 { margin-top: 0; font-size: 1.2em; }
+    button {
+      padding: 8px 16px;
+      margin: 4px;
+      border: none;
+      border-radius: 4px;
+      background: #007acc;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover { background: #005a9e; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .state-display {
+      background: #f8f8f8;
+      padding: 12px;
+      border-radius: 4px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      margin-top: 8px;
+    }
+    .log {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 12px;
+      border-radius: 4px;
+      font-family: monospace;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 8px;
+    }
+    .log-entry { margin: 2px 0; }
+    .log-entry.error { color: #f48771; }
+    .log-entry.success { color: #89d185; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Store Component Demo</h1>
+    <p>Demonstrates the store component's core functionality with mock implementations.</p>
+
+    <div class="section">
+      <h2>Document Loading</h2>
+      <button id="loadBtn">Load Container</button>
+      <button id="loadErrorBtn">Load with Error</button>
+      <button id="disposeBtn">Dispose</button>
+      <div class="state-display" id="loadingState">Loading State: idle</div>
+    </div>
+
+    <div class="section">
+      <h2>Feature Selection</h2>
+      <button id="selectBtn">Select Feature</button>
+      <button id="clearSelectBtn">Clear Selection</button>
+      <div class="state-display" id="selectionState">Selected: null</div>
+    </div>
+
+    <div class="section">
+      <h2>Command Execution</h2>
+      <button id="executeBtn">Execute Command</button>
+      <button id="undoBtn">Undo</button>
+      <button id="redoBtn">Redo</button>
+      <div class="state-display" id="commandState">No commands executed</div>
+    </div>
+
+    <div class="section">
+      <h2>Event Log</h2>
+      <div class="log" id="eventLog"></div>
+      <button id="clearLogBtn">Clear Log</button>
+    </div>
+  </div>
+
+  <script type="module" src="./demo.js"></script>
+</body>
+</html>
