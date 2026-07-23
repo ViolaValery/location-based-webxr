@@ -11,6 +11,7 @@
     "dev:editor": "vite --open /demos/editor-demo/",
     "dev:persistence": "vite --open /demos/persistence-demo/",
     "dev:renderer": "vite --open /demos/renderer-demo/",
+    "dev:store": "vite --open /demos/store-demo/",
     "test": "vitest run",
     "test:watch": "vitest"
   },
