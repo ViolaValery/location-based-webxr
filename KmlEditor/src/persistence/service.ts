@@ -172,15 +172,30 @@ export class PersistenceServiceImpl implements IPersistenceService {
         throw err;
       }
 
-      const [handle] = await (window as any).showOpenFilePicker({
-        types: [
-          {
-            description: 'KML / KMZ files',
-            accept: { 'application/vnd.google-earth.kmz': ['.kmz'], 'application/vnd.google-earth.kml+xml': ['.kml'] },
-          },
-        ],
-        multiple: false,
-      });
+      let handle: FileSystemFileHandle;
+      try {
+        const [pickedHandle] = await (window as any).showOpenFilePicker({
+          types: [
+            {
+              description: 'KML & KMZ Files (*.kmz, *.kml)',
+              accept: {
+                'application/vnd.google-earth.kmz': ['.kmz', '.KMZ'],
+                'application/vnd.google-earth.kml+xml': ['.kml', '.KML'],
+                'application/xml': ['.kml', '.KML'],
+                'application/zip': ['.kmz', '.KMZ'],
+              },
+            },
+          ],
+          multiple: false,
+        });
+        handle = pickedHandle;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          this._setStatus('idle');
+          throw err;
+        }
+        throw err;
+      }
 
       // Request readwrite permission before binding.
       const perm = await handle.requestPermission({ mode: 'readwrite' });
@@ -302,8 +317,6 @@ export class PersistenceServiceImpl implements IPersistenceService {
 
   /** Open an IKmzContainer from a File. Dynamically imports kmz-io to avoid hard coupling. */
   private async _openContainer(file: File): Promise<IKmzContainer> {
-    // Dynamic import keeps the persistence component free of a static kmz-io dependency
-    // while still working in the same module graph at runtime.
     const { KmzContainer } = await import('../kmz-io/container');
     const container = new KmzContainer();
     await container.open(file);
@@ -349,7 +362,6 @@ export class PersistenceServiceImpl implements IPersistenceService {
         resolve();
         return;
       }
-      // We register a one-shot status listener to detect the transition.
       let unsubscribe: (() => void) | null = null;
       const check = () => {
         if (!this._session.isSaving) {
@@ -386,7 +398,7 @@ export class PersistenceServiceImpl implements IPersistenceService {
       throw err;
     }
 
-    // Guard: already saving (callers should serialize, but belt-and-suspenders).
+    // Guard: already saving.
     if (s.isSaving) return;
 
     s.isSaving = true;
