@@ -2,9 +2,17 @@
 
 ## Overview
 
-The store component is the shared application state and orchestration layer for KmlEditor. It owns the loaded document, container, selection state, command stack, and geo bridge instance. It keeps the UI decoupled from the domain components and is shared by both the desktop editor and the AR scene.
+The store component is the shared application state and orchestration layer for KmlEditor, built using **Redux Toolkit**. It owns the loaded document, container, selection state, command stack, and geo bridge instance. It keeps the UI decoupled from the domain components and is shared by both the desktop editor and the AR scene.
 
-The key architectural decision is that the store is the single source of truth for document-scoped state. Both `editor/` and `ar-scene/` consume the same store instance, which means they see the same selection, command history, and document state. This enables consistent behavior across desktop and mobile AR contexts.
+The key architectural decision is that Redux is the single source of truth for document-scoped state. Both `editor/` and `ar-scene/` consume the same Redux store instance, which means they see the same selection, command history, and document state. This enables consistent behavior across desktop and mobile AR contexts.
+
+### Why Redux Toolkit
+
+- **Predictable state management**: Single source of truth with immutable state updates
+- **DevTools integration**: Time-travel debugging for easier development
+- **Middleware support**: Built-in support for async operations and persistence integration
+- **TypeScript support**: Strong typing with Redux Toolkit's createSlice API
+- **Proven pattern**: Industry-standard with extensive ecosystem
 
 ### What it owns
 
@@ -37,8 +45,8 @@ The key architectural decision is that the store is the single source of truth f
 
 ### Contracts it implements
 
-- The store does not implement a new contract. It exposes a concrete class with a public surface that `editor/` and `ar-scene/` use directly.
-- The public surface is designed to be stable and minimal, avoiding framework-specific patterns (no Redux, no MobX, no React hooks).
+- The store does not implement a new contract. It exposes a Redux store with typed actions and selectors that `editor/` and `ar-scene/` use directly.
+- The public surface is designed to be stable and minimal, using Redux Toolkit's createSlice API for type-safe state management.
 
 ### Explicit boundary
 
@@ -53,76 +61,247 @@ The key architectural decision is that the store is the single source of truth f
 
 ```
 src/store/
-  index.ts           - Public API: createStore, Store class, LoadingState enum, error classes
-  store.ts           - Store class implementation
+  index.ts           - Public API: configureStore, actions, selectors, hooks
+  slice.ts           - Redux slice with state, reducers, and actions
+  store.ts           - Redux store configuration with middleware
+  selectors.ts       - Typed selectors for accessing state
+  hooks.ts           - React hooks for component integration (optional)
   errors.ts          - Custom error classes
+  types.ts           - TypeScript types for state and actions
 ```
 
-### `Store` class (single concrete class in store.ts)
+### Redux State Structure
 
-Private state fields (exact types):
+State interface (exact types):
 ```typescript
-private _container: IKmzContainer | null = null;
-private _document: IKmlDocument | null = null;
-private _geoBridge: IGeoBridge | null = null;
-private _commandStack: ICommandStack | null = null;
-private _selectedFeatureId: string | null = null;
-private _loadingState: LoadingState = LoadingState.Idle;
-private _loadError: Error | null = null;
-private _persistenceService: IPersistenceService | null = null;
-private _listeners: Set<() => void> = new Set();
-```
+interface StoreState {
+  container: IKmzContainer | null;
+  document: IKmlDocument | null;
+  geoBridge: IGeoBridge | null;
+  commandStack: ICommandStack | null;
+  selectedFeatureId: string | null;
+  loadingState: LoadingState;
+  loadError: Error | null;
+  persistenceService: IPersistenceService | null;
+}
 
-Constructor signature:
-```typescript
-constructor(persistenceService?: IPersistenceService)
-```
-- If persistenceService is provided, store it in `_persistenceService`.
-- If omitted, `_persistenceService` remains null (store works without persistence).
-
-Public getter methods:
-```typescript
-get container(): IKmzContainer | null { return this._container; }
-get document(): IKmlDocument | null { return this._document; }
-get geoBridge(): IGeoBridge | null { return this._geoBridge; }
-get commandStack(): ICommandStack | null { return this._commandStack; }
-get selectedFeatureId(): string | null { return this._selectedFeatureId; }
-get loadingState(): LoadingState { return this._loadingState; }
-get loadError(): Error | null { return this._loadError; }
-```
-
-Public action methods:
-```typescript
-async loadContainer(container: IKmzContainer): Promise<void>
-selectFeature(featureId: string | null): void
-executeCommand(command: ICommand): void
-undo(): void
-redo(): void
-dispose(): void
-setPersistenceService(service: IPersistenceService | null): void
-```
-
-Change notification method:
-```typescript
-onChange(listener: () => void): () => void
-```
-
-Private helper methods:
-```typescript
-private _emitChange(): void
-private _clearState(): void
-private _validateDocumentLoaded(): void
-```
-
-### `LoadingState` enum (in index.ts)
-
-```typescript
-export enum LoadingState {
+enum LoadingState {
   Idle = 'idle',
   Loading = 'loading',
   Loaded = 'loaded',
   Error = 'error'
 }
+```
+
+### Redux Slice (slice.ts)
+
+Using Redux Toolkit's createSlice:
+
+```typescript
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+interface StoreState {
+  container: IKmzContainer | null;
+  document: IKmlDocument | null;
+  geoBridge: IGeoBridge | null;
+  commandStack: ICommandStack | null;
+  selectedFeatureId: string | null;
+  loadingState: LoadingState;
+  loadError: Error | null;
+  persistenceService: IPersistenceService | null;
+}
+
+const initialState: StoreState = {
+  container: null,
+  document: null,
+  geoBridge: null,
+  commandStack: null,
+  selectedFeatureId: null,
+  loadingState: LoadingState.Idle,
+  loadError: null,
+  persistenceService: null,
+};
+
+const storeSlice = createSlice({
+  name: 'store',
+  initialState,
+  reducers: {
+    setLoadingState: (state, action: PayloadAction<LoadingState>) => {
+      state.loadingState = action.payload;
+    },
+    setLoadError: (state, action: PayloadAction<Error | null>) => {
+      state.loadError = action.payload;
+    },
+    setContainer: (state, action: PayloadAction<IKmzContainer | null>) => {
+      state.container = action.payload;
+    },
+    setDocument: (state, action: PayloadAction<IKmlDocument | null>) => {
+      state.document = action.payload;
+    },
+    setGeoBridge: (state, action: PayloadAction<IGeoBridge | null>) => {
+      state.geoBridge = action.payload;
+    },
+    setCommandStack: (state, action: PayloadAction<ICommandStack | null>) => {
+      state.commandStack = action.payload;
+    },
+    setSelectedFeatureId: (state, action: PayloadAction<string | null>) => {
+      state.selectedFeatureId = action.payload;
+    },
+    setPersistenceService: (state, action: PayloadAction<IPersistenceService | null>) => {
+      state.persistenceService = action.payload;
+    },
+    clearState: (state) => {
+      state.container = null;
+      state.document = null;
+      state.geoBridge = null;
+      state.commandStack = null;
+      state.selectedFeatureId = null;
+      state.loadingState = LoadingState.Idle;
+      state.loadError = null;
+    },
+  },
+});
+
+export const {
+  setLoadingState,
+  setLoadError,
+  setContainer,
+  setDocument,
+  setGeoBridge,
+  setCommandStack,
+  setSelectedFeatureId,
+  setPersistenceService,
+  clearState,
+} = storeSlice.actions;
+
+export default storeSlice.reducer;
+```
+
+### Store Configuration (store.ts)
+
+```typescript
+import { configureStore } from '@reduxjs/toolkit';
+import storeReducer from './slice';
+import { createKmlDocument } from '../document-model';
+import { createGeoBridge } from '../geo-bridge';
+import { createCommandStack } from '../commands';
+
+export const configureAppStore = (persistenceService?: IPersistenceService) => {
+  return configureStore({
+    reducer: {
+      store: storeReducer,
+    },
+    middleware: (getDefaultMiddleware) =>
+      getDefaultMiddleware({
+        thunk: true,
+      }),
+  });
+};
+
+// Thunk actions for async operations
+export const loadContainer = (container: IKmzContainer) => async (dispatch: any, getState: any) => {
+  if (container === null || container === undefined) {
+    throw new Error('Container cannot be null or undefined');
+  }
+
+  dispatch(setLoadingState(LoadingState.Loading));
+  dispatch(setLoadError(null));
+  dispatch(clearState());
+
+  try {
+    const kmlString = container.getDocKml();
+    const document = createKmlDocument();
+    document.parse(kmlString);
+    dispatch(setDocument(document));
+    dispatch(setContainer(container));
+
+    const geoBridge = createGeoBridge();
+    geoBridge.setAnchor({ position: { lon: 0, lat: 0, alt: 0 }, heading: 0 });
+    dispatch(setGeoBridge(geoBridge));
+
+    const commandStack = createCommandStack(document, geoBridge);
+    dispatch(setCommandStack(commandStack));
+
+    dispatch(setSelectedFeatureId(null));
+    dispatch(setLoadingState(LoadingState.Loaded));
+  } catch (error) {
+    dispatch(setLoadingState(LoadingState.Error));
+    dispatch(setLoadError(error as Error));
+    dispatch(clearState());
+    throw error;
+  }
+};
+
+export const executeCommand = (command: ICommand) => async (dispatch: any, getState: any) => {
+  const state = getState();
+  const { document, commandStack, persistenceService } = state.store;
+
+  if (!document || !commandStack) {
+    throw new Error('Cannot perform operation: no document is loaded');
+  }
+
+  commandStack.execute(command);
+
+  if (persistenceService) {
+    persistenceService.notifyChange();
+  }
+};
+
+export const undo = () => async (dispatch: any, getState: any) => {
+  const state = getState();
+  const { document, commandStack, persistenceService } = state.store;
+
+  if (!document || !commandStack) {
+    throw new Error('Cannot perform operation: no document is loaded');
+  }
+
+  const result = commandStack.undo();
+  if (result !== null && persistenceService) {
+    persistenceService.notifyChange();
+  }
+};
+
+export const redo = () => async (dispatch: any, getState: any) => {
+  const state = getState();
+  const { document, commandStack, persistenceService } = state.store;
+
+  if (!document || !commandStack) {
+    throw new Error('Cannot perform operation: no document is loaded');
+  }
+
+  const result = commandStack.redo();
+  if (result !== null && persistenceService) {
+    persistenceService.notifyChange();
+  }
+};
+```
+
+### Selectors (selectors.ts)
+
+```typescript
+import { RootState } from './store';
+
+export const selectContainer = (state: RootState) => state.store.container;
+export const selectDocument = (state: RootState) => state.store.document;
+export const selectGeoBridge = (state: RootState) => state.store.geoBridge;
+export const selectCommandStack = (state: RootState) => state.store.commandStack;
+export const selectSelectedFeatureId = (state: RootState) => state.store.selectedFeatureId;
+export const selectLoadingState = (state: RootState) => state.store.loadingState;
+export const selectLoadError = (state: RootState) => state.store.loadError;
+export const selectPersistenceService = (state: RootState) => state.store.persistenceService;
+```
+
+### Public API (index.ts)
+
+```typescript
+import { configureAppStore } from './store';
+import * as actions from './store';
+import * as selectors from './selectors';
+import { LoadingState } from './types';
+import { StoreError, DocumentNotLoadedError, LoadFailedError } from './errors';
+
+export { configureAppStore, actions, selectors, LoadingState };
+export { StoreError, DocumentNotLoadedError, LoadFailedError };
 ```
 
 ### Error classes (in errors.ts)
