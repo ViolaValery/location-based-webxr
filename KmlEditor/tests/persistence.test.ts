@@ -72,6 +72,48 @@ function makeHandle(writableOrFail?: FileSystemWritableFileStream | Error): File
   } as unknown as FileSystemFileHandle;
 }
 
+function setupDomGlobals() {
+  if (typeof globalThis.navigator === 'undefined') {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { userAgent: 'Mozilla/5.0' },
+      writable: true,
+      configurable: true,
+    });
+  }
+  if (typeof globalThis.window === 'undefined') {
+    (globalThis as any).window = globalThis;
+  }
+  if (typeof globalThis.document === 'undefined') {
+    (globalThis as any).document = {
+      createElement: (tag: string) => ({
+        href: '',
+        download: '',
+        style: {},
+        click: vi.fn(),
+      }),
+      body: {
+        appendChild: vi.fn(),
+        removeChild: vi.fn(),
+      },
+    };
+  }
+  if (typeof globalThis.DOMException === 'undefined') {
+    (globalThis as any).DOMException = class DOMException extends Error {
+      constructor(message: string, name: string) {
+        super(message);
+        this.name = name;
+      }
+    };
+  }
+  if (typeof globalThis.URL === 'undefined') {
+    (globalThis as any).URL = class URL {};
+  }
+  if (typeof (globalThis.URL as any).createObjectURL === 'undefined') {
+    (globalThis.URL as any).createObjectURL = vi.fn().mockReturnValue('blob:mock-url');
+    (globalThis.URL as any).revokeObjectURL = vi.fn();
+  }
+}
+
 /**
  * Patch navigator.userAgent and window.showOpenFilePicker so that
  * the service believes it is running in Chrome with File System Access.
@@ -79,6 +121,7 @@ function makeHandle(writableOrFail?: FileSystemWritableFileStream | Error): File
 function patchChrome(
   pickerResult?: { handle: FileSystemFileHandle } | Error,
 ): () => void {
+  setupDomGlobals();
   const originalDescriptor = Object.getOwnPropertyDescriptor(navigator, 'userAgent');
   Object.defineProperty(navigator, 'userAgent', {
     value: 'Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36',
@@ -89,13 +132,13 @@ function patchChrome(
     if (pickerResult instanceof Error) throw pickerResult;
     return [pickerResult?.handle ?? makeHandle()];
   });
-  (window as any).showOpenFilePicker = pickerFn;
+  (globalThis.window as any).showOpenFilePicker = pickerFn;
 
   return () => {
     if (originalDescriptor) {
       Object.defineProperty(navigator, 'userAgent', originalDescriptor);
     }
-    delete (window as any).showOpenFilePicker;
+    delete (globalThis.window as any).showOpenFilePicker;
   };
 }
 
@@ -105,6 +148,7 @@ async function openWithInjectedHandle(
   container: IKmzContainer,
   handle: FileSystemFileHandle | null,
 ): Promise<void> {
+  setupDomGlobals();
   const s = svc as any;
   s._teardown();
   s._session.sessionToken++;
@@ -120,9 +164,11 @@ async function openWithInjectedHandle(
 
 /** Mock URL.createObjectURL / revokeObjectURL on the global object. */
 function mockUrlApis(): { createObjectURL: ReturnType<typeof vi.fn>; revokeObjectURL: ReturnType<typeof vi.fn> } {
+  setupDomGlobals();
   const createObjectURL = vi.fn().mockReturnValue('blob:mock-url');
   const revokeObjectURL = vi.fn();
-  (global as any).URL = { createObjectURL, revokeObjectURL };
+  (globalThis.URL as any).createObjectURL = createObjectURL;
+  (globalThis.URL as any).revokeObjectURL = revokeObjectURL;
   return { createObjectURL, revokeObjectURL };
 }
 
@@ -134,6 +180,7 @@ describe('PersistenceServiceImpl', () => {
   let svc: PersistenceServiceImpl;
 
   beforeEach(() => {
+    setupDomGlobals();
     svc = new PersistenceServiceImpl();
     vi.useFakeTimers();
   });

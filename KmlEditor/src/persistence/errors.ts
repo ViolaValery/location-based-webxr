@@ -25,9 +25,10 @@ export class NativeHandleMissingError extends Error {
 /** Thrown when the browser revokes permission for the native file handle during a write. */
 export class NativePermissionDeniedError extends Error {
   constructor(cause?: unknown) {
-    super('Native file write permission denied or revoked.');
+    const msg = typeof cause === 'string' ? cause : (cause instanceof Error ? cause.message : 'Native file write permission denied or revoked.');
+    super(msg);
     this.name = 'NativePermissionDeniedError';
-    if (cause instanceof Error) {
+    if (cause instanceof Error && cause.stack) {
       this.stack = this.stack + '\nCaused by: ' + cause.stack;
     }
   }
@@ -36,9 +37,10 @@ export class NativePermissionDeniedError extends Error {
 /** Thrown when the native write stream fails for reasons other than permission (e.g. disk full). */
 export class NativeWriteFailedError extends Error {
   constructor(cause?: unknown) {
-    super('Native file write failed.');
+    const msg = typeof cause === 'string' ? cause : (cause instanceof Error ? cause.message : 'Native file write failed.');
+    super(msg);
     this.name = 'NativeWriteFailedError';
-    if (cause instanceof Error) {
+    if (cause instanceof Error && cause.stack) {
       this.stack = this.stack + '\nCaused by: ' + cause.stack;
     }
   }
