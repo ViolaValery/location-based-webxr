@@ -1,193 +1,175 @@
-import type { IPersistenceService } from '../contracts/persistence';
-import { StoreError, DocumentNotLoadedError, LoadFailedError } from './errors';
-import { createKmlDocument } from '../document-model';
-import { createGeoBridge } from '../geo-bridge';
-import { createCommandStack } from '../commands';
+import {
+  configureStore,
+  createSlice,
+  combineReducers,
+  createSelector,
+  PayloadAction,
+} from "@reduxjs/toolkit";
+import undoable, { ActionCreators as UndoActionCreators } from "redux-undo";
+import { IKmzContainer, IKmlDocument, ICommandStack, IGeoBridge } from "types";
+import { IPersistenceService } from "../contracts/persistence";
 
-export enum LoadingState {
-  Idle = 'idle',
-  Loading = 'loading',
-  Loaded = 'loaded',
-  Error = 'error'
+enum LoadingState {
+  Idle = "idle",
+  Loading = "loading",
+  Loaded = "loaded",
+  Error = "error",
 }
 
-export class Store {
-  private _container: any = null;
-  private _document: any = null;
-  private _geoBridge: any = null;
-  private _commandStack: any = null;
-  private _selectedFeatureId: string | null = null;
-  private _loadingState: LoadingState = LoadingState.Idle;
-  private _loadError: Error | null = null;
-  private _persistenceService: IPersistenceService | null = null;
-  private _listeners: Set<() => void> = new Set();
+// --- Slices ---
 
-  constructor(persistenceService?: IPersistenceService) {
-    this._persistenceService = persistenceService || null;
-  }
+const containerSlice = createSlice({
+  name: "container",
+  initialState: null as IKmzContainer | null,
+  reducers: {
+    setContainer: (_state, action: PayloadAction<IKmzContainer | null>) =>
+      action.payload,
+  },
+});
 
-  get container(): any {
-    return this._container;
-  }
+const documentSlice = createSlice({
+  name: "document",
+  initialState: null as IKmlDocument | null,
+  reducers: {
+    setDocument: (_state, action: PayloadAction<IKmlDocument | null>) =>
+      action.payload,
+  },
+});
 
-  get document(): any {
-    return this._document;
-  }
+const geoBridgeSlice = createSlice({
+  name: "geoBridge",
+  initialState: null as IGeoBridge | null,
+  reducers: {
+    setGeoBridge: (_state, action: PayloadAction<IGeoBridge | null>) =>
+      action.payload,
+  },
+});
 
-  get geoBridge(): any {
-    return this._geoBridge;
-  }
+const commandStackSlice = createSlice({
+  name: "commandStack",
+  initialState: null as ICommandStack | null,
+  reducers: {
+    setCommandStack: (_state, action: PayloadAction<ICommandStack | null>) =>
+      action.payload,
+  },
+});
 
-  get commandStack(): any {
-    return this._commandStack;
-  }
+const selectedFeatureIdSlice = createSlice({
+  name: "selectedFeatureId",
+  initialState: null as string | null,
+  reducers: {
+    setSelectedFeatureId: (_state, action: PayloadAction<string | null>) =>
+      action.payload,
+  },
+});
 
-  get selectedFeatureId(): string | null {
-    return this._selectedFeatureId;
-  }
+const loadingStateSlice = createSlice({
+  name: "loadingState",
+  initialState: LoadingState.Idle,
+  reducers: {
+    setLoadingState: (_state, action: PayloadAction<LoadingState>) =>
+      action.payload,
+  },
+});
 
-  get loadingState(): LoadingState {
-    return this._loadingState;
-  }
+const loadErrorSlice = createSlice({
+  name: "loadError",
+  initialState: null as Error | null,
+  reducers: {
+    setLoadError: (_state, action: PayloadAction<Error | null>) =>
+      action.payload,
+  },
+});
 
-  get loadError(): Error | null {
-    return this._loadError;
-  }
+const persistenceServiceSlice = createSlice({
+  name: "persistenceService",
+  initialState: null as IPersistenceService | null,
+  reducers: {
+    setPersistenceService: (
+      _state,
+      action: PayloadAction<IPersistenceService | null>,
+    ) => action.payload,
+  },
+});
 
-  selectFeature(featureId: string | null): void {
-    this._selectedFeatureId = featureId;
-    this._emitChange();
-  }
+// --- Root reducer ---
 
-  async loadContainer(container: any): Promise<void> {
-    if (container === null || container === undefined) {
-      throw new StoreError('Container cannot be null or undefined');
-    }
+// redux-undo's config keys are "undoType" / "redoType" (not "undoActionType" / "redoActionType")
+const UNDO_TYPE = "container/undo";
+const REDO_TYPE = "container/redo";
 
-    this._loadingState = LoadingState.Loading;
-    this._loadError = null;
-    this._clearState();
-    this._emitChange();
+const rootReducer = combineReducers({
+  container: containerSlice.reducer,
+  document: documentSlice.reducer,
+  geoBridge: geoBridgeSlice.reducer,
+  // redux-undo wraps this slice's state into { past, present, future }
+  commandStack: undoable(commandStackSlice.reducer, {
+    undoType: UNDO_TYPE,
+    redoType: REDO_TYPE,
+  }),
+  selectedFeatureId: selectedFeatureIdSlice.reducer,
+  loadingState: loadingStateSlice.reducer,
+  loadError: loadErrorSlice.reducer,
+  persistenceService: persistenceServiceSlice.reducer,
+});
 
-    try {
-      const kmlString = container.getDocKml();
-      const document = createKmlDocument();
-      document.parse(kmlString);
-      this._document = document;
-      this._container = container;
+export const store = configureStore({
+  reducer: rootReducer,
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: false,
+    }),
+});
 
-      const geoBridge = createGeoBridge();
-      geoBridge.setAnchor({ position: { lon: 0, lat: 0, alt: 0 }, heading: 0 });
-      this._geoBridge = geoBridge;
+// --- Types ---
 
-      const commandStack = createCommandStack(this._document, this._geoBridge);
-      this._commandStack = commandStack;
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
 
-      this._selectedFeatureId = null;
-      this._loadingState = LoadingState.Loaded;
-      this._emitChange();
-    } catch (error) {
-      this._loadingState = LoadingState.Error;
-      this._loadError = new LoadFailedError(error as Error);
-      this._clearState();
-      this._emitChange();
-      throw this._loadError;
-    }
-  }
+// --- Actions ---
+// Actions live on each slice, not on the store itself (store.actions doesn't exist)
 
-  private _validateDocumentLoaded(): void {
-    if (this._loadingState !== LoadingState.Loaded || this._document === null) {
-      throw new DocumentNotLoadedError();
-    }
-  }
+export const { setContainer } = containerSlice.actions;
+export const { setDocument } = documentSlice.actions;
+export const { setGeoBridge } = geoBridgeSlice.actions;
+export const { setCommandStack } = commandStackSlice.actions;
+export const { setSelectedFeatureId } = selectedFeatureIdSlice.actions;
+export const { setLoadingState } = loadingStateSlice.actions;
+export const { setLoadError } = loadErrorSlice.actions;
+export const { setPersistenceService } = persistenceServiceSlice.actions;
 
-  executeCommand(command: any): void {
-    this._validateDocumentLoaded();
+// redux-undo's built-in action creators — dispatch these to step through history
+// e.g. store.dispatch(undo())
+export const { undo, redo, jump, clearHistory } = UndoActionCreators;
 
-    this._commandStack!.execute(command);
-    this._emitChange();
+// --- Selectors ---
 
-    if (this._persistenceService) {
-      this._persistenceService.notifyChange();
-    }
-  }
+export const selectContainer = (state: RootState) => state.container;
+export const selectDocument = (state: RootState) => state.document;
+export const selectGeoBridge = (state: RootState) => state.geoBridge;
 
-  undo(): void {
-    this._validateDocumentLoaded();
+// commandStack is wrapped by redux-undo: { past: T[], present: T, future: T[] }
+export const selectCommandStackHistory = (state: RootState) =>
+  state.commandStack;
 
-    const result = this._commandStack!.undo();
-    if (result !== null) {
-      this._emitChange();
-      if (this._persistenceService) {
-        this._persistenceService.notifyChange();
-      }
-    }
-  }
+export const selectCommandStack = createSelector(
+  selectCommandStackHistory,
+  (history) => history.present,
+);
 
-  redo(): void {
-    this._validateDocumentLoaded();
+export const selectCanUndo = createSelector(
+  selectCommandStackHistory,
+  (history) => history.past.length > 0,
+);
 
-    const result = this._commandStack!.redo();
-    if (result !== null) {
-      this._emitChange();
-      if (this._persistenceService) {
-        this._persistenceService.notifyChange();
-      }
-    }
-  }
+export const selectCanRedo = createSelector(
+  selectCommandStackHistory,
+  (history) => history.future.length > 0,
+);
 
-  setPersistenceService(persistenceService: IPersistenceService | null): void {
-    this._persistenceService = persistenceService;
-  }
-
-  onChange(listener: () => void): () => void {
-    this._listeners.add(listener);
-    return () => {
-      this._listeners.delete(listener);
-    };
-  }
-
-  async dispose(): Promise<void> {
-    if (this._persistenceService) {
-      try {
-        if (this._container) {
-          await this._persistenceService.flush(this._container);
-        }
-      } catch (error) {
-        console.error('Persistence flush failed during dispose:', error);
-      }
-      this._persistenceService.dispose();
-      this._persistenceService = null;
-    }
-
-    this._clearState();
-    this._loadingState = LoadingState.Idle;
-    this._loadError = null;
-    this._emitChange();
-    this._listeners.clear();
-  }
-
-  private _clearState(): void {
-    if (this._container) {
-      this._container.dispose();
-      this._container = null;
-    }
-    this._document = null;
-    this._geoBridge = null;
-    if (this._commandStack) {
-      this._commandStack = null;
-    }
-    this._selectedFeatureId = null;
-  }
-
-  private _emitChange(): void {
-    const listeners = Array.from(this._listeners);
-    for (const listener of listeners) {
-      try {
-        listener();
-      } catch (error) {
-        console.error('Store change listener threw error:', error);
-      }
-    }
-  }
-}
+export const selectSelectedFeatureId = (state: RootState) =>
+  state.selectedFeatureId;
+export const selectLoadingState = (state: RootState) => state.loadingState;
+export const selectLoadError = (state: RootState) => state.loadError;
+export const selectPersistenceService = (state: RootState) =>
+  state.persistenceService;
