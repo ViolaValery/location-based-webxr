@@ -25,9 +25,11 @@
 
 - **`persistence/`** — File System Access Persistence (Komponente 6): Debounced Autosave über File System Access API Handle. Schreibt atomar (temp→swap). Fallback auf OPFS + Download wenn API nicht verfügbar (z.B. Android Chrome).
 
-- **`editor/`** — Desktop Editor (Komponente 7, Goal-2 Composition): Composited 3D Three.js Editor (kein AR, kein 2D-Map in It.1). Verbindet alle Komponenten 1–6: KMZ laden → Features rendern → Selektieren/Editieren → Persistieren. Hier leben auch die Replay-E2E-Tests mit Task-1-Recordings.
+- **`store/`** — Shared Application Store (component 7): State and orchestration layer for the loaded document, container, selection, command stack, and geo bridge. It keeps the UI decoupled from the domain components and is shared by `editor/` and `ar-scene/`.
 
-- **`ar-scene/`** — AR Scene (Komponente 8, ZULETZT): WebXR-Integration via `gps-plus-slam-app-framework`. Gleicher Store, gleiche Renderer, gleiche Commands — aber Features an GPS-Positionen verankert und in AR auf dem Handy editierbar.
+- **`editor/`** — Desktop Editor (component 8, Goal-2 Composition): Composited 3D Three.js editor (no AR, no 2D map in It.1). It consumes the shared store and drives the flow from load file to render features to select, edit, and persist. The replay E2E tests with Task-1 recordings also live here.
+
+- **`ar-scene/`** — AR Scene (component 9, last): WebXR integration via `gps-plus-slam-app-framework`. It uses the same store, the same renderers, and the same commands, but anchors features to GPS positions for mobile AR editing.
 
 ## `demos/` — Standalone-Demos (eine pro Komponente)
 
@@ -45,6 +47,6 @@
 
 ## Implementierungs-Reihenfolge
 
-1. `contracts/` → 2. `kmz-io/` → 3. `kml-model/` → 4. `geo-bridge/` → 5. `renderers/` → 6. `commands/` → 7. `persistence/` → 8. `editor/` → 9. `ar-scene/`
+1. `contracts/` → 2. `kmz-io/` → 3. `kml-model/` → 4. `geo-bridge/` → 5. `renderers/` → 6. `commands/` → 7. `persistence/` → 8. `store/` → 9. `editor/` → 10. `ar-scene/`
 
-> **Harte Constraints:** Engine (1–4) vor Renderern (5), AR Scene (9) zuletzt.
+> **Harte Constraints:** Engine (1–4) vor Renderern (5), AR Scene (10) zuletzt.
