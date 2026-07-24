@@ -25,7 +25,7 @@
 
 - **`persistence/`** — File System Access Persistence (Komponente 6): Debounced Autosave über File System Access API Handle. Schreibt atomar (temp→swap). Fallback auf OPFS + Download wenn API nicht verfügbar (z.B. Android Chrome).
 
-- **`store/`** — Shared Application Store (component 7): State and orchestration layer for the loaded document, container, selection, command stack, and geo bridge. It keeps the UI decoupled from the domain components and is shared by `editor/` and `ar-scene/`.
+- **`store/`** — Shared Application Store (component 7): State and orchestration layer for the loaded document, container, selection, command stack, and geo bridge. Implemented as a Redux store utilizing action dispatching, pure state reducers, and state subscriptions under a Facade pattern to keep the UI decoupled and unified with the framework's state management patterns.
 
 - **`editor/`** — Desktop Editor (component 8, Goal-2 Composition): Composited 3D Three.js editor (no AR, no 2D map in It.1). It consumes the shared store and drives the flow from load file to render features to select, edit, and persist. The replay E2E tests with Task-1 recordings also live here.
 

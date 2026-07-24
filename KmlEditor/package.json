@@ -16,8 +16,11 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
-	"three": "^0.184.0",
-	"vite": "^8.0.12",
+    "three": "^0.184.0",
+    "vite": "^8.0.12",
     "vitest": "^4.1.6"
+  },
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.11.2"
   }
 }
