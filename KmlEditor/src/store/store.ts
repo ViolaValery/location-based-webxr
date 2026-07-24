@@ -98,7 +98,7 @@ const persistenceServiceSlice = createSlice({
 const UNDO_TYPE = "container/undo";
 const REDO_TYPE = "container/redo";
 
-const rootReducer = combineReducers({
+export const rootReducer = combineReducers({
   container: containerSlice.reducer,
   document: documentSlice.reducer,
   geoBridge: geoBridgeSlice.reducer,
@@ -171,5 +171,6 @@ export const selectSelectedFeatureId = (state: RootState) =>
   state.selectedFeatureId;
 export const selectLoadingState = (state: RootState) => state.loadingState;
 export const selectLoadError = (state: RootState) => state.loadError;
+
 export const selectPersistenceService = (state: RootState) =>
   state.persistenceService;

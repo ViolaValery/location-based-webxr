@@ -1,9 +1,17 @@
-import { Store, LoadingState } from './store';
-import { StoreError, DocumentNotLoadedError, LoadFailedError } from './errors';
+export {
+  default as storeReducer,
+  setLoadingState,
+  setLoadError,
+  setContainer,
+  setDocument,
+  setGeoBridge,
+  setCommandStack,
+  setSelectedFeatureId,
+  setPersistenceService,
+  clearState,
+} from "./store";
 
-export function createStore(persistenceService?: import('../contracts/persistence').IPersistenceService): Store {
-  return new Store(persistenceService);
-}
+export { LoadingState } from "./types";
+export type { StoreState } from "./types";
 
-export { Store, LoadingState };
-export { StoreError, DocumentNotLoadedError, LoadFailedError };
+export { StoreError, DocumentNotLoadedError, LoadFailedError } from "./errors";
