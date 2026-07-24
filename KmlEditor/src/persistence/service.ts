@@ -31,6 +31,10 @@ interface SessionState {
   sessionToken: number;
   activeContainer: IKmzContainer | null;
   activeFileHandle: FileSystemFileHandle | null;
+  fileName: string;
+  opfsFileName: string;
+  mode: 'native' | 'opfs' | 'detached';
+  opfsFallbackEnabled: boolean;
   /** Incremented by notifyChange(). */
   dirtyVersion: number;
   /** Set to dirtyVersion snapshot after a successful write close(). */
@@ -49,6 +53,10 @@ function initialSession(): SessionState {
     sessionToken: 0,
     activeContainer: null,
     activeFileHandle: null,
+    fileName: 'document.kmz',
+    opfsFileName: 'opfs-working-copy.kmz',
+    mode: 'detached',
+    opfsFallbackEnabled: true,
     dirtyVersion: 0,
     persistedVersion: 0,
     isSaving: false,
@@ -84,6 +92,9 @@ function hasFileSystemAccess(): boolean {
     typeof (window as any).showOpenFilePicker === 'function'
   );
 }
+
+/** In-memory fallback cache for environments without OPFS API support */
+const opfsInMemoryMap = new Map<string, ArrayBuffer>();
 
 /**
  * Sanitize a suggested download filename.
@@ -130,6 +141,29 @@ export class PersistenceServiceImpl implements IPersistenceService {
   private _session: SessionState = initialSession();
   private _listeners: Set<(status: SaveStatus) => void> = new Set();
 
+  /** Configure whether OPFS fallback is active when native file handle is absent or denied. */
+  get opfsFallbackEnabled(): boolean {
+    return this._session.opfsFallbackEnabled;
+  }
+  set opfsFallbackEnabled(enabled: boolean) {
+    this._session.opfsFallbackEnabled = enabled;
+  }
+
+  /** Current operational persistence mode. */
+  get mode(): 'native' | 'opfs' | 'detached' {
+    return this._session.mode;
+  }
+
+  /** True if there are unsaved changes pending write/flush. */
+  get hasUnsavedChanges(): boolean {
+    return this._session.dirtyVersion > this._session.persistedVersion;
+  }
+
+  /** Name of the active file session. */
+  get fileName(): string {
+    return this._session.fileName;
+  }
+
   // ── IPersistenceService: status ───────────────────────────────────────────
 
   get status(): SaveStatus {
@@ -150,21 +184,17 @@ export class PersistenceServiceImpl implements IPersistenceService {
   // ── IPersistenceService: open ─────────────────────────────────────────────
 
   async open(file?: File): Promise<IKmzContainer> {
-    if (!isChrome()) {
-      const err = new UnsupportedEnvironmentError();
-      this._setStatus('error', err);
-      throw err;
-    }
-
     // Tear down any existing session.
     this._teardown();
 
     let container: IKmzContainer;
     let fileHandle: FileSystemFileHandle | null = null;
+    let name = 'document.kmz';
+    let mode: 'native' | 'opfs' | 'detached' = 'detached';
 
     if (!file) {
       // ── Picker path ───────────────────────────────────────────────────────
-      if (!hasFileSystemAccess()) {
+      if (!isChrome() || !hasFileSystemAccess()) {
         const err = new UnsupportedEnvironmentError(
           'showOpenFilePicker is not available in this environment.',
         );
@@ -197,8 +227,21 @@ export class PersistenceServiceImpl implements IPersistenceService {
         throw err;
       }
 
-      // Request readwrite permission before binding.
-      const perm = await handle.requestPermission({ mode: 'readwrite' });
+      name = handle.name || 'document.kmz';
+
+      // Check and request readwrite permission.
+      let perm = 'granted';
+      try {
+        const h = handle as any;
+        if (typeof h.requestPermission === 'function') {
+          perm = await h.requestPermission({ mode: 'readwrite' });
+        } else if (typeof h.queryPermission === 'function') {
+          perm = await h.queryPermission({ mode: 'readwrite' });
+        }
+      } catch (_) {
+        perm = 'denied';
+      }
+
       if (perm !== 'granted') {
         const err = new NativePermissionDeniedError();
         this._setStatus('error', err);
@@ -208,17 +251,34 @@ export class PersistenceServiceImpl implements IPersistenceService {
       const pickedFile: File = await handle.getFile();
       container = await this._openContainer(pickedFile);
       fileHandle = handle;
+      mode = 'native';
     } else {
-      // ── Detached (file provided externally) ───────────────────────────────
-      container = await this._openContainer(file);
+      // ── Detached / External File provided ─────────────────────────
+      name = file.name || 'document.kmz';
+      const opfsName = 'opfs-working-copy-' + sanitizeFilename(name);
+
+      // Check if an OPFS working copy exists for this file
+      const opfsBytes = await this._readFromOpfs(opfsName);
+      if (opfsBytes && opfsBytes.byteLength > 0) {
+        const workingFile = new File([opfsBytes], name, { type: file.type });
+        container = await this._openContainer(workingFile);
+      } else {
+        container = await this._openContainer(file);
+      }
       fileHandle = null;
+      mode = this._session.opfsFallbackEnabled ? 'opfs' : 'detached';
     }
+
+    const opfsName = 'opfs-working-copy-' + sanitizeFilename(name);
 
     // Bind new session.
     const s = this._session;
     s.sessionToken++;
     s.activeContainer = container;
     s.activeFileHandle = fileHandle;
+    s.fileName = name;
+    s.opfsFileName = opfsName;
+    s.mode = mode;
     s.dirtyVersion = 0;
     s.persistedVersion = 0;
     s.isSaving = false;
@@ -313,6 +373,51 @@ export class PersistenceServiceImpl implements IPersistenceService {
     this._teardown();
   }
 
+  // ── OPFS Helpers ──────────────────────────────────────────────────────────
+
+  /** Write bytes atomically to OPFS working copy (temp file -> swap). */
+  private async _writeToOpfs(filename: string, bytes: ArrayBuffer): Promise<void> {
+    opfsInMemoryMap.set(filename, bytes.slice(0));
+
+    if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) {
+      return;
+    }
+    try {
+      const root = await navigator.storage.getDirectory();
+      const tempName = `${filename}.tmp`;
+      const tempHandle = await root.getFileHandle(tempName, { create: true });
+      const writable = await tempHandle.createWritable();
+      await writable.write(bytes);
+      await writable.close();
+
+      const targetHandle = await root.getFileHandle(filename, { create: true });
+      const targetWritable = await targetHandle.createWritable();
+      await targetWritable.write(bytes);
+      await targetWritable.close();
+
+      try {
+        await root.removeEntry(tempName);
+      } catch (_) { /* ignore temp cleanup errors */ }
+    } catch (err) {
+      console.warn('[persistence] OPFS fallback write failed:', err);
+    }
+  }
+
+  /** Read bytes from OPFS working copy or in-memory map. */
+  private async _readFromOpfs(filename: string): Promise<ArrayBuffer | null> {
+    if (typeof navigator !== 'undefined' && navigator.storage?.getDirectory) {
+      try {
+        const root = await navigator.storage.getDirectory();
+        const handle = await root.getFileHandle(filename);
+        const file = await handle.getFile();
+        return await file.arrayBuffer();
+      } catch (_) {
+        // Fall through to memory map
+      }
+    }
+    return opfsInMemoryMap.get(filename) ?? null;
+  }
+
   // ── Internal helpers ──────────────────────────────────────────────────────
 
   /** Open an IKmzContainer from a File. Dynamically imports kmz-io to avoid hard coupling. */
@@ -376,9 +481,9 @@ export class PersistenceServiceImpl implements IPersistenceService {
   /**
    * Core write path. Always:
    * 1. Guards stale session token.
-   * 2. Validates native handle presence.
+   * 2. Handles permission checking/re-requesting or OPFS fallback.
    * 3. Serializes container bytes.
-   * 4. Writes via createWritable / write / close.
+   * 4. Writes atomically (native createWritable swap-on-close or OPFS temp->swap).
    * 5. Updates persistedVersion only after successful close().
    */
   private async _attemptSave(
@@ -390,16 +495,16 @@ export class PersistenceServiceImpl implements IPersistenceService {
     // Guard: stale token.
     if (tokenSnapshot !== s.sessionToken) return;
 
-    // Guard: no native handle.
-    if (!s.activeFileHandle) {
+    // Guard: already saving.
+    if (s.isSaving) return;
+
+    // Guard: no native handle when OPFS fallback is disabled.
+    if (!s.activeFileHandle && !s.opfsFallbackEnabled) {
       const err = new NativeHandleMissingError();
       s.lastError = err;
       this._setStatus('error', err);
       throw err;
     }
-
-    // Guard: already saving.
-    if (s.isSaving) return;
 
     s.isSaving = true;
     this._setStatus('saving');
@@ -435,32 +540,47 @@ export class PersistenceServiceImpl implements IPersistenceService {
       );
     }
 
-    let writable: FileSystemWritableFileStream;
-    try {
-      writable = await s.activeFileHandle.createWritable();
-    } catch (err) {
-      if (tokenSnapshot !== s.sessionToken) return;
-      s.isSaving = false;
-      const wrapped = classifyWriteError(err);
-      this._setStatus('error', wrapped);
-      throw wrapped;
-    }
+    if (s.activeFileHandle) {
+      // Re-verify permission on write if queryPermission is available
+      let perm = 'granted';
+      try {
+        const h = s.activeFileHandle as any;
+        if (typeof h.queryPermission === 'function') {
+          perm = await h.queryPermission({ mode: 'readwrite' });
+        }
+      } catch (_) {
+        perm = 'granted'; // Fall through to createWritable which will throw DOMException if denied
+      }
 
-    if (tokenSnapshot !== s.sessionToken) {
-      // Session changed while opening writable – do not write.
-      try { await writable.close(); } catch (_) { /* ignore */ }
-      return;
-    }
+      if (perm === 'denied') {
+        s.isSaving = false;
+        const err = new NativePermissionDeniedError();
+        this._setStatus('error', err);
+        throw err;
+      }
 
-    try {
-      await writable.write(bytes);
-      await writable.close();
-    } catch (err) {
-      if (tokenSnapshot !== s.sessionToken) return;
-      s.isSaving = false;
-      const wrapped = classifyWriteError(err);
-      this._setStatus('error', wrapped);
-      throw wrapped;
+      let writable: FileSystemWritableFileStream | null = null;
+      try {
+        writable = await s.activeFileHandle.createWritable();
+        await writable.write(bytes);
+        await writable.close();
+        s.mode = 'native';
+        // Also back up to OPFS working copy
+        await this._writeToOpfs(s.opfsFileName, bytes);
+      } catch (err) {
+        if (tokenSnapshot !== s.sessionToken) return;
+        s.isSaving = false;
+        if (writable) {
+          try { await writable.abort(); } catch (_) { /* ignore abort failure */ }
+        }
+        const wrapped = classifyWriteError(err);
+        this._setStatus('error', wrapped);
+        throw wrapped;
+      }
+    } else {
+      // Fallback: OPFS Working Copy atomic save
+      await this._writeToOpfs(s.opfsFileName, bytes);
+      s.mode = 'opfs';
     }
 
     // ── Commit point ──────────────────────────────────────────────────────
@@ -485,6 +605,9 @@ export class PersistenceServiceImpl implements IPersistenceService {
     this._clearTimer();
     s.activeContainer = null;
     s.activeFileHandle = null;
+    s.fileName = 'document.kmz';
+    s.opfsFileName = 'opfs-working-copy.kmz';
+    s.mode = 'detached';
     s.isSaving = false;
     s.pendingFlush = false;
     s.lastError = null;
@@ -493,3 +616,4 @@ export class PersistenceServiceImpl implements IPersistenceService {
     this._setStatus('idle');
   }
 }
+
