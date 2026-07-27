@@ -376,6 +376,12 @@ The page has: file picker; save-status badge; Save now and Export buttons; featu
 
 An optional deterministic Replay button loads a checked-in Task-1 recording, displays a moving reference marker/camera path, and proves that the desktop environment needs neither a phone nor WebXR. Demo acceptance is: edit two features; observe `saving` then `saved`; reopen saved file in the editor; then open it in Google Earth with unchanged unrelated content/assets retained.
 
+### What the demo proves and how to test it
+
+This is the phone-free proof that the composed product works end to end: it tests loading a real Google Earth `.kml`/`.kmz`, rendering against a local reference origin, command-based editing with undo/redo, and persistence back into a Google-Earth-compatible file. It does **not** test live GPS or WebXR; the Replay control only supplies deterministic recorded movement to the desktop scene.
+
+For the acceptance test, load a checked-in Google Earth fixture containing at least a marker, a model, and packaged assets. Move the marker and model, save, then reopen the written file in the editor and confirm both edited positions. The automated E2E test must additionally compare the resulting `doc.kml` and archive: only the two intended feature regions may differ, while every other KML byte and every untouched asset byte remains identical. Finally open the same saved file in Google Earth; correct placement and intact assets are the user-visible compatibility check.
+
 ## Dependencies
 
 | Dependency | Why it exists | Why alternatives are rejected / assumptions |
