@@ -382,6 +382,17 @@ This is the phone-free proof that the composed product works end to end: it test
 
 For the acceptance test, load a checked-in Google Earth fixture containing at least a marker, a model, and packaged assets. Move the marker and model, save, then reopen the written file in the editor and confirm both edited positions. The automated E2E test must additionally compare the resulting `doc.kml` and archive: only the two intended feature regions may differ, while every other KML byte and every untouched asset byte remains identical. Finally open the same saved file in Google Earth; correct placement and intact assets are the user-visible compatibility check.
 
+### How to read demo messages
+
+The demo message area reports the outcome of the last user-visible operation; it is not an activity log and must never claim a successful save before the persistence service has confirmed `saved`.
+
+- **`Loading…` / `Loaded`** means the file was accepted by the store and its features are available for preview and editing. It says nothing about disk persistence.
+- **`Preview warning: …`** means one visual renderer failed (for example a missing model asset). The KML feature remains present and selectable; the warning does not mean that the file was changed or damaged.
+- **`Could not load …`** means parsing/opening failed. The prior editor session stays open and the user can choose another file.
+- **`Choose a .kml or .kmz file`** is local input validation; the file was never passed to the engine.
+- **`Saving…` / `Saved`** may only come from `IPersistenceService.status`. `Saved` means the active container bytes were successfully committed by that service; **Export** remains a separate action and is not an in-place save.
+- **`Native save requires the pending shared-container session seam`** is a development-blocker message in the current prototype, not a user error: `IEditorStore.loadFile()` and `IPersistenceService.open()` currently create different `IKmzContainer` sessions, so the editor cannot safely ask persistence to write the container that contains the edited document. Preview, selection, commands, and undo/redo work, but the demo must not be used as evidence of save/reopen until the architecture supplies one explicitly shared container session. The message should be removed only after that integration exists and the end-to-end round-trip test passes.
+
 ## Dependencies
 
 | Dependency | Why it exists | Why alternatives are rejected / assumptions |
