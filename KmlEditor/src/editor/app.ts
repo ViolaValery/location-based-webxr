@@ -87,16 +87,16 @@ export class EditorApp {
         pickerGroup.className = 'kml-editor__card';
         const pickerLabel = document.createElement('label');
         pickerLabel.className = 'kml-editor__section-title';
-        pickerLabel.textContent = 'DOCUMENT SOURCE (AUTOSAVE ENABLED)';
-        
+        pickerLabel.textContent = 'DOCUMENT SOURCE';
+
         this.fileInput = document.createElement('input');
         this.fileInput.type = 'file';
         this.fileInput.accept = '.kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz';
         this.fileInput.style.display = 'none';
         this.fileInput.addEventListener('change', () => { const file = this.fileInput.files?.[0]; if (file) void this.openFile(file); });
 
-        const openBtn = button('Open KML / KMZ File 📂', () => void this.triggerOpen(), 'primary');
-        
+        const openBtn = button('Open KML / KMZ File', () => void this.triggerOpen(), 'primary');
+
         const historyRow = document.createElement('div');
         historyRow.className = 'kml-editor__btn-row';
         this.undoButton = button('Undo ↩', () => this.store.undo());
@@ -225,7 +225,7 @@ export class EditorApp {
         this.setMessage('Loading…');
         try {
             await this.store.loadFile(file);
-            await this.persistence.open(file).catch(() => {});
+            await this.persistence.open(file).catch(() => { });
             this.setMessage(`Loaded '${file.name}'. All edits automatically auto-save.`);
         }
         catch (error) { this.setMessage(error instanceof Error ? error.message : 'Could not load the file.'); }
