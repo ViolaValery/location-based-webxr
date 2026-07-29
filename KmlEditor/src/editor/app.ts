@@ -11,10 +11,10 @@ import { FeatureSceneRegistry } from './feature-scene-registry';
 
 const dummyAssetProvider: IAssetProvider = {
     getAssetUrl: async (href) => href,
-    release: () => {},
+    release: () => { },
     getAssetBytes: async () => new Uint8Array(0),
     hasAsset: () => false,
-    dispose: () => {},
+    dispose: () => { },
 };
 
 /** Mountable desktop editor. */
@@ -49,16 +49,37 @@ export class EditorApp {
         picker.type = 'file'; picker.accept = '.kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz';
         picker.addEventListener('change', () => { const file = picker.files?.[0]; if (file) void this.openFile(file); });
         const apply = button('Apply properties', () => this.applyProperties());
+        const focus = button('Focus selected', () => this.focusSelected());
         const remove = button('Delete selected', () => this.deleteSelected());
         const undo = button('Undo', () => this.store.undo());
         const redo = button('Redo', () => this.store.redo());
-        sidebar.append(picker, this.message, document.createTextNode('Features'), this.list, this.nameInput, this.descriptionInput, apply, remove, undo, redo);
+        sidebar.append(picker, this.message, document.createTextNode('Features'), this.list, this.nameInput, this.descriptionInput, apply, focus, remove, undo, redo);
         shell.append(sidebar, viewport);
         this.host.appendChild(shell);
+        injectStyles();
         this.scene = new DesktopScene(viewport);
         this.registry = new FeatureSceneRegistry(this.scene.featureRoot, new RendererFactory());
         this.scene.renderer.domElement.addEventListener('pointerdown', (event: PointerEvent) => this.pick(event));
-        
+
+        // Right-side vertical zoom slider overlay
+        const zoomControl = document.createElement('div');
+        zoomControl.className = 'kml-editor__zoom-control';
+        zoomControl.innerHTML = `<span style="font-weight:bold;font-size:0.9rem;">+</span><input type="range" min="0.3" max="4.7" step="0.01" value="2.5" class="kml-editor__zoom-slider" title="Zoom in / out"><span style="font-weight:bold;font-size:0.9rem;">−</span>`;
+        viewport.appendChild(zoomControl);
+
+        const zoomSlider = zoomControl.querySelector('input') as HTMLInputElement;
+        zoomSlider.addEventListener('input', () => {
+            const val = Number(zoomSlider.value);
+            const dist = Math.pow(10, 5.0 - val);
+            this.scene.setZoomDistance(dist);
+        });
+
+        this.scene.controls.addEventListener('change', () => {
+            const dist = this.scene.getZoomDistance();
+            const logVal = Math.log10(Math.max(2, dist));
+            zoomSlider.value = (5.0 - logVal).toFixed(2);
+        });
+
         this.unsubscribe = this.store.subscribe((state) => {
             const features = state.featureOrder.map((id) => state.featuresById[id]).filter(Boolean);
             const container = (this.store as any).container;
@@ -121,6 +142,21 @@ export class EditorApp {
         if (this.descriptionInput.value !== feature.description) this.store.executeCommand(createSetDescriptionCommand(selected, this.descriptionInput.value));
     }
 
+    private focusSelected(): void {
+        const selected = this.store.selectedFeatureId;
+        if (!selected) {
+            this.setMessage('Select a feature first to focus.');
+            return;
+        }
+        const object = this.registry.getObject(selected);
+        if (object) {
+            this.scene.focusOn(object);
+            this.setMessage('Focused camera on selected feature.');
+        } else {
+            this.setMessage('Feature object not found in 3D scene.');
+        }
+    }
+
     private deleteSelected(): void {
         const selected = this.store.selectedFeatureId;
         if (!selected) return;
@@ -136,4 +172,41 @@ export function mountEditor(host: HTMLElement): EditorApp { return new EditorApp
 function button(label: string, onClick: () => void): HTMLButtonElement {
     const result = document.createElement('button');
     result.type = 'button'; result.textContent = label; result.addEventListener('click', onClick); return result;
+}
+
+function injectStyles(): void {
+    if (document.getElementById('kml-editor-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'kml-editor-styles';
+    style.textContent = `
+        .kml-editor__viewport { position: relative; min-width: 0; min-height: 0; }
+        .kml-editor__zoom-control {
+            position: absolute;
+            right: 1.25rem;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(16, 19, 26, 0.85);
+            border: 1px solid #31405a;
+            padding: 0.8rem 0.5rem;
+            border-radius: 24px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            backdrop-filter: blur(8px);
+            z-index: 10;
+            color: #9ca3af;
+            user-select: none;
+        }
+        .kml-editor__zoom-slider {
+            writing-mode: bt-lr;
+            -webkit-appearance: slider-vertical;
+            appearance: slider-vertical;
+            width: 18px;
+            height: 180px;
+            cursor: pointer;
+        }
+    `;
+    document.head.appendChild(style);
 }

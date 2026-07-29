@@ -17,19 +17,48 @@ export class DesktopScene {
         this.scene.background = new THREE.Color(0x10131a);
         this.scene.add(this.featureRoot, this.overlayRoot, new THREE.HemisphereLight(0xffffff, 0x263040, 2));
         const key = new THREE.DirectionalLight(0xffffff, 2);
-        key.position.set(20, 40, 20);
-        this.scene.add(key, new THREE.GridHelper(100, 100, 0x4e678a, 0x253244));
-        this.camera.position.set(25, 25, 25);
+        const grid = new THREE.GridHelper(10000, 100, 0x4e678a, 0x253244);
+        grid.position.y = -0.01;
+        this.scene.add(key, grid);
+        this.camera.position.set(120, 120, 120);
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         this.renderer.domElement.setAttribute('aria-label', '3D KML preview');
         this.host.appendChild(this.renderer.domElement);
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
+        this.controls.maxDistance = 50_000;
         this.resizeObserver = new ResizeObserver(() => this.resize());
         this.resizeObserver.observe(host);
         this.resize();
         this.renderLoop();
+    }
+
+    public focusOn(object: THREE.Object3D): void {
+        const box = new THREE.Box3().setFromObject(object);
+        if (box.isEmpty()) return;
+
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 5);
+
+        const offset = new THREE.Vector3(maxDim * 1.8, maxDim * 1.8, maxDim * 1.8);
+        this.controls.target.copy(center);
+        this.camera.position.copy(center).add(offset);
+        this.controls.update();
+    }
+
+    public setZoomDistance(distance: number): void {
+        const direction = new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
+        if (direction.lengthSq() === 0) direction.set(1, 1, 1);
+        direction.normalize();
+        const clampedDist = Math.max(2, Math.min(distance, 50_000));
+        this.camera.position.copy(this.controls.target).addScaledVector(direction, clampedDist);
+        this.controls.update();
+    }
+
+    public getZoomDistance(): number {
+        return this.camera.position.distanceTo(this.controls.target);
     }
 
     public resize(): void {

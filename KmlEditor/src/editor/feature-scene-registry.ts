@@ -38,6 +38,11 @@ export class FeatureSceneRegistry {
         }));
     }
 
+    public getObject(featureId: FeatureId): THREE.Object3D | null {
+        const entry = this.entries.get(featureId);
+        return entry ? entry.renderer.getNativeObject() : null;
+    }
+
     public findFeatureId(object: THREE.Object3D): FeatureId | null {
         let current: THREE.Object3D | null = object;
         while (current) {
