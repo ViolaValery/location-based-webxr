@@ -19,6 +19,9 @@ export interface IKmzContainer {
     /** Gibt den Asset Provider für diesen Container zurück */
     getAssetProvider(): IAssetProvider;
 
+    /** Custom flag indicating if input was a bare .kml file without ZIP wrapper */
+    readonly isBareKml?: boolean;
+
     /** Räumt Blob-URLs etc. auf */
     dispose(): void;
 }
@@ -26,6 +29,9 @@ export interface IKmzContainer {
 export interface IAssetProvider {
     /** Löst einen KML-href zu einer Blob-URL auf (für <img>, ColladaLoader, etc.) */
     getAssetUrl(href: string): Promise<string>;
+
+    /** Gibt eine geladene Blob-URL für einen href frei */
+    release(href: string): void;
 
     /** Gibt die rohen Bytes eines Assets zurück */
     getAssetBytes(href: string): Promise<Uint8Array>;

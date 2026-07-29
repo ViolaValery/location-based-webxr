@@ -4,6 +4,9 @@ export interface IGeoBridge {
     /** Setzt den Welt-Anker (GPS-Position die dem Three.js-Ursprung entspricht) */
     setAnchor(anchor: GeoAnchor): void;
 
+    /** Gibt den aktuellen Welt-Anker zurück */
+    getAnchor(): GeoAnchor | null;
+
     /** Geo → World: Wandelt eine Geo-Position in Three.js-Weltkoordinaten um */
     geoToWorld(position: GeoPosition, altitudeMode?: AltitudeMode): WorldPosition;
 

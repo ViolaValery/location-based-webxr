@@ -9,7 +9,15 @@ import { createEditorStore } from '../store';
 import { DesktopScene } from './desktop-scene';
 import { FeatureSceneRegistry } from './feature-scene-registry';
 
-/** Mountable desktop editor. Persistence is intentionally not wired until a shared container session exists. */
+const dummyAssetProvider: IAssetProvider = {
+    getAssetUrl: async (href) => href,
+    release: () => {},
+    getAssetBytes: async () => new Uint8Array(0),
+    hasAsset: () => false,
+    dispose: () => {},
+};
+
+/** Mountable desktop editor. */
 export class EditorApp {
     private readonly store: IEditorStore;
     private readonly scene: DesktopScene;
@@ -42,21 +50,30 @@ export class EditorApp {
         picker.addEventListener('change', () => { const file = picker.files?.[0]; if (file) void this.openFile(file); });
         const apply = button('Apply properties', () => this.applyProperties());
         const remove = button('Delete selected', () => this.deleteSelected());
-        const undo = button('Undo', () => this.store.commands.undo());
-        const redo = button('Redo', () => this.store.commands.redo());
+        const undo = button('Undo', () => this.store.undo());
+        const redo = button('Redo', () => this.store.redo());
         sidebar.append(picker, this.message, document.createTextNode('Features'), this.list, this.nameInput, this.descriptionInput, apply, remove, undo, redo);
         shell.append(sidebar, viewport);
         this.host.appendChild(shell);
         this.scene = new DesktopScene(viewport);
         this.registry = new FeatureSceneRegistry(this.scene.featureRoot, new RendererFactory());
         this.scene.renderer.domElement.addEventListener('pointerdown', (event: PointerEvent) => this.pick(event));
-        this.unsubscribe = this.store.subscribe((state) => { void this.render(state.document?.getFeatures() ?? [], state.container?.getAssetProvider() ?? null, state.selectedFeatureId); });
+        
+        this.unsubscribe = this.store.subscribe((state) => {
+            const features = state.featureOrder.map((id) => state.featuresById[id]).filter(Boolean);
+            const container = (this.store as any).container;
+            const assets = container ? container.getAssetProvider() : dummyAssetProvider;
+            void this.render(features, assets, state.selectedFeatureId);
+        });
     }
 
     public async openFile(file: File): Promise<void> {
         if (!/\.kml|\.kmz$/i.test(file.name)) { this.setMessage('Choose a .kml or .kmz file.'); return; }
         this.setMessage('Loading…');
-        try { await this.store.loadFile(file); this.setMessage('Loaded. Native save requires the pending shared-container session seam.'); }
+        try {
+            await this.store.loadFile(file);
+            this.setMessage(`Loaded '${file.name}' successfully.`);
+        }
         catch (error) { this.setMessage(error instanceof Error ? error.message : 'Could not load the file.'); }
     }
 
@@ -69,8 +86,8 @@ export class EditorApp {
         this.host.replaceChildren();
     }
 
-    private async render(features: readonly IFeatureView[], assets: IAssetProvider | null, selected: FeatureId | null): Promise<void> {
-        if (this.disposed || !assets) { this.list.replaceChildren(); return; }
+    private async render(features: readonly IFeatureView[], assets: IAssetProvider, selected: FeatureId | null): Promise<void> {
+        if (this.disposed) { this.list.replaceChildren(); return; }
         try { await this.registry.reconcile(features, assets, this.store.geoBridge); }
         catch (error) { this.setMessage(error instanceof Error ? `Preview warning: ${error.message}` : 'Preview warning.'); }
         this.list.replaceChildren(...features.map((feature) => {
@@ -98,7 +115,7 @@ export class EditorApp {
     private applyProperties(): void {
         const selected = this.store.selectedFeatureId;
         if (!selected) return;
-        const feature = this.store.document?.getFeatureById(selected) ?? null;
+        const feature = this.store.getState().featuresById[selected] ?? null;
         if (!feature) return;
         if (this.nameInput.value !== feature.name) this.store.executeCommand(createSetNameCommand(selected, this.nameInput.value));
         if (this.descriptionInput.value !== feature.description) this.store.executeCommand(createSetDescriptionCommand(selected, this.descriptionInput.value));

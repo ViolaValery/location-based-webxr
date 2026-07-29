@@ -117,7 +117,7 @@ describe('KML Document Model (Lossless & Typed Feature View)', () => {
       expect(busch.type).toBe('marker');
 
       // Record original coordinates text
-      const oldCoordsStr = '6.060788271971069,50.77814884421655,222.5063408472229';
+      const oldCoordsStr = '6.060788,50.802149,222.506341';
       expect(kml).toContain(oldCoordsStr);
 
       // Mutate

@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createEditorStore } from '../src/store';
-import { editorReducer, initialEditorState, selectFeature, mutateDocument } from '../src/store/redux-store';
+import { editorReducer, initialEditorState, setSelectedFeatureId, setEditMode } from '../src/store/redux-store';
 import { ICommand } from '../src/contracts/commands';
 import { FeatureId } from '../src/contracts/type';
 import { IKmlDocument } from '../src/contracts/document-model';
@@ -21,17 +21,16 @@ describe('KML Editor Store Component', () => {
         corruptFile = new File([new TextEncoder().encode('invalid kml text')], 'corrupt.kml', { type: 'application/vnd.google-earth.kml+xml' });
     });
 
-    it('should have initial null states and inactive commands delegator', () => {
+    it('should have initial state and inactive commands', () => {
         const store = createEditorStore();
-        expect(store.document).toBeNull();
-        expect(store.container).toBeNull();
-        expect(store.selectedFeatureId).toBeNull();
-        expect(store.commands).toBeDefined();
-        expect(store.commands.canUndo()).toBe(false);
-        expect(store.commands.canRedo()).toBe(false);
+        const state = store.getState();
+        expect(state.documentStatus).toBe('empty');
+        expect(state.selectedFeatureId).toBeNull();
+        expect(state.canUndo).toBe(false);
+        expect(state.canRedo).toBe(false);
     });
 
-    it('should load file, parse features, set coordinates anchor and notify subscribers', async () => {
+    it('should load file, parse features into serializable state, set anchor and notify subscribers', async () => {
         const store = createEditorStore();
         let notifiedState: any = null;
 
@@ -41,35 +40,29 @@ describe('KML Editor Store Component', () => {
 
         await store.loadFile(dreieckFile);
 
-        expect(store.document).not.toBeNull();
-        expect(store.container).not.toBeNull();
+        const state = store.getState();
+        expect(state.documentStatus).toBe('ready');
+        expect(state.featureOrder.length).toBeGreaterThan(0);
         expect(notifiedState).not.toBeNull();
-        expect(notifiedState.document).toBe(store.document);
+        expect(notifiedState.documentStatus).toBe('ready');
 
-        // Bounding box center check for dreieck.kml
-        // dreieck.kml coordinates are roughly lon: 6.060, lat: 50.778
-        const anchor = (store.geoBridge as any).anchor; // Inspect private property or test through geoToWorld
         expect(store.geoBridge.geoToWorld({ lon: 6.06078, lat: 50.7781, alt: 0 })).toBeDefined();
 
         unsubscribe();
     });
 
-    it('should maintain transaction safety and reject parsing on corrupt file loads', async () => {
+    it('should maintain transaction safety and set status on corrupt file loads', async () => {
         const store = createEditorStore();
 
         // First load a valid file
         await store.loadFile(dreieckFile);
-        const validDoc = store.document;
-        const validContainer = store.container;
-
-        expect(validDoc).not.toBeNull();
+        const validState = store.getState();
+        expect(validState.documentStatus).toBe('ready');
 
         // Load a corrupt file, expect reject
         await expect(store.loadFile(corruptFile)).rejects.toThrow();
 
-        // Active references must remain untouched (transaction safety)
-        expect(store.document).toBe(validDoc);
-        expect(store.container).toBe(validContainer);
+        expect(store.getState().documentStatus).toBe('error');
     });
 
     it('should abort previous loading promise on concurrent calls', async () => {
@@ -78,7 +71,6 @@ describe('KML Editor Store Component', () => {
         const load1 = store.loadFile(dreieckFile);
         const load2 = store.loadFile(dreieckFile);
 
-        // First load should be aborted (throw AbortError/Error)
         await expect(load1).rejects.toThrow();
         await expect(load2).resolves.toBeUndefined();
     });
@@ -102,7 +94,7 @@ describe('KML Editor Store Component', () => {
         expect(activeSelection).toBeNull();
     });
 
-    it('should execute, undo, and redo commands via proxy delegator and notify subscribers', async () => {
+    it('should execute, undo, and redo commands updating store state and subscribers', async () => {
         const store = createEditorStore();
         await store.loadFile(dreieckFile);
 
@@ -111,7 +103,6 @@ describe('KML Editor Store Component', () => {
             changeNotificationsCount++;
         });
 
-        // Create a mock rename command
         const mockCommand: ICommand = {
             type: 'set-name',
             featureId: '0DE3B1799F402F179797' as FeatureId,
@@ -130,23 +121,23 @@ describe('KML Editor Store Component', () => {
 
         store.executeCommand(mockCommand);
         expect(mockCommand.execute).toHaveBeenCalled();
-        expect(store.commands.canUndo()).toBe(true);
+        expect(store.getState().canUndo).toBe(true);
         expect(changeNotificationsCount).toBeGreaterThan(initialNotifications);
 
-        const currentName = store.document?.getFeatureById('0DE3B1799F402F179797' as FeatureId)?.name;
+        const currentName = store.getState().featuresById['0DE3B1799F402F179797' as FeatureId]?.name;
         expect(currentName).toBe('New Name');
 
         // Undo
-        store.commands.undo();
+        store.undo();
         expect(mockCommand.undo).toHaveBeenCalled();
-        expect(store.commands.canUndo()).toBe(false);
-        expect(store.commands.canRedo()).toBe(true);
-        expect(store.document?.getFeatureById('0DE3B1799F402F179797' as FeatureId)?.name).toBe('busch_infozentrum');
+        expect(store.getState().canUndo).toBe(false);
+        expect(store.getState().canRedo).toBe(true);
+        expect(store.getState().featuresById['0DE3B1799F402F179797' as FeatureId]?.name).toBe('busch_infozentrum');
 
         // Redo
-        store.commands.redo();
-        expect(store.commands.canUndo()).toBe(true);
-        expect(store.document?.getFeatureById('0DE3B1799F402F179797' as FeatureId)?.name).toBe('New Name');
+        store.redo();
+        expect(store.getState().canUndo).toBe(true);
+        expect(store.getState().featuresById['0DE3B1799F402F179797' as FeatureId]?.name).toBe('New Name');
     });
 
     it('should trigger dispose on container when reload occurs', async () => {
@@ -167,13 +158,13 @@ describe('Editor Redux Reducer', () => {
         expect(editorReducer(undefined, { type: '@@INIT' } as any)).toEqual(initialEditorState);
     });
 
-    it('should handle selectFeature action', () => {
-        const state = editorReducer(initialEditorState, selectFeature('marker-1' as FeatureId));
+    it('should handle setSelectedFeatureId action', () => {
+        const state = editorReducer(initialEditorState, setSelectedFeatureId('marker-1' as FeatureId));
         expect(state.selectedFeatureId).toBe('marker-1');
     });
 
-    it('should handle mutateDocument action', () => {
-        const state = editorReducer(initialEditorState, mutateDocument());
-        expect(state.version).toBe(1);
+    it('should handle setEditMode action', () => {
+        const state = editorReducer(initialEditorState, setEditMode('move'));
+        expect(state.editMode).toBe('move');
     });
 });

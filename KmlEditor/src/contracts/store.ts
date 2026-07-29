@@ -1,34 +1,50 @@
-import { IKmlDocument } from './document-model';
-import { IKmzContainer } from './kmz-container';
-import { ICommandStack, ICommand } from './commands';
-import { IGeoBridge } from './geo-bridge';
 import { FeatureId } from './type';
+import { IFeatureView } from './document-model';
+import { ICommand } from './commands';
 
+export type EditMode = 'select' | 'move' | 'line-vertex' | 'overlay-transform' | 'model-transform';
+
+export interface DeviceState {
+    gpsPosition: { latitude: number; longitude: number; altitude: number } | null;
+    heading: number | null;
+    accuracy: number | null;
+    isArActive: boolean;
+}
+
+/** Pure, serializable Redux store state */
 export interface EditorState {
-    document: IKmlDocument | null;
-    container: IKmzContainer | null;
-    selectedFeatureId: FeatureId | null;
+    readonly featuresById: Readonly<Record<FeatureId, IFeatureView>>;
+    readonly featureOrder: readonly FeatureId[];
+    readonly selectedFeatureId: FeatureId | null;
+    readonly editMode: EditMode;
+    readonly documentStatus: 'empty' | 'loading' | 'ready' | 'error';
+    readonly device: DeviceState;
+    readonly canUndo: boolean;
+    readonly canRedo: boolean;
 }
 
 export interface IEditorStore {
-    /** Aktuell geladenes Dokument */
-    readonly document: IKmlDocument | null;
-    /** Aktueller Container */
-    readonly container: IKmzContainer | null;
-    /** Command-Stack (Undo/Redo) */
-    readonly commands: ICommandStack;
-    /** Geo-Bridge */
-    readonly geoBridge: IGeoBridge;
-    /** Aktuell selektiertes Feature */
-    readonly selectedFeatureId: FeatureId | null;
+    /** Retreive current serializable state */
+    getState(): EditorState;
 
-    /** Datei laden */
-    loadFile(file: File): Promise<void>;
-    /** Feature selektieren */
+    /** Feature selection */
     selectFeature(id: FeatureId | null): void;
-    /** Command ausführen (geht durch den Stack) */
+
+    /** UI Edit Mode setter */
+    setEditMode(mode: EditMode): void;
+
+    /** Device / GPS state update */
+    setDeviceState(state: Partial<DeviceState>): void;
+
+    /** Execute edit command action */
     executeCommand(command: ICommand): void;
 
-    /** Listener für State-Änderungen */
+    /** Undo last edit action */
+    undo(): void;
+
+    /** Redo last undone action */
+    redo(): void;
+
+    /** Listener for state changes */
     subscribe(listener: (state: EditorState) => void): () => void;
 }
