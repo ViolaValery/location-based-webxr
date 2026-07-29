@@ -393,6 +393,19 @@ The demo message area reports the outcome of the last user-visible operation; it
 - **`Saving…` / `Saved`** may only come from `IPersistenceService.status`. `Saved` means the active container bytes were successfully committed by that service; **Export** remains a separate action and is not an in-place save.
 - **`Native save requires the pending shared-container session seam`** is a development-blocker message in the current prototype, not a user error: `IEditorStore.loadFile()` and `IPersistenceService.open()` currently create different `IKmzContainer` sessions, so the editor cannot safely ask persistence to write the container that contains the edited document. Preview, selection, commands, and undo/redo work, but the demo must not be used as evidence of save/reopen until the architecture supplies one explicitly shared container session. The message should be removed only after that integration exists and the end-to-end round-trip test passes.
 
+#### Message-to-component diagnosis
+
+| Demo message | Component to inspect | What is not working / first check |
+| --- | --- | --- |
+| `Choose a .kml or .kmz file` | `editor` | Only editor-side file-input validation rejected the selection. The file was not opened; check input `accept` values and extension validation. |
+| `Could not load …` | Usually `store`; then `kmz-io` or `kml-model` | The store could not complete its transactional load. Inspect the original error: archive/file reading points to `kmz-io`; missing/invalid KML or parse failure points to `kml-model`; the editor must retain the previous session. |
+| `Preview warning: …` | Usually `renderers`; possibly `kmz-io` or `geo-bridge` | The document loaded, but one feature cannot be drawn. Check the renderer selected for that feature type; an unresolved href/bytes failure belongs to `kmz-io`'s asset provider; implausible placement points to `geo-bridge`. KML data must remain intact. |
+| `Saving…` remains indefinitely | `persistence` | A write was scheduled but did not reach a terminal status. Inspect debounce/session-token/write promise handling and the browser File System Access API operation. |
+| Save status `error` / permission-denied message | `persistence` | Native write, file-handle permission, serialization handoff, or export failed. Check persistence error type and active-container identity before looking at UI code. |
+| `Native save requires the pending shared-container session seam` | `store` + `persistence` composition | This is the known cross-component integration gap: store and persistence each own a different active `IKmzContainer`. No safe round-trip write can occur. Do not debug the renderer or command layer; establish a single shared container session, then prove it with the round-trip E2E test. |
+| Edited feature visually reverts or undo/redo has no effect | `commands` first; then `store` | The command was not applied to the document or the store did not notify subscribers. Verify the command stack, the command's `execute`/`undo`, and store mutation notification before inspecting renderer reconciliation. |
+| Feature is present in list but cannot be clicked in the scene | `editor` first; then `renderers` | Check the editor raycast/feature-id ancestry mapping. If no native object exists or it has invalid bounds, inspect the responsible renderer. |
+
 ## Dependencies
 
 | Dependency | Why it exists | Why alternatives are rejected / assumptions |
