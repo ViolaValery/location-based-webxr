@@ -118,7 +118,7 @@
 			<styleUrl>#msn_ylw-pushpin0</styleUrl>
 			<Point>
 				<gx:drawOrder>1</gx:drawOrder>
-				<coordinates>6.059113262223825,50.77817576568842,0</coordinates>
+				<coordinates>6.059113,50.827176,0</coordinates>
 			</Point>
 		</Placemark>
 		<Placemark>
@@ -154,7 +154,7 @@
 			<styleUrl>#msn_ylw-pushpin00</styleUrl>
 			<Point>
 				<gx:drawOrder>1</gx:drawOrder>
-				<coordinates>6.059665831674462,50.77986909167891,0</coordinates>
+				<coordinates>6.059666,50.780869,0</coordinates>
 			</Point>
 		</Placemark>
 		<Placemark>
@@ -172,7 +172,7 @@
 			<styleUrl>#msn_ylw-pushpin00</styleUrl>
 			<Point>
 				<gx:drawOrder>1</gx:drawOrder>
-				<coordinates>6.060718642319585,50.77932803283586,0</coordinates>
+				<coordinates>6.060719,50.782328,0</coordinates>
 			</Point>
 		</Placemark>
 		<Placemark>

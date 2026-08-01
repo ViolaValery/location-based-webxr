@@ -16,6 +16,15 @@
 - Was ist mit b2b tests gemeint? -> Unseren Kml Viewer im Kontext von der gesamten Anwendung testen.
 - Müssen wir für jede Komponente mehrere Implementierungen erstellen und daraus die beste auswählen? -> Nein, nur für komplexe Komponenten (in unserem Fall der Store).
 
+# Notizen/Gedanken zu components:
+- store:
+Es ist auch möglich redux-undo wie zuvor zu benutzen, die automatisch State-Snapshots speichern. In unserem Fall macht die eigene Command-Historie aber aus zwei Gründen mehr Sinn:
+
+XML-Referenz-Problem: redux-undo speichert flache Kopien des Redux-States. Da das KML-Dokument (IKmlDocument) jedoch eine komplexe, veränderliche XML-Baumstruktur ist, würden alle alten Snapshots in der History auf dasselbe, bereits veränderte Dokument zeigen.
+Performance (keine Riesen-Snapshots): Um das mit redux-undo zu lösen, müssten wir bei jeder Änderung das komplette XML-Dokument serialisieren und bei jedem "Undo" neu parsen. Bei großen Dateien führt das zu extremen Rucklern (Frame Drops).
+Fazit: Die Command-Variante (command.undo()) führt stattdessen eine gezielte Gegen-Operation auf demselben KML-Baum aus. Das ist schneller mit
+O(1)) und schont den Speicher.
+
 # Prompt for creating Plan.md for each component
 Create a plan.md for our folder kml-model/plan.md
 

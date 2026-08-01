@@ -180,7 +180,7 @@ export class KmzContainer implements IKmzContainer {
   }
 
   private isRemoteHref(href: string): boolean {
-    return /^https?:\/\//i.test(href);
+    return /^(https?:\/\/|data:|blob:)/i.test(href.trim());
   }
 }
 
@@ -231,6 +231,14 @@ class AssetProvider implements IAssetProvider {
     return this.container.hasAssetInternal(href);
   }
 
+  release(href: string): void {
+    const url = this.objectUrls.get(href);
+    if (url) {
+      URL.revokeObjectURL(url);
+      this.objectUrls.delete(href);
+    }
+  }
+
   dispose(): void {
     for (const url of this.objectUrls.values()) {
       URL.revokeObjectURL(url);
@@ -239,7 +247,7 @@ class AssetProvider implements IAssetProvider {
   }
 
   private isRemoteHref(href: string): boolean {
-    return /^https?:\/\//i.test(href.trim());
+    return /^(https?:\/\/|data:|blob:)/i.test(href.trim());
   }
 }
 

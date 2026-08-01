@@ -412,6 +412,10 @@
             <span id="file-value" class="value none">—</span>
           </div>
           <div class="info-row">
+            <span class="label">Sync State</span>
+            <span id="sync-value" class="value native">Synced to file</span>
+          </div>
+          <div class="info-row">
             <span class="label">hasNativeFileAccess</span>
             <span id="native-value" class="value"></span>
           </div>
@@ -479,6 +483,7 @@
       const statusText      = $('status-text');
       const modeValue       = $('mode-value');
       const fileValue       = $('file-value');
+      const syncValue       = $('sync-value');
       const nativeValue     = $('native-value');
       const errorBox        = $('error-box');
       const eventLog        = $('event-log');
@@ -486,21 +491,43 @@
       const featureContainer= $('feature-container');
       const featureCountBadge = $('feature-count-badge');
 
+      function updateSyncState() {
+        const mode = svc.mode || (isNativeSession ? 'native' : 'detached');
+        if (svc.hasUnsavedChanges) {
+          syncValue.textContent = 'Unsaved changes (autosaving...)';
+          syncValue.className = 'value detached';
+        } else if (mode === 'native') {
+          syncValue.textContent = 'Synced to disk file';
+          syncValue.className = 'value native';
+        } else if (mode === 'opfs') {
+          syncValue.textContent = 'Synced to OPFS working copy';
+          syncValue.className = 'value native';
+        } else {
+          syncValue.textContent = 'In memory (not on disk)';
+          syncValue.className = 'value detached';
+        }
+      }
+
       // ── Location / destination helpers ──────────────────────────────────
-      // Human-readable description of where the *original* file lives and
-      // whether writes actually reach it, so log lines can say exactly what
-      // just happened instead of just "saved".
       function describeTarget() {
         if (!activeContainer) return 'no active session';
-        return isNativeSession
-          ? `disk file "${activeFileName}" (native handle, via File System Access API — writes go straight back to the same file you opened, no download prompt)`
-          : `an in-memory detached copy of "${activeFileName}" (opened via the standard &lt;input type="file"&gt; picker — the browser gives no handle back to the original file, so nothing here is written to disk automatically)`;
+        const mode = svc.mode;
+        if (mode === 'native') {
+          return `disk file "${activeFileName}" (native handle via File System Access API — writes go directly back to original file on disk)`;
+        } else if (mode === 'opfs') {
+          return `OPFS working copy of "${activeFileName}" (browser sandboxed storage — debounced autosaves persist in OPFS working copy across reloads)`;
+        }
+        return `in-memory detached copy of "${activeFileName}"`;
       }
 
       function describeSavedLocation() {
-        return isNativeSession
-          ? `Written in place to disk at "${activeFileName}".`
-          : `Held in browser memory only — the original file on disk at its real location is untouched. Use "Export / Download" to write a new copy to your Downloads folder, or "Backup to OPFS" to persist a copy inside the browser's private storage.`;
+        const mode = svc.mode;
+        if (mode === 'native') {
+          return `Written in place to disk at "${activeFileName}".`;
+        } else if (mode === 'opfs') {
+          return `Persisted to OPFS working copy for "${activeFileName}" (browser sandboxed storage). Use "Export / Download" to save out to a real file.`;
+        }
+        return `Held in memory. Use "Export / Download" to save to disk.`;
       }
 
       // ── Environment check ───────────────────────────────────────────────
@@ -518,12 +545,11 @@
       svc.onStatusChange(status => {
         statusBadge.className = status;
         statusText.textContent = status;
+        updateSyncState();
 
         if (status === 'saving') {
           log(
-            isNativeSession
-              ? `Autosave started — writing changes directly to disk at "${activeFileName}"...`
-              : `Autosave started — writing to the in-memory detached copy (original file on disk is not touched)...`,
+            `Autosave in progress — persisting changes for "${activeFileName}"...`,
             'status-saving'
           );
         } else if (status === 'saved') {
@@ -531,9 +557,9 @@
           updateCounters();
           log(`Save complete. ${describeSavedLocation()}`, 'status-saved');
         } else if (status === 'error') {
-          log('Autosave failed — see error details below for what went wrong and nothing was written.', 'status-error');
+          log('Autosave failed — see error details below.', 'status-error');
         } else {
-          log(`Status → idle (no pending writes).`, 'status-idle');
+          log(`Status → idle.`, 'status-idle');
         }
 
         if (status !== 'error') {
@@ -636,8 +662,10 @@
         const feature = activeKmlDoc.getFeatureById(id);
         if (!feature || feature.type !== 'marker') return;
 
-        if (dir === 'north') feature.position.lat += 0.001;
-        if (dir === 'east')  feature.position.lon += 0.001;
+        const newPos = { ...feature.position };
+        if (dir === 'north') newPos.lat += 0.001;
+        if (dir === 'east')  newPos.lon += 0.001;
+        feature.position = newPos; // Invokes setter -> updates XML in document model!
 
         // Update container's KML content from document model
         const updatedKml = activeKmlDoc.serialize();
@@ -650,11 +678,10 @@
         countChanges++;
         updateCounters();
         svc.notifyChange();
+        updateSyncState();
 
-        const queuedTarget = isNativeSession
-          ? `queued to autosave back to disk at "${activeFileName}" once the debounce timer settles`
-          : `held only in the in-memory detached copy — won't reach a real file on disk unless you Export or back up to OPFS`;
-        log(`Shifted marker "${feature.name}" ${dir} (+0.001°). Change ${queuedTarget}.`, 'action');
+        const targetDesc = describeTarget();
+        log(`Shifted marker "${feature.name}" ${dir} (+0.001°) [LAT: ${newPos.lat.toFixed(6)}, LON: ${newPos.lon.toFixed(6)}]. Debounced autosave queued (~600ms) → ${targetDesc}.`, 'action');
       }
 
       // ── Open Session Handler ───────────────────────────────────────────
@@ -669,14 +696,16 @@
         activeKmlDoc.parse(kmlText);
 
         // UI state
-        modeValue.textContent = nativeBound ? 'native-bound' : 'detached';
-        modeValue.className   = 'value ' + (nativeBound ? 'native' : 'detached');
+        const currentMode = svc.mode;
+        modeValue.textContent = currentMode;
+        modeValue.className   = 'value ' + (currentMode === 'native' ? 'native' : 'detached');
         fileValue.textContent = fileName || '—';
         fileValue.className   = 'value';
 
         [btnDispose, btnFlush, btnExport, btnOpfsSave].forEach(b => b.disabled = false);
 
         renderFeatures();
+        updateSyncState();
         log(`Session ready. Editing target: ${describeTarget()}.`, 'action');
       }
 
@@ -686,8 +715,7 @@
         try {
           const container = await svc.open();
           // Container opened with native handle!
-          const realName = svc._session?.activeFileHandle?.name || 'document.kmz';
-          setupSession(container, realName, true);
+          setupSession(container, svc.fileName, svc.mode === 'native');
         } catch (err) {
           if (err.name !== 'AbortError') showError(err);
           else log('File picker cancelled — no file handle was acquired, nothing opened.', 'status-idle');

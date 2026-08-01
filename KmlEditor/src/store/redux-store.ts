@@ -1,67 +1,88 @@
 import { createSlice, configureStore, PayloadAction } from '@reduxjs/toolkit';
-import { IKmlDocument } from '../contracts/document-model';
-import { IKmzContainer } from '../contracts/kmz-container';
 import { FeatureId } from '../contracts/type';
+import { IFeatureView } from '../contracts/document-model';
+import { EditMode, DeviceState, EditorState } from '../contracts/store';
 
-/** Redux State definition */
-export interface EditorReduxState {
-    document: IKmlDocument | null;
-    container: IKmzContainer | null;
-    selectedFeatureId: FeatureId | null;
-    version: number;
-}
-
-/** Initial state constant */
-export const initialEditorState: EditorReduxState = {
-    document: null,
-    container: null,
-    selectedFeatureId: null,
-    version: 0,
+export const initialDeviceState: DeviceState = {
+    gpsPosition: null,
+    heading: null,
+    accuracy: null,
+    isArActive: false,
 };
 
-/**
- * Redux Toolkit Slice generating state, action creators, and reducer logic
- */
+export const initialEditorState: EditorState = {
+    featuresById: {},
+    featureOrder: [],
+    selectedFeatureId: null,
+    editMode: 'select',
+    documentStatus: 'empty',
+    device: initialDeviceState,
+    canUndo: false,
+    canRedo: false,
+};
+
 const editorSlice = createSlice({
     name: 'editor',
     initialState: initialEditorState,
     reducers: {
-        loadFileSuccess(state, action: PayloadAction<{ document: IKmlDocument; container: IKmzContainer }>) {
-            // RTK uses Immer under the hood, enabling direct mutations safely
-            state.document = action.payload.document;
-            state.container = action.payload.container;
-            state.selectedFeatureId = null;
-            state.version += 1;
+        setDocumentFeatures(
+            state,
+            action: PayloadAction<{ featuresById: Record<FeatureId, IFeatureView>; featureOrder: FeatureId[] }>
+        ) {
+            state.featuresById = action.payload.featuresById;
+            state.featureOrder = action.payload.featureOrder;
+            state.documentStatus = 'ready';
         },
-        selectFeature(state, action: PayloadAction<FeatureId | null>) {
+        setSelectedFeatureId(state, action: PayloadAction<FeatureId | null>) {
             state.selectedFeatureId = action.payload;
         },
-        mutateDocument(state) {
-            state.version += 1;
+        setEditMode(state, action: PayloadAction<EditMode>) {
+            state.editMode = action.payload;
+        },
+        setDocumentStatus(state, action: PayloadAction<EditorState['documentStatus']>) {
+            state.documentStatus = action.payload;
+        },
+        setDeviceState(state, action: PayloadAction<Partial<DeviceState>>) {
+            state.device = { ...state.device, ...action.payload };
+        },
+        setUndoRedoState(state, action: PayloadAction<{ canUndo: boolean; canRedo: boolean }>) {
+            state.canUndo = action.payload.canUndo;
+            state.canRedo = action.payload.canRedo;
         },
         resetStore(state) {
-            state.document = null;
-            state.container = null;
+            state.featuresById = {};
+            state.featureOrder = [];
             state.selectedFeatureId = null;
-            state.version += 1;
+            state.editMode = 'select';
+            state.documentStatus = 'empty';
+            state.device = initialDeviceState;
+            state.canUndo = false;
+            state.canRedo = false;
         },
     },
 });
 
-export const { loadFileSuccess, selectFeature, mutateDocument, resetStore } = editorSlice.actions;
+export const {
+    setDocumentFeatures,
+    setSelectedFeatureId,
+    setEditMode,
+    setDocumentStatus,
+    setDeviceState,
+    setUndoRedoState,
+    resetStore,
+} = editorSlice.actions;
+
 export const editorReducer = editorSlice.reducer;
 
 /**
  * Configures the Redux Toolkit store.
- * Note: Disable serializabilityCheck middleware since we are storing class instances
- * (IKmlDocument, IKmzContainer) containing methods and non-serializable fields.
+ * Standard serializability check is ENABLED since all fields are pure serializable objects.
  */
 export function createReduxStore() {
     return configureStore({
         reducer: editorReducer,
-        middleware: (getDefaultMiddleware) =>
-            getDefaultMiddleware({
-                serializableCheck: false,
-            }),
+        middleware: (getDefaultMiddleware) => getDefaultMiddleware({
+            serializableCheck: true,
+        }),
     });
 }

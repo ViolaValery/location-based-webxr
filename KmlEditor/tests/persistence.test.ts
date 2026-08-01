@@ -106,7 +106,7 @@ function setupDomGlobals() {
     };
   }
   if (typeof globalThis.URL === 'undefined') {
-    (globalThis as any).URL = class URL {};
+    (globalThis as any).URL = class URL { };
   }
   if (typeof (globalThis.URL as any).createObjectURL === 'undefined') {
     (globalThis.URL as any).createObjectURL = vi.fn().mockReturnValue('blob:mock-url');
@@ -154,6 +154,9 @@ async function openWithInjectedHandle(
   s._session.sessionToken++;
   s._session.activeContainer = container;
   s._session.activeFileHandle = handle;
+  s._session.fileName = 'test.kmz';
+  s._session.opfsFileName = 'opfs-working-copy-test.kmz';
+  s._session.mode = handle ? 'native' : (s._session.opfsFallbackEnabled ? 'opfs' : 'detached');
   s._session.dirtyVersion = 0;
   s._session.persistedVersion = 0;
   s._session.isSaving = false;
@@ -413,17 +416,94 @@ describe('PersistenceServiceImpl', () => {
     });
   });
 
-  // ── NativeHandleMissingError (detached session) ───────────────────────────
+  // ── open -> edit -> flush -> reopen roundtrip ─────────────────────────────
+
+  describe('open -> edit -> flush -> reopen workflow', () => {
+    it('preserves KML edits across open -> edit -> flush -> reopen', async () => {
+      let docKml = '<kml><Placemark><name>Original</name></Placemark></kml>';
+      const c = makeContainer();
+      (c.getDocKml as any).mockImplementation(() => docKml);
+      (c.setDocKml as any).mockImplementation((kml: string) => { docKml = kml; });
+      (c.save as any).mockImplementation(async () => new TextEncoder().encode(docKml).buffer);
+
+      await openWithInjectedHandle(svc, c, makeHandle());
+
+      // Edit
+      c.setDocKml('<kml><Placemark><name>Edited Marker</name></Placemark></kml>');
+      svc.notifyChange();
+      expect(svc.hasUnsavedChanges).toBe(true);
+
+      // Flush
+      await svc.flush(c);
+      expect(svc.status).toBe('saved');
+      expect(svc.hasUnsavedChanges).toBe(false);
+
+      // Reopen in fallback
+      const file = new File([new TextEncoder().encode(docKml)], 'test.kmz', { type: 'application/vnd.google-earth.kmz' });
+      const reopenedContainer = await svc.open(file);
+      expect(reopenedContainer).toBeDefined();
+    });
+  });
+
+  // ── OPFS working copy fallback ────────────────────────────────────────────
+
+  describe('OPFS working copy fallback', () => {
+    it('degrades to OPFS fallback instead of throwing when native handle is absent', async () => {
+      const c = makeContainer();
+      await openWithInjectedHandle(svc, c, null);
+
+      svc.notifyChange();
+      await expect(svc.flush(c)).resolves.toBeUndefined();
+      expect(svc.status).toBe('saved');
+      expect(svc.mode).toBe('opfs');
+    });
+
+    it('requests write permission during open() picker flow', async () => {
+      const requestPerm = vi.fn().mockResolvedValue('granted');
+      const handle = {
+        ...makeHandle(),
+        requestPermission: requestPerm,
+      } as unknown as FileSystemFileHandle;
+
+      const restore = patchChrome({ handle });
+      try {
+        await svc.open();
+        expect(requestPerm).toHaveBeenCalledWith({ mode: 'readwrite' });
+        expect(svc.status).toBe('saved');
+      } finally {
+        restore();
+      }
+    });
+
+    it('throws NativePermissionDeniedError when write permission is denied on native handle', async () => {
+      const handle = {
+        ...makeHandle(),
+        queryPermission: vi.fn().mockResolvedValue('denied'),
+        requestPermission: vi.fn().mockResolvedValue('denied'),
+      } as unknown as FileSystemFileHandle;
+
+      const c = makeContainer();
+      await openWithInjectedHandle(svc, c, handle);
+      svc.notifyChange();
+
+      await expect(svc.flush(c)).rejects.toBeInstanceOf(NativePermissionDeniedError);
+      expect(svc.status).toBe('error');
+    });
+  });
+
+  // ── NativeHandleMissingError (detached session without fallback) ─────────
 
   describe('Detached session (no handle)', () => {
-    it('save() fails with NativeHandleMissingError when no handle', async () => {
+    it('save() fails with NativeHandleMissingError when no handle and fallback disabled', async () => {
+      svc.opfsFallbackEnabled = false;
       const c = makeContainer();
       await openWithInjectedHandle(svc, c, null);
       await expect(svc.save(c)).rejects.toBeInstanceOf(NativeHandleMissingError);
       expect(svc.status).toBe('error');
     });
 
-    it('flush() fails with NativeHandleMissingError in detached mode', async () => {
+    it('flush() fails with NativeHandleMissingError in detached mode when fallback disabled', async () => {
+      svc.opfsFallbackEnabled = false;
       const c = makeContainer();
       await openWithInjectedHandle(svc, c, null);
       svc.notifyChange();
@@ -432,6 +512,7 @@ describe('PersistenceServiceImpl', () => {
     });
 
     it('detached session → save fails → downloadAs still works (recovery flow)', async () => {
+      svc.opfsFallbackEnabled = false;
       const c = makeContainer();
       await openWithInjectedHandle(svc, c, null);
       await expect(svc.save(c)).rejects.toBeInstanceOf(NativeHandleMissingError);

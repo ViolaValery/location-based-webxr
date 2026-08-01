@@ -21,6 +21,9 @@ export interface IKmlDocument {
 
     /** Feature aus Snapshot wiederherstellen (Undo von Delete) */
     restoreFeature(snapshot: FeatureSnapshot, afterId?: FeatureId): void;
+
+    /** In-place Mutation eines Features im XML-Baum */
+    updateFeature?(id: FeatureId, patch: Partial<IFeatureView>): void;
 }
 
 // Basis-Interface für alle Feature-Typen

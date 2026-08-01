@@ -388,11 +388,10 @@
       const defaultFile = new File([mockKml], "demo.kml", { type: "application/vnd.google-earth.kml+xml" });
       store.loadFile(defaultFile).then(() => {
         txtFileName.textContent = "demo.kml (Preloaded)";
-      }).catch(console.error);
-
-      // Subscribe to global store changes
+      }).catch(console.error);      // Subscribe to global store changes
       store.subscribe((state) => {
-        const { document: doc, container, selectedFeatureId } = state;
+        const { featuresById, featureOrder, selectedFeatureId, canUndo, canRedo, documentStatus } = state;
+        const doc = store.document;
         currentSelectedId = selectedFeatureId;
 
         // 1. Update selection visual state
@@ -402,7 +401,7 @@
           inputName.disabled = false;
           btnApplyRename.disabled = false;
           
-          const activeFeat = doc?.getFeatureById(selectedFeatureId);
+          const activeFeat = featuresById[selectedFeatureId];
           if (activeFeat) {
             inputName.value = activeFeat.name || "";
             btnMoveMarker.disabled = (activeFeat.type !== 'marker');
@@ -415,8 +414,8 @@
         }
 
         // 2. Update File Name / Metadata
-        if (container) {
-          txtFeaturesCount.textContent = doc ? String(doc.getFeatures().length) : "0";
+        if (documentStatus === 'ready' || documentStatus === 'loading') {
+          txtFeaturesCount.textContent = String(featureOrder.length);
           
           const anchor = store.geoBridge.worldToGeo({ x: 0, y: 0, z: 0 }); // World origin coordinate
           txtAnchor.textContent = `${anchor.lon.toFixed(5)}, ${anchor.lat.toFixed(5)}`;
@@ -427,39 +426,36 @@
         }
 
         // 3. Update Undo/Redo Buttons
-        btnUndo.disabled = !store.commands.canUndo();
-        btnRedo.disabled = !store.commands.canRedo();
+        btnUndo.disabled = !canUndo;
+        btnRedo.disabled = !canRedo;
 
-        // 4. Update Features directory
-        renderFeatures(doc, selectedFeatureId);
+        // 4. Update Features directory using serializable Redux state
+        renderFeatures(featuresById, featureOrder, selectedFeatureId);
 
         // 5. Update live mutated XML preview
         if (doc) {
           const rawXml = doc.serialize();
           // Truncate XML string if huge for display performance
           txtKmlPreview.textContent = rawXml.length > 5000 
-            ? rawXml.substring(0, 5000) + "\n\n&lt;!-- ... output truncated for display performance ... --&gt;"
+            ? rawXml.substring(0, 5000) + "\n\n<!-- ... output truncated for display performance ... -->"
             : rawXml;
         } else {
           txtKmlPreview.textContent = "<!-- Serialized KML code will render here -->";
         }
       });
 
-      // Render feature list items
-      function renderFeatures(doc, selectedId) {
-        if (!doc) {
-          listFeatures.innerHTML = '<div style="text-align: center; color: var(--muted); margin-top: 2rem;">No KML file loaded yet. Pick a file to inspect coordinates.</div>';
-          return;
-        }
-
-        const features = doc.getFeatures();
-        if (features.length === 0) {
+      // Render feature list items from serializable Redux state
+      function renderFeatures(featuresById, featureOrder, selectedId) {
+        if (featureOrder.length === 0) {
           listFeatures.innerHTML = '<div style="text-align: center; color: var(--muted); margin-top: 2rem;">No spatial features found in this document.</div>';
           return;
         }
 
         listFeatures.innerHTML = '';
-        features.forEach((feat) => {
+        featureOrder.forEach((id) => {
+          const feat = featuresById[id];
+          if (!feat) return;
+
           const item = document.createElement('div');
           item.className = `feature-item ${feat.id === selectedId ? 'selected' : ''}`;
           
@@ -500,15 +496,15 @@
 
       // 7. Command Execution Events
       btnApplyRename.addEventListener('click', () => {
-        if (!currentSelectedId || !store.document) return;
+        if (!currentSelectedId) return;
         const newName = inputName.value.trim();
         const command = createSetNameCommand(currentSelectedId, newName);
         store.executeCommand(command);
       });
 
       btnMoveMarker.addEventListener('click', () => {
-        if (!currentSelectedId || !store.document) return;
-        const feat = store.document.getFeatureById(currentSelectedId);
+        if (!currentSelectedId) return;
+        const feat = store.getState().featuresById[currentSelectedId];
         if (!feat || feat.type !== 'marker') return;
 
         // Shift 5 meters East (roughly +0.000045 degrees longitude locally)
@@ -520,12 +516,12 @@
       });
 
       btnUndo.addEventListener('click', () => {
-        store.commands.undo();
+        store.undo();
       });
 
       btnRedo.addEventListener('click', () => {
-        store.commands.redo();
-      });
+        store.redo();
+      });});
     </script>
   </body>
 </html>
