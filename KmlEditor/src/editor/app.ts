@@ -203,14 +203,8 @@ export class EditorApp {
             this.setMessage('Opening file handle…');
             try {
                 const container = await this.persistence.open();
-                const fileKml = container.getDocKml();
-                // Pass loaded container instance to store
-                (this.store as any)._kmzContainer = container;
-                const doc = (this.store as any)._kmlDocument || createKmlDocument();
-                doc.parse(fileKml);
-                (this.store as any)._kmlDocument = doc;
-                (this.store as any).syncProjection();
-                this.setMessage(`Opened file. Edits automatically auto-save back to this file.`);
+                await (this.store as any).loadContainer(container);
+                this.setMessage(`Opened '${this.persistence.fileName}'. All edits auto-save directly to disk.`);
             } catch (err) {
                 if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('aborted'))) return;
                 // Fallback to standard input picker
@@ -225,8 +219,8 @@ export class EditorApp {
         if (!/\.kml|\.kmz$/i.test(file.name)) { this.setMessage('Choose a .kml or .kmz file.'); return; }
         this.setMessage('Loading…');
         try {
-            await this.store.loadFile(file);
-            await this.persistence.open(file).catch(() => { });
+            const container = await this.persistence.open(file);
+            await (this.store as any).loadContainer(container);
             this.setMessage(`Loaded '${file.name}'. All edits automatically auto-save.`);
         }
         catch (error) { this.setMessage(error instanceof Error ? error.message : 'Could not load the file.'); }
@@ -393,8 +387,12 @@ export class EditorApp {
             this.setMessage('Select a feature first to edit properties.');
             return;
         }
-        const feature = this.store.getState().featuresById[selected] ?? null;
-        if (!feature) return;
+        const doc = (this.store as any).document;
+        const feature = doc ? doc.getFeatureById(selected) : null;
+        if (!feature) {
+            this.setMessage('Selected feature not found in document.');
+            return;
+        }
 
         let updated = false;
 

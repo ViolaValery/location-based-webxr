@@ -60,6 +60,37 @@ export class EditorStoreImpl implements IEditorStore {
         return this._reduxStore.getState().selectedFeatureId;
     }
 
+    /** Load directly from an existing container instance */
+    public async loadContainer(container: IKmzContainer): Promise<void> {
+        this._reduxStore.dispatch(setDocumentStatus('loading'));
+        try {
+            const docKml = container.getDocKml();
+            if (!docKml || !docKml.match(/<kml/i)) {
+                throw new Error('Invalid KML document: Missing root <kml> element');
+            }
+
+            const tempDoc = createKmlDocument();
+            tempDoc.parse(docKml);
+
+            if (this._kmzContainer && this._kmzContainer !== container) {
+                this._kmzContainer.dispose();
+            }
+
+            this._kmzContainer = container;
+            this._kmlDocument = tempDoc;
+
+            const newStack = createCommandStack(tempDoc, this.geoBridge);
+            this._activeStack = newStack;
+            this._commandsDelegator.setStack(newStack);
+
+            this.initializeAnchor(tempDoc);
+            this.syncProjection();
+        } catch (error) {
+            this._reduxStore.dispatch(setDocumentStatus('error'));
+            throw error;
+        }
+    }
+
     /** Load file async flow */
     public async loadFile(file: File): Promise<void> {
         if (this._activeLoadController) {
@@ -78,37 +109,7 @@ export class EditorStoreImpl implements IEditorStore {
                 throw new Error('Loading aborted');
             }
 
-            const docKml = tempContainer.getDocKml();
-            if (!docKml || !docKml.match(/<kml/i)) {
-                throw new Error('Invalid KML document: Missing root <kml> element');
-            }
-
-            const tempDoc = createKmlDocument();
-            tempDoc.parse(docKml);
-
-            if (signal.aborted) {
-                tempContainer.dispose();
-                throw new Error('Loading aborted');
-            }
-
-            // Cleanup previous container
-            if (this._kmzContainer) {
-                this._kmzContainer.dispose();
-            }
-
-            this._kmzContainer = tempContainer;
-            this._kmlDocument = tempDoc;
-
-            // Set up command stack
-            const newStack = createCommandStack(tempDoc, this.geoBridge);
-            this._activeStack = newStack;
-            this._commandsDelegator.setStack(newStack);
-
-            // Re-establish coordinates anchor
-            this.initializeAnchor(tempDoc);
-
-            // Notify document changed & update status
-            this.syncProjection();
+            await this.loadContainer(tempContainer);
         } catch (error) {
             tempContainer.dispose();
             this._reduxStore.dispatch(setDocumentStatus('error'));
