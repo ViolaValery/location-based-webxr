@@ -28,8 +28,9 @@ function localName(tagName: string): string {
 }
 
 function formatCoordinateValue(value: number): string {
-    return parseFloat(value.toFixed(6)).toString();
+    return parseFloat(value.toFixed(10)).toString();
 }
+
 
 function formatGeoPosition(position: GeoPosition): string {
     return `${formatCoordinateValue(position.lon)},${formatCoordinateValue(position.lat)},${formatCoordinateValue(position.alt)}`;
@@ -42,12 +43,10 @@ function parseCoordinateText(text: string): GeoPosition {
 }
 
 function parseCoordinatesText(text: string): GeoPosition[] {
-    const rows = text
-        .split(/\n|\r\n|\r/)
-        .map((row) => row.trim())
-        .filter(Boolean);
-    return rows.map((row) => parseCoordinateText(row));
+    const parts = text.trim().split(/\s+/).filter(Boolean);
+    return parts.map((part) => parseCoordinateText(part));
 }
+
 
 class BaseFeatureView implements IFeatureView {
     public readonly id: FeatureId;
@@ -261,6 +260,12 @@ class KmlDocumentImpl implements IKmlDocument {
         const regex = new RegExp(`(<${tagName}\\b[^>]*>)([\\s\\S]*?)(<\\/${tagName}>)`, 'i');
         const match = fragment.match(regex);
         if (!match || match.index === undefined) {
+            // Tag is missing, insert it right after the feature's opening tag
+            const openTagEnd = fragment.indexOf('>');
+            if (openTagEnd !== -1) {
+                const insertPos = range.start + openTagEnd + 1;
+                this.xml = this.xml.slice(0, insertPos) + `<${tagName}>${newValue}</${tagName}>` + this.xml.slice(insertPos);
+            }
             return;
         }
 
@@ -268,6 +273,7 @@ class KmlDocumentImpl implements IKmlDocument {
         const localEnd = localStart + match[2].length;
         this.xml = this.xml.slice(0, localStart) + newValue + this.xml.slice(localEnd);
     }
+
 
     private createFeatureView(index: number, fragment: string, tagName: string): IFeatureView | null {
         const kmlId = this.extractAttribute(fragment, 'id');
@@ -443,8 +449,12 @@ class KmlDocumentImpl implements IKmlDocument {
 
     private extractText(fragment: string, tagName: string): string {
         const match = fragment.match(new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'i'));
-        return match ? this.stripMarkup(match[1]) : '';
+        if (!match) return '';
+        const rawValue = match[1];
+        const cdataMatch = rawValue.match(/<!\[CDATA\[([\s\S]*?)\]\]>/i);
+        return cdataMatch ? cdataMatch[1].trim() : rawValue.trim();
     }
+
 
     private extractAttribute(fragment: string, attributeName: string): string | undefined {
         const match = fragment.match(new RegExp(`\\b${attributeName}="([^"]*)"`, 'i'));
