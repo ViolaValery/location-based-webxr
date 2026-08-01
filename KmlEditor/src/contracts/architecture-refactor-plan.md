@@ -7,9 +7,11 @@ Everything in this application flows through a few core shared contracts. Gettin
 ### Critical Architecture Rules:
 
 1. **No Invented Wrapper Components**: We adhere strictly to the original component structure (`kmz-io`, `document-model`, `geo-bridge`, `store`, `commands`, `persistence`, `renderers`, `editor`, `ar-scene`). We do NOT invent extra components such as `DocumentSession` or `WorkspaceController`.
-2. **Single Owner for KML Document**: Only the **Lossless KML Document Model (`IKmlDocument`)** owns and mutates the XML tree representation. Neither the Redux store nor persistence holds duplicate document models.
-3. **Purely Serializable Redux Store**: The Redux Toolkit store holds **only** plain, serializable state (typed feature dictionary by ID, feature order array, selection, edit mode, document status, device state, undo/redo flags). It does **NOT** hold raw XML strings, `IKmlDocument` instances, `IKmzContainer` instances, or Three.js objects.
-4. **Action-Driven Edit Commands & Undo/Redo**: Edits are expressed as Redux Toolkit actions (`moveFeature`, `moveVertex`, `setOverlayBox`, `setModelTransform`, `setName`, `setDescription`, `createFeature`, `deleteFeature`). Dispatching an edit action updates the Redux store state and triggers an in-place XML node mutation on the Document Model via `geo-bridge`. Undo/redo leverages Redux Toolkit history (`redux-undo` or custom undoable reducer over the feature slice).
+2. **Single Source of Truth (SSOT) in Document Model**: The **Lossless KML Document Model (`IKmlDocument`)** is the sole owner and SSOT for all KML feature data (coordinates, names, descriptions, tree structure, and raw XML). Neither the store nor persistence holds a duplicate data store.
+3. **Store Manages Transient App & UI State**: The `store` holds **only** transient application & UI state (`selectedFeatureId`, `editMode`, `documentStatus`, `documentRevision`, `device` GPS state, `canUndo`, `canRedo`). It does **NOT** duplicate feature attributes to prevent state drift and inconsistencies.
+4. **Unidirectional Data Flow & Command Consistency**: Feature edits flow strictly in one direction:
+   `User Input -> Edit Command -> Geo Bridge (3) -> In-Place IKmlDocument Mutation (2) -> Event / Revision Update -> Renderers & UI Update`.
+5. **Atomic Mutations & Inverse Undo/Redo**: Commands perform atomic mutations directly on `IKmlDocument`. Undo/redo executes the corresponding inverse mutation on `IKmlDocument`, keeping document state and UI completely synchronized without maintaining parallel state trees.
 
 ---
 
@@ -141,15 +143,15 @@ export interface GeoAnchor {
 
 ---
 
-### 1.4 Redux Store & Edit Commands (`src/contracts/store.ts` & `src/contracts/commands.ts`)
+### 1.4 Store & Edit Commands (`src/contracts/store.ts` & `src/contracts/commands.ts`)
 
-Single runtime source of truth built using **Redux Toolkit**:
+Runtime coordinator for application & UI state:
 - Shared state across 2D DOM UI, 3D WebXR/Desktop Scene, and live GPS/Device state.
-- Strictly serializable state holding typed feature dictionaries, selection, UI modes, document status, device state, and undo capability.
+- **Strictly transient & serializable state**: Holds selection, edit modes, document load status, document revision counter, device/GPS state, and undo/redo flags.
+- **No Duplicate Feature State**: Feature attributes (coordinates, names, descriptions) are queried directly from `IKmlDocument` via typed feature views, eliminating state drift between store and document model.
 
 ```ts
 import { FeatureId } from './type';
-import { IFeatureView } from './document-model';
 
 export type EditMode = 'select' | 'move' | 'line-vertex' | 'overlay-transform' | 'model-transform';
 
@@ -161,11 +163,10 @@ export interface DeviceState {
 }
 
 export interface EditorState {
-    readonly featuresById: Readonly<Record<FeatureId, IFeatureView>>;
-    readonly featureOrder: readonly FeatureId[];
     readonly selectedFeatureId: FeatureId | null;
     readonly editMode: EditMode;
     readonly documentStatus: 'empty' | 'loading' | 'ready' | 'error';
+    readonly documentRevision: number; // Incremented on every IKmlDocument mutation to trigger reactive UI updates
     readonly device: DeviceState;
     readonly canUndo: boolean;
     readonly canRedo: boolean;
@@ -185,10 +186,10 @@ export type CommandType =
 
 export interface IEditorStore {
     getState(): EditorState;
-    dispatch(action: any): void;
     selectFeature(id: FeatureId | null): void;
     setEditMode(mode: EditMode): void;
     setDeviceState(state: Partial<DeviceState>): void;
+    notifyDocumentChanged(): void; // Increments revision counter
     undo(): void;
     redo(): void;
     subscribe(listener: (state: EditorState) => void): () => void;
@@ -202,10 +203,38 @@ export interface IEditorStore {
 | Component | Responsibility | Does NOT Own |
 | --- | --- | --- |
 | **`kmz-io`** | ZIP archive opening, asset BlobUrl resolution, archive save | KML parsing, feature views, UI state |
-| **`document-model`** | Lossless XML tree parsing, in-place node mutation, feature views | ZIP I/O, Redux state, Three.js objects |
+| **`document-model`** | **Single Source of Truth (SSOT)**: Lossless XML tree parsing, in-place node mutation, typed feature views | ZIP I/O, App/UI state, Three.js objects |
 | **`geo-bridge`** | Pure Geo <-> World position conversions given anchor | XML parsing, DOM UI, state storage |
-| **`store`** | Redux Toolkit store for serializable feature views, selection, device state | Raw XML, `IKmlDocument`, `IKmzContainer`, Three.js objects |
-| **`commands`** | Redux edit actions mapping store changes to Document Model in-place mutations | Persistence handles, direct DOM rendering |
-| **`persistence`** | Auto-save debouncing, File System Access API writing, export downloads | Document parsing, Redux state management |
+| **`store`** | Transient UI state (`selectedFeatureId`, `editMode`, `documentRevision`, `deviceState`) | KML feature attributes, raw XML, `IKmlDocument`, `IKmzContainer`, Three.js objects |
+| **`commands`** | Action-driven edit commands executing in-place mutations on `IKmlDocument` via Geo Bridge | Direct DOM rendering, persistence handles |
+| **`persistence`** | Auto-save debouncing, File System Access API writing, export downloads | Document parsing, UI state management |
 | **`renderers`** | Three.js 3D rendering for features & gizmos using Asset Provider & Geo Bridge | Feature state mutation, persistence |
-| **`editor` / `ar-scene`** | 2D UI & 3D Desktop / WebXR view rendering, subscribing to Redux store | Direct XML mutation |
+| **`editor` / `ar-scene`** | 2D UI & 3D Desktop / WebXR view rendering, subscribing to Store & Document Model changes | Direct XML mutation |
+
+---
+
+### 2.1 Inconsistency Prevention Architecture
+
+To guarantee zero state drift between `document-model` and `store`, the application strictly enforces:
+
+1. **Single Source of Truth (SSOT)**: `IKmlDocument` is the sole owner of all feature data (coordinates, names, descriptions, tree structure). The `store` holds only selection, edit modes, device GPS state, and a reactive `documentRevision` counter.
+2. **Unidirectional Data Flow**:
+   ```
+   User Interaction (Desktop Drag / AR Grab)
+       │
+       ▼
+   Edit Command (e.g. MoveMarkerCommand)
+       │
+       ▼
+   Geo Bridge (World-Space ──> Geo Coordinates)
+       │
+       ▼
+   IKmlDocument In-Place Mutation (XML node updated)
+       │
+       ▼
+   Store.notifyDocumentChanged() (Revision counter incremented)
+       │
+       ▼
+   Subscribers (Renderers & 2D UI) Re-render from IKmlDocument
+   ```
+3. **Atomic Transations & Inverse Mutations for Undo/Redo**: Every edit command applies an atomic mutation to `IKmlDocument`. Undo/redo executes the corresponding inverse mutation directly against `IKmlDocument`, guaranteeing that document state, UI selection, and 3D scenes stay 100% in sync without duplicated state trees.

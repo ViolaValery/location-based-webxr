@@ -1,6 +1,5 @@
 import { createSlice, configureStore, PayloadAction } from '@reduxjs/toolkit';
 import { FeatureId } from '../contracts/type';
-import { IFeatureView } from '../contracts/document-model';
 import { EditMode, DeviceState, EditorState } from '../contracts/store';
 
 export const initialDeviceState: DeviceState = {
@@ -11,11 +10,10 @@ export const initialDeviceState: DeviceState = {
 };
 
 export const initialEditorState: EditorState = {
-    featuresById: {},
-    featureOrder: [],
     selectedFeatureId: null,
     editMode: 'select',
     documentStatus: 'empty',
+    documentRevision: 0,
     device: initialDeviceState,
     canUndo: false,
     canRedo: false,
@@ -25,12 +23,8 @@ const editorSlice = createSlice({
     name: 'editor',
     initialState: initialEditorState,
     reducers: {
-        setDocumentFeatures(
-            state,
-            action: PayloadAction<{ featuresById: Record<FeatureId, IFeatureView>; featureOrder: FeatureId[] }>
-        ) {
-            state.featuresById = action.payload.featuresById;
-            state.featureOrder = action.payload.featureOrder;
+        incrementDocumentRevision(state) {
+            state.documentRevision += 1;
             state.documentStatus = 'ready';
         },
         setSelectedFeatureId(state, action: PayloadAction<FeatureId | null>) {
@@ -50,11 +44,10 @@ const editorSlice = createSlice({
             state.canRedo = action.payload.canRedo;
         },
         resetStore(state) {
-            state.featuresById = {};
-            state.featureOrder = [];
             state.selectedFeatureId = null;
             state.editMode = 'select';
             state.documentStatus = 'empty';
+            state.documentRevision = 0;
             state.device = initialDeviceState;
             state.canUndo = false;
             state.canRedo = false;
@@ -63,7 +56,7 @@ const editorSlice = createSlice({
 });
 
 export const {
-    setDocumentFeatures,
+    incrementDocumentRevision,
     setSelectedFeatureId,
     setEditMode,
     setDocumentStatus,
@@ -86,3 +79,4 @@ export function createReduxStore() {
         }),
     });
 }
+

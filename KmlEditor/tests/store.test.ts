@@ -42,7 +42,8 @@ describe('KML Editor Store Component', () => {
 
         const state = store.getState();
         expect(state.documentStatus).toBe('ready');
-        expect(state.featureOrder.length).toBeGreaterThan(0);
+        expect(state.documentRevision).toBeGreaterThan(0);
+        expect((store as any).document.getFeatures().length).toBeGreaterThan(0);
         expect(notifiedState).not.toBeNull();
         expect(notifiedState.documentStatus).toBe('ready');
 
@@ -124,7 +125,7 @@ describe('KML Editor Store Component', () => {
         expect(store.getState().canUndo).toBe(true);
         expect(changeNotificationsCount).toBeGreaterThan(initialNotifications);
 
-        const currentName = store.getState().featuresById['0DE3B1799F402F179797' as FeatureId]?.name;
+        const currentName = (store as any).document?.getFeatureById('0DE3B1799F402F179797' as FeatureId)?.name;
         expect(currentName).toBe('New Name');
 
         // Undo
@@ -132,12 +133,12 @@ describe('KML Editor Store Component', () => {
         expect(mockCommand.undo).toHaveBeenCalled();
         expect(store.getState().canUndo).toBe(false);
         expect(store.getState().canRedo).toBe(true);
-        expect(store.getState().featuresById['0DE3B1799F402F179797' as FeatureId]?.name).toBe('busch_infozentrum');
+        expect((store as any).document?.getFeatureById('0DE3B1799F402F179797' as FeatureId)?.name).toBe('busch_infozentrum');
 
         // Redo
         store.redo();
         expect(store.getState().canUndo).toBe(true);
-        expect(store.getState().featuresById['0DE3B1799F402F179797' as FeatureId]?.name).toBe('New Name');
+        expect((store as any).document?.getFeatureById('0DE3B1799F402F179797' as FeatureId)?.name).toBe('New Name');
     });
 
     it('should trigger dispose on container when reload occurs', async () => {

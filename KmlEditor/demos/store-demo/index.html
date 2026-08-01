@@ -390,18 +390,19 @@
         txtFileName.textContent = "demo.kml (Preloaded)";
       }).catch(console.error);      // Subscribe to global store changes
       store.subscribe((state) => {
-        const { featuresById, featureOrder, selectedFeatureId, canUndo, canRedo, documentStatus } = state;
+        const { selectedFeatureId, canUndo, canRedo, documentStatus } = state;
         const doc = store.document;
+        const features = doc ? doc.getFeatures() : [];
         currentSelectedId = selectedFeatureId;
 
         // 1. Update selection visual state
         txtSelection.textContent = selectedFeatureId ? String(selectedFeatureId) : "None Selected";
         
-        if (selectedFeatureId) {
+        if (selectedFeatureId && doc) {
           inputName.disabled = false;
           btnApplyRename.disabled = false;
           
-          const activeFeat = featuresById[selectedFeatureId];
+          const activeFeat = doc.getFeatureById(selectedFeatureId);
           if (activeFeat) {
             inputName.value = activeFeat.name || "";
             btnMoveMarker.disabled = (activeFeat.type !== 'marker');
@@ -415,7 +416,7 @@
 
         // 2. Update File Name / Metadata
         if (documentStatus === 'ready' || documentStatus === 'loading') {
-          txtFeaturesCount.textContent = String(featureOrder.length);
+          txtFeaturesCount.textContent = String(features.length);
           
           const anchor = store.geoBridge.worldToGeo({ x: 0, y: 0, z: 0 }); // World origin coordinate
           txtAnchor.textContent = `${anchor.lon.toFixed(5)}, ${anchor.lat.toFixed(5)}`;
@@ -429,8 +430,8 @@
         btnUndo.disabled = !canUndo;
         btnRedo.disabled = !canRedo;
 
-        // 4. Update Features directory using serializable Redux state
-        renderFeatures(featuresById, featureOrder, selectedFeatureId);
+        // 4. Update Features directory using Document SSOT
+        renderFeatures(features, selectedFeatureId);
 
         // 5. Update live mutated XML preview
         if (doc) {
@@ -444,16 +445,15 @@
         }
       });
 
-      // Render feature list items from serializable Redux state
-      function renderFeatures(featuresById, featureOrder, selectedId) {
-        if (featureOrder.length === 0) {
+      // Render feature list items from Document SSOT
+      function renderFeatures(features, selectedId) {
+        if (features.length === 0) {
           listFeatures.innerHTML = '<div style="text-align: center; color: var(--muted); margin-top: 2rem;">No spatial features found in this document.</div>';
           return;
         }
 
         listFeatures.innerHTML = '';
-        featureOrder.forEach((id) => {
-          const feat = featuresById[id];
+        features.forEach((feat) => {
           if (!feat) return;
 
           const item = document.createElement('div');
@@ -503,8 +503,8 @@
       });
 
       btnMoveMarker.addEventListener('click', () => {
-        if (!currentSelectedId) return;
-        const feat = store.getState().featuresById[currentSelectedId];
+        if (!currentSelectedId || !store.document) return;
+        const feat = store.document.getFeatureById(currentSelectedId);
         if (!feat || feat.type !== 'marker') return;
 
         // Shift 5 meters East (roughly +0.000045 degrees longitude locally)

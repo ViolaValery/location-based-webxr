@@ -1,5 +1,5 @@
 import { IEditorStore, EditorState, EditMode, DeviceState } from '../contracts/store';
-import { IKmlDocument, IFeatureView } from '../contracts/document-model';
+import { IKmlDocument } from '../contracts/document-model';
 import { IKmzContainer } from '../contracts/kmz-container';
 import { ICommandStack, ICommand } from '../contracts/commands';
 import { IGeoBridge } from '../contracts/geo-bridge';
@@ -11,7 +11,7 @@ import { createCommandStack } from '../commands';
 import { CommandStackDelegator } from './delegator';
 import {
     createReduxStore,
-    setDocumentFeatures,
+    incrementDocumentRevision,
     setSelectedFeatureId,
     setEditMode,
     setDocumentStatus,
@@ -107,7 +107,7 @@ export class EditorStoreImpl implements IEditorStore {
             // Re-establish coordinates anchor
             this.initializeAnchor(tempDoc);
 
-            // Project features into Redux store
+            // Notify document changed & update status
             this.syncProjection();
         } catch (error) {
             tempContainer.dispose();
@@ -133,6 +133,11 @@ export class EditorStoreImpl implements IEditorStore {
     /** Set AR/Device state */
     public setDeviceState(state: Partial<DeviceState>): void {
         this._reduxStore.dispatch(setDeviceState(state));
+    }
+
+    /** Notify document changed */
+    public notifyDocumentChanged(): void {
+        this.syncProjection();
     }
 
     /** Execute command */
@@ -172,21 +177,12 @@ export class EditorStoreImpl implements IEditorStore {
     private syncProjection(): void {
         if (!this._kmlDocument) return;
 
-        const features = this._kmlDocument.getFeatures();
-        const featuresById: Record<FeatureId, IFeatureView> = {};
-        const featureOrder: FeatureId[] = [];
-
-        for (const feature of features) {
-            featuresById[feature.id] = toSerializableFeature(feature);
-            featureOrder.push(feature.id);
-        }
-
         // Update container's doc.kml string with serialized document
         if (this._kmzContainer) {
             this._kmzContainer.setDocKml(this._kmlDocument.serialize());
         }
 
-        this._reduxStore.dispatch(setDocumentFeatures({ featuresById, featureOrder }));
+        this._reduxStore.dispatch(incrementDocumentRevision());
 
         const canUndo = this._activeStack ? this._activeStack.canUndo() : false;
         const canRedo = this._activeStack ? this._activeStack.canRedo() : false;
@@ -257,55 +253,4 @@ export class EditorStoreImpl implements IEditorStore {
             });
         }
     }
-}
-
-function toSerializableFeature(feature: IFeatureView): IFeatureView {
-    const base = {
-        id: feature.id,
-        type: feature.type,
-        name: feature.name,
-        description: feature.description,
-        ...(feature.kmlId ? { kmlId: feature.kmlId } : {}),
-    };
-
-    if (feature.type === 'marker') {
-        const f = feature as any;
-        return {
-            ...base,
-            type: 'marker',
-            position: f.position ? { lon: f.position.lon, lat: f.position.lat, alt: f.position.alt ?? 0 } : { lon: 0, lat: 0, alt: 0 },
-            iconHref: f.iconHref ?? null,
-            iconScale: f.iconScale ?? 1,
-        } as any;
-    } else if (feature.type === 'line') {
-        const f = feature as any;
-        return {
-            ...base,
-            type: 'line',
-            coordinates: (f.coordinates || []).map((c: any) => ({ lon: c.lon, lat: c.lat, alt: c.alt ?? 0 })),
-        } as any;
-    } else if (feature.type === 'ground-overlay') {
-        const f = feature as any;
-        return {
-            ...base,
-            type: 'ground-overlay',
-            imageHref: f.imageHref || '',
-            latLonBox: f.latLonBox ? { ...f.latLonBox } : { north: 0, south: 0, east: 0, west: 0, rotation: 0 },
-            altitude: f.altitude || 0,
-            altitudeMode: f.altitudeMode || 'clampToGround',
-        } as any;
-    } else if (feature.type === 'model') {
-        const f = feature as any;
-        return {
-            ...base,
-            type: 'model',
-            location: f.location ? { lon: f.location.lon, lat: f.location.lat, alt: f.location.alt ?? 0 } : { lon: 0, lat: 0, alt: 0 },
-            orientation: f.orientation ? { ...f.orientation } : { heading: 0, tilt: 0, roll: 0 },
-            scale: f.scale ? { ...f.scale } : { x: 1, y: 1, z: 1 },
-            modelHref: f.modelHref || '',
-            altitudeMode: f.altitudeMode || 'clampToGround',
-        } as any;
-    }
-
-    return base as IFeatureView;
 }

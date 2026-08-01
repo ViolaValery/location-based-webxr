@@ -176,7 +176,8 @@ export class EditorApp {
         });
 
         this.unsubscribe = this.store.subscribe((state) => {
-            const features = state.featureOrder.map((id) => state.featuresById[id]).filter(Boolean);
+            const doc = (this.store as any).document;
+            const features = doc ? doc.getFeatures() : [];
             const container = (this.store as any).container;
             const assets = container ? container.getAssetProvider() : dummyAssetProvider;
 

@@ -1,5 +1,4 @@
 import { FeatureId } from './type';
-import { IFeatureView } from './document-model';
 import { ICommand } from './commands';
 
 export type EditMode = 'select' | 'move' | 'line-vertex' | 'overlay-transform' | 'model-transform';
@@ -11,20 +10,19 @@ export interface DeviceState {
     isArActive: boolean;
 }
 
-/** Pure, serializable Redux store state */
+/** Pure, serializable Redux store state for transient UI & app state */
 export interface EditorState {
-    readonly featuresById: Readonly<Record<FeatureId, IFeatureView>>;
-    readonly featureOrder: readonly FeatureId[];
     readonly selectedFeatureId: FeatureId | null;
     readonly editMode: EditMode;
     readonly documentStatus: 'empty' | 'loading' | 'ready' | 'error';
+    readonly documentRevision: number;
     readonly device: DeviceState;
     readonly canUndo: boolean;
     readonly canRedo: boolean;
 }
 
 export interface IEditorStore {
-    /** Retreive current serializable state */
+    /** Retrieve current serializable state */
     getState(): EditorState;
 
     /** Feature selection */
@@ -39,6 +37,9 @@ export interface IEditorStore {
     /** Execute edit command action */
     executeCommand(command: ICommand): void;
 
+    /** Notify subscribers that document mutated */
+    notifyDocumentChanged(): void;
+
     /** Undo last edit action */
     undo(): void;
 
@@ -48,3 +49,4 @@ export interface IEditorStore {
     /** Listener for state changes */
     subscribe(listener: (state: EditorState) => void): () => void;
 }
+
