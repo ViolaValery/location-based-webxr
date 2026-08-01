@@ -73,7 +73,8 @@ export class LineRenderer extends BaseFeatureRenderer<ILineFeature> {
             return;
         }
 
-        const sphereGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+        const sphereGeometry = new THREE.SphereGeometry(1.5, 8, 8);
+
         const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 
         if (!this.handles || this.handles.count !== vertexCount) {
