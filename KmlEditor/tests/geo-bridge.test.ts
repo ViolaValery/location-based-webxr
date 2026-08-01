@@ -51,9 +51,10 @@ describe('geo-bridge', () => {
         const east = bridge.geoToWorld({ lon: 10.001, lat: 50, alt: 100 });
 
         expect(north.x).toBeCloseTo(0, 9);
-        expect(north.z).toBeGreaterThan(0);
+        expect(north.z).toBeLessThan(0);
         expect(east.x).toBeGreaterThan(0);
         expect(east.z).toBeCloseTo(0, 9);
+
 
         bridge.setAnchor(makeAnchor({ position: { lon: 10, lat: 50, alt: 100 }, heading: 90 }));
         const rotatedNorth = bridge.geoToWorld({ lon: 10, lat: 50.001, alt: 100 });

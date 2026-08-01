@@ -59,7 +59,9 @@ export class GroundOverlayRenderer extends BaseFeatureRenderer<IGroundOverlayFea
         const box = feature.latLonBox;
         const centerLon = (box.east + box.west) / 2;
         const centerLat = (box.north + box.south) / 2;
-        const rotationRad = -box.rotation * Math.PI / 180; // Clockwise -> Counter-clockwise in trigonometry
+        const centerWorldPos = geoBridge.geoToWorld({ lon: centerLon, lat: centerLat, alt: feature.altitude }, feature.altitudeMode);
+
+        const rotationRad = -box.rotation * Math.PI / 180; // Positive rotation in KML is counter-clockwise
 
         const cosR = Math.cos(rotationRad);
         const sinR = Math.sin(rotationRad);
@@ -70,24 +72,25 @@ export class GroundOverlayRenderer extends BaseFeatureRenderer<IGroundOverlayFea
             for (let xSegment = 0; xSegment <= gridSegments; xSegment++) {
                 const u = xSegment / gridSegments;
 
-                // Bilinear interpolation in geographic coordinates
+                // Bilinear interpolation in geographic coordinates (unrotated)
                 const lon = box.west + u * (box.east - box.west);
                 const lat = box.south + v * (box.north - box.south);
 
-                // Rotate relative to center in geographic space
-                const dLon = lon - centerLon;
-                const dLat = lat - centerLat;
-
-                const rotatedLon = centerLon + dLon * cosR - dLat * sinR;
-                const rotatedLat = centerLat + dLon * sinR + dLat * cosR;
-
-                // Project each vertex individually to world space (maps to local heights)
-                const geoPos = { lon: rotatedLon, lat: rotatedLat, alt: feature.altitude };
+                // Project unrotated vertex to world space
+                const geoPos = { lon, lat, alt: feature.altitude };
                 const worldPos = geoBridge.geoToWorld(geoPos, feature.altitudeMode);
 
-                positions[vertexIdx * 3] = worldPos.x;
+                // Calculate offset relative to center in world space
+                const dx = worldPos.x - centerWorldPos.x;
+                const dz = worldPos.z - centerWorldPos.z;
+
+                // Rotate in world space (preserves rectangle shape, prevents shearing/distortion)
+                const rotatedX = centerWorldPos.x + dx * cosR - dz * sinR;
+                const rotatedZ = centerWorldPos.z + dx * sinR + dz * cosR;
+
+                positions[vertexIdx * 3] = rotatedX;
                 positions[vertexIdx * 3 + 1] = worldPos.y;
-                positions[vertexIdx * 3 + 2] = worldPos.z;
+                positions[vertexIdx * 3 + 2] = rotatedZ;
 
                 uvs[vertexIdx * 2] = u;
                 uvs[vertexIdx * 2 + 1] = v;
@@ -95,6 +98,7 @@ export class GroundOverlayRenderer extends BaseFeatureRenderer<IGroundOverlayFea
                 vertexIdx++;
             }
         }
+
 
         for (let y = 0; y < gridSegments; y++) {
             for (let x = 0; x < gridSegments; x++) {
