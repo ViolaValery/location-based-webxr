@@ -161,19 +161,52 @@ class GroundOverlayFeatureView extends BaseFeatureView implements IGroundOverlay
 
 class ModelFeatureView extends BaseFeatureView implements IModelFeature {
     public readonly type: 'model' = 'model';
-    public location: GeoPosition;
-    public orientation: ModelOrientation;
-    public scale: ModelScale;
+    private _location: GeoPosition;
+    private _orientation: ModelOrientation;
+    private _scale: ModelScale;
     public modelHref: string;
     public altitudeMode: AltitudeMode;
 
     constructor(document: KmlDocumentImpl, featureIndex: number, id: FeatureId, name: string, description: string, kmlId: string | undefined, location: GeoPosition, orientation: ModelOrientation, scale: ModelScale, modelHref: string, altitudeMode: AltitudeMode) {
         super(document, featureIndex, 'model', id, name, description, kmlId, 'Model');
-        this.location = location;
-        this.orientation = orientation;
-        this.scale = scale;
+        this._location = location;
+        this._orientation = orientation;
+        this._scale = scale;
         this.modelHref = modelHref;
         this.altitudeMode = altitudeMode;
+    }
+
+    public set location(value: GeoPosition) {
+        this._location = value;
+        this.replaceTagValue('longitude', String(value.lon));
+        this.replaceTagValue('latitude', String(value.lat));
+        this.replaceTagValue('altitude', String(value.alt));
+    }
+
+    public get location(): GeoPosition {
+        return this._location;
+    }
+
+    public set orientation(value: ModelOrientation) {
+        this._orientation = value;
+        this.replaceTagValue('heading', String(value.heading));
+        this.replaceTagValue('tilt', String(value.tilt));
+        this.replaceTagValue('roll', String(value.roll));
+    }
+
+    public get orientation(): ModelOrientation {
+        return this._orientation;
+    }
+
+    public set scale(value: ModelScale) {
+        this._scale = value;
+        this.replaceTagValue('x', String(value.x));
+        this.replaceTagValue('y', String(value.y));
+        this.replaceTagValue('z', String(value.z));
+    }
+
+    public get scale(): ModelScale {
+        return this._scale;
     }
 }
 
@@ -296,7 +329,7 @@ class KmlDocumentImpl implements IKmlDocument {
             );
         }
 
-        if (tagName === 'Model') {
+        if (tagName === 'Model' || this.containsTag(fragment, 'Model')) {
             return new ModelFeatureView(
                 this,
                 index,
