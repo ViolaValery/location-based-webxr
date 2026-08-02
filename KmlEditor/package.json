@@ -5,6 +5,7 @@
   "description": "KML/KMZ editor for location-based WebXR",
   "type": "module",
   "scripts": {
+    "dev:ar-scene": "vite --open /demos/ar-scene-demo/",
     "dev:commands": "vite --open /demos/commands-demo/",
     "dev:geo-bridge": "vite --open /demos/geo-bridge-demo/",
     "dev:document-model": "vite --open /demos/document-model-demo/",

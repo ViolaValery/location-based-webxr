@@ -85,6 +85,7 @@ export class EditorStoreImpl implements IEditorStore {
 
             this.initializeAnchor(tempDoc);
             this.syncProjection();
+            this._reduxStore.dispatch(setDocumentStatus('ready'));
         } catch (error) {
             this._reduxStore.dispatch(setDocumentStatus('error'));
             throw error;
