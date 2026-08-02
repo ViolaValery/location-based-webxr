@@ -17,7 +17,7 @@ export class DesktopScene {
         this.scene.background = new THREE.Color(0x10131a);
         this.scene.add(this.featureRoot, this.overlayRoot, new THREE.HemisphereLight(0xffffff, 0x263040, 2));
         const key = new THREE.DirectionalLight(0xffffff, 2);
-        const grid = new THREE.GridHelper(10000, 100, 0x4e678a, 0x253244);
+        const grid = new THREE.GridHelper(1000, 500, 0x4e678a, 0x253244);
         grid.position.y = -0.01;
         this.scene.add(key, grid);
         this.camera.position.set(120, 120, 120);
