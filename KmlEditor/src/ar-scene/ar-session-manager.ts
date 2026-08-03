@@ -25,7 +25,7 @@ export class ArSessionManager {
         }
     }
 
-    public async requestSession(): Promise<XRSession> {
+    public async requestSession(renderer?: THREE.WebGLRenderer): Promise<XRSession> {
         if (this.session) return this.session;
         if (typeof navigator === 'undefined' || !navigator.xr) {
             throw new Error('WebXR API is not available on this device or browser.');
@@ -43,6 +43,11 @@ export class ArSessionManager {
         const session = await navigator.xr.requestSession('immersive-ar', sessionInit);
         this.session = session;
         this.setTrackingState('searching');
+
+        if (renderer) {
+            renderer.xr.enabled = true;
+            await renderer.xr.setSession(session);
+        }
 
         let refSpace: XRReferenceSpace;
         try {

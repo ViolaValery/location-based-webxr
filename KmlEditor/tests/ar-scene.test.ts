@@ -242,6 +242,38 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
             unsub();
             manager.dispose();
         });
+
+        it('binds WebGLRenderer to XRSession when requested', async () => {
+            const fakeCanvas = {} as HTMLCanvasElement;
+            const manager = new ArSessionManager({ canvas: fakeCanvas });
+
+            const mockSession = {
+                addEventListener: vi.fn(),
+                requestReferenceSpace: vi.fn(async () => ({})),
+                requestAnimationFrame: vi.fn(),
+                end: vi.fn(async () => {}),
+            };
+            const mockNavigatorXr = {
+                requestSession: vi.fn(async () => mockSession),
+            };
+
+            vi.stubGlobal('navigator', { xr: mockNavigatorXr });
+
+            const mockRenderer = {
+                xr: {
+                    enabled: false,
+                    setSession: vi.fn(async () => {}),
+                },
+            } as unknown as THREE.WebGLRenderer;
+
+            const session = await manager.requestSession(mockRenderer);
+            expect(session).toBe(mockSession);
+            expect(mockRenderer.xr.enabled).toBe(true);
+            expect(mockRenderer.xr.setSession).toHaveBeenCalledWith(mockSession);
+
+            vi.unstubAllGlobals();
+            manager.dispose();
+        });
     });
 
     describe('ArSceneManager', () => {
@@ -258,6 +290,42 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
             sceneManager.setReticlePosition(new THREE.Vector3(1, 2, 3), true);
             expect(sceneManager.reticle.position.x).toBe(1);
             expect(sceneManager.reticle.visible).toBe(true);
+
+            sceneManager.dispose();
+        });
+
+        it('resolves active camera correctly during WebXR presentation', () => {
+            const factory: IRendererFactory<THREE.Object3D> = {
+                createRenderer: () => new FakeRenderer(),
+            };
+            const sceneManager = new ArSceneManager(factory);
+            const xrCamera = new THREE.PerspectiveCamera();
+
+            const mockDom = {
+                style: {},
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+                getRootNode: vi.fn(() => ({
+                    addEventListener: vi.fn(),
+                    removeEventListener: vi.fn(),
+                })),
+                ownerDocument: {
+                    addEventListener: vi.fn(),
+                    removeEventListener: vi.fn(),
+                },
+            } as unknown as HTMLElement;
+
+            const mockRenderer = {
+                domElement: mockDom,
+                xr: {
+                    enabled: true,
+                    isPresenting: true,
+                    getCamera: () => xrCamera,
+                },
+            } as unknown as THREE.WebGLRenderer;
+
+            sceneManager.attachRenderer(mockRenderer);
+            expect(sceneManager.getActiveCamera()).toBe(xrCamera);
 
             sceneManager.dispose();
         });
