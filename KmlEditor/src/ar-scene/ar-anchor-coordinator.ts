@@ -1,16 +1,22 @@
 import { AltitudeMode, GeoPosition, WorldPosition } from '../contracts/type';
 import { IGeoBridge, GeoAnchor } from '../contracts/geo-bridge';
 import { IEditorStore } from '../contracts/store';
+import { localOffsetToGeo, inverseRotateHorizontal } from '../geo-bridge/math';
 
 export class ArAnchorCoordinator {
     private isLocked = false;
     private bufferedGps: { position: GeoPosition; heading: number; accuracy: number } | null = null;
     private groundY = 0; // Local WebXR floor level Y
+    private viewerPose: XRViewerPose | null = null;
 
     public constructor(
         private readonly geoBridge: IGeoBridge,
         private readonly store: IEditorStore
     ) {}
+
+    public updateViewerPose(pose: XRViewerPose): void {
+        this.viewerPose = pose;
+    }
 
     public updateGps(latitude: number, longitude: number, altitude: number, heading = 0, accuracy = 5): void {
         this.store.setDeviceState({
@@ -29,18 +35,10 @@ export class ArAnchorCoordinator {
         const currentAnchor = this.geoBridge.getAnchor();
         if (!currentAnchor) {
             this.geoBridge.setAnchor({ position: newPosition, heading });
-        } else {
-            // Apply exponential low-pass filter to smooth anchor origin updates
-            const alpha = 0.3;
-            const smoothedPosition: GeoPosition = {
-                lon: currentAnchor.position.lon + alpha * (newPosition.lon - currentAnchor.position.lon),
-                lat: currentAnchor.position.lat + alpha * (newPosition.lat - currentAnchor.position.lat),
-                alt: currentAnchor.position.alt + alpha * (newPosition.alt - currentAnchor.position.alt),
-            };
-            const smoothedHeading = currentAnchor.heading + alpha * (heading - currentAnchor.heading);
-
-            this.geoBridge.setAnchor({ position: smoothedPosition, heading: smoothedHeading });
         }
+        // As per the specification: "convert geo→world once at the anchor step and work in THREE.Vector3s after that"
+        // We do NOT continuously update the anchor based on GPS once it is set.
+        // This ensures markers do not move arbitrarily with phone position.
     }
 
     public setAnchorLock(locked: boolean): void {
