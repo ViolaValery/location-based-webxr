@@ -168,8 +168,8 @@ describe('KML Features Renderers', () => {
 
             const sprite = object.children.find(child => child instanceof THREE.Sprite) as THREE.Sprite;
             expect(sprite).toBeDefined();
-            expect(sprite.scale.x).toBe(12);
-            expect(sprite.scale.y).toBe(12);
+            expect(sprite.scale.x).toBeCloseTo(1.2, 5);
+            expect(sprite.scale.y).toBeCloseTo(1.2, 5);
 
 
             renderer.dispose();

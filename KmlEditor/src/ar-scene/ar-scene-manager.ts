@@ -15,6 +15,7 @@ export class ArSceneManager {
     public readonly featureGroup: THREE.Group;
     public readonly overlayGroup: THREE.Group;
     public readonly reticle: THREE.Mesh;
+    public readonly accuracyRing: THREE.Mesh;
     public readonly grid: THREE.GridHelper;
     public controls: OrbitControls | null = null;
 
@@ -54,7 +55,29 @@ export class ArSceneManager {
         this.reticle.visible = false;
         this.scene.add(this.reticle);
 
+        // 3D GPS Accuracy Ring helper
+        const ringGeo = new THREE.RingGeometry(0.98, 1.0, 64).rotateX(-Math.PI / 2);
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: 0x00e5ff,
+            transparent: true,
+            opacity: 0.35,
+            side: THREE.DoubleSide,
+        });
+        this.accuracyRing = new THREE.Mesh(ringGeo, ringMat);
+        this.accuracyRing.position.y = 0.01;
+        this.accuracyRing.visible = false;
+        this.overlayGroup.add(this.accuracyRing);
+
         this.registry = new FeatureSceneRegistry(this.featureGroup, rendererFactory);
+    }
+
+    public updateAccuracyRing(accuracyRadiusMeters: number): void {
+        if (accuracyRadiusMeters <= 0 || !Number.isFinite(accuracyRadiusMeters)) {
+            this.accuracyRing.visible = false;
+            return;
+        }
+        this.accuracyRing.scale.set(accuracyRadiusMeters, accuracyRadiusMeters, 1);
+        this.accuracyRing.visible = true;
     }
 
     public attachRenderer(renderer: THREE.WebGLRenderer): void {

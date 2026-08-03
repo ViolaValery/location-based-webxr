@@ -110,16 +110,29 @@ export function startOrientationWatch(
   // Clear any existing watch to prevent leaks (idempotency)
   stopOrientationWatch();
 
-  orientationHandler = (event: DeviceOrientationEvent) => {
+  orientationHandler = (event: any) => {
+    let heading: number | null = null;
+    if (typeof event.webkitCompassHeading === 'number') {
+      // iOS Safari provides webkitCompassHeading (0 = North, 90 = East)
+      heading = event.webkitCompassHeading;
+    } else if (typeof event.alpha === 'number') {
+      // Android Chrome: alpha is 0 at North, 90 at West -> convert to compass heading (0 = North, 90 = East)
+      heading = (360 - event.alpha) % 360;
+    }
+
     onOrientation({
-      alpha: event.alpha,
-      beta: event.beta,
-      gamma: event.gamma,
-      absolute: event.absolute,
+      alpha: heading,
+      beta: event.beta ?? null,
+      gamma: event.gamma ?? null,
+      absolute: event.absolute ?? false,
     });
   };
 
-  window.addEventListener('deviceorientation', orientationHandler);
+  if (typeof window !== 'undefined' && 'ondeviceorientationabsolute' in window) {
+    window.addEventListener('deviceorientationabsolute', orientationHandler as any);
+  } else if (typeof window !== 'undefined') {
+    window.addEventListener('deviceorientation', orientationHandler as any);
+  }
   log.info('Orientation watch started');
 }
 
@@ -127,8 +140,9 @@ export function startOrientationWatch(
  * Stop listening for device orientation
  */
 export function stopOrientationWatch(): void {
-  if (orientationHandler) {
-    window.removeEventListener('deviceorientation', orientationHandler);
+  if (orientationHandler && typeof window !== 'undefined') {
+    window.removeEventListener('deviceorientationabsolute', orientationHandler as any);
+    window.removeEventListener('deviceorientation', orientationHandler as any);
     orientationHandler = null;
     log.info('Orientation watch stopped');
   }

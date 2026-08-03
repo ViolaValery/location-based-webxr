@@ -35,6 +35,8 @@ export class ArAnchorCoordinator {
         const currentAnchor = this.geoBridge.getAnchor();
         if (!currentAnchor) {
             this.geoBridge.setAnchor({ position: newPosition, heading });
+        } else if (currentAnchor.heading === 0 && heading !== 0) {
+            this.geoBridge.setAnchor({ position: currentAnchor.position, heading });
         }
         // As per the specification: "convert geo→world once at the anchor step and work in THREE.Vector3s after that"
         // We do NOT continuously update the anchor based on GPS once it is set.
