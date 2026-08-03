@@ -54,9 +54,10 @@ export function localOffsetToGeo(anchor: GeoPosition, east: number, north: numbe
 export function rotateHorizontal(east: number, north: number, angleRadians: number): { x: number; z: number } {
     const cosine = Math.cos(angleRadians);
     const sine = Math.sin(angleRadians);
+    const rawZ = -(east * sine + north * cosine);
     return {
         x: east * cosine - north * sine,
-        z: east * sine + north * cosine,
+        z: rawZ === 0 ? 0 : rawZ,
     };
 }
 
@@ -65,6 +66,6 @@ export function inverseRotateHorizontal(x: number, z: number, angleRadians: numb
     const sine = Math.sin(angleRadians);
     return {
         east: x * cosine - z * sine,
-        north: x * sine + z * cosine,
+        north: -x * sine - z * cosine,
     };
 }

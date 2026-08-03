@@ -27,6 +27,7 @@ import { RendererFactory } from '../renderers';
 import { createEditorStore } from '../store';
 import { DesktopScene } from './desktop-scene';
 import { FeatureSceneRegistry } from './feature-scene-registry';
+import { ReplayHarness } from './replay-harness';
 
 const dummyAssetProvider: IAssetProvider = {
     getAssetUrl: async (href) => href,
@@ -40,6 +41,7 @@ const dummyAssetProvider: IAssetProvider = {
 export class EditorApp {
     private readonly store: IEditorStore;
     private readonly persistence: IPersistenceService;
+    private readonly replayHarness = new ReplayHarness();
     private readonly scene: DesktopScene;
     private readonly registry: FeatureSceneRegistry;
     private readonly list: HTMLUListElement;
@@ -148,7 +150,115 @@ export class EditorApp {
             actionRow
         );
 
-        sidebar.append(pickerGroup, this.message, listCard, this.inspectorContainer);
+        // Replay Walk Card (Task 1 phone-free)
+        const replayCard = document.createElement('div');
+        replayCard.className = 'kml-editor__card';
+        const replayTitle = document.createElement('label');
+        replayTitle.className = 'kml-editor__section-title';
+        replayTitle.textContent = 'REPLAY WALK (TASK 1)';
+
+        const walkSelect = document.createElement('select');
+        walkSelect.style.width = '100%';
+
+        const PRESET_WALKS = [
+            { label: 'Walk 1 (13:58:24 UTC)', url: '../../fixtures/recordings/2026-06-24_13-58-24utc.zip' },
+            { label: 'Walk 2 (13:54:45 UTC)', url: '../../fixtures/recordings/2026-06-24_13-54-45utc.zip' },
+            { label: 'Walk 3 (13:56:01 UTC)', url: '../../fixtures/recordings/2026-06-24_13-56-01utc.zip' },
+            { label: 'Walk 4 (14:04:36 UTC)', url: '../../fixtures/recordings/2026-06-24_14-04-36utc.zip' },
+            { label: 'Walk 5 (14:09:28 UTC)', url: '../../fixtures/recordings/2026-06-24_14-09-28utc.zip' },
+            { label: 'Walk 6 (14:12:35 UTC)', url: '../../fixtures/recordings/2026-06-24_14-12-35utc.zip' },
+            { label: 'Walk 7 (14:19:00 UTC)', url: '../../fixtures/recordings/2026-06-24_14-19-00utc.zip' },
+            { label: 'InfoWalk 1 (13:52:34 UTC)', url: '../../fixtures/recordings/InfoWalk/2026-06-24_13-52-34utc.zip' },
+            { label: 'InfoWalk 2 (13:56:51 UTC)', url: '../../fixtures/recordings/InfoWalk/2026-06-24_13-56-51utc.zip' },
+            { label: 'InfoWalk 3 (14:04:16 UTC)', url: '../../fixtures/recordings/InfoWalk/2026-06-24_14-04-16utc.zip' },
+            { label: 'InfoWalk 4 (14:08:42 UTC)', url: '../../fixtures/recordings/InfoWalk/2026-06-24_14-08-42utc.zip' },
+            { label: 'InfoWalk 5 (14:12:17 UTC)', url: '../../fixtures/recordings/InfoWalk/2026-06-24_14-12-17utc.zip' },
+            { label: 'InfoWalk 6 (14:17:01 UTC)', url: '../../fixtures/recordings/InfoWalk/2026-06-24_14-17-01utc.zip' },
+        ];
+
+        PRESET_WALKS.forEach((w) => {
+            const opt = document.createElement('option');
+            opt.value = w.url;
+            opt.textContent = w.label;
+            walkSelect.appendChild(opt);
+        });
+
+        const customWalkInput = document.createElement('input');
+        customWalkInput.type = 'file';
+        customWalkInput.accept = '.zip';
+        customWalkInput.style.display = 'none';
+
+        const customWalkBtn = button('Upload Local Walk .ZIP', () => customWalkInput.click());
+
+        const replayStatus = document.createElement('span');
+        replayStatus.style.fontSize = '0.8rem';
+        replayStatus.style.color = '#8ea1c0';
+        replayStatus.textContent = 'Status: Idle';
+
+        const loadAndPlayRecording = async (source: string | File) => {
+            this.replayHarness.attach(this.scene, this.store.geoBridge);
+            replayStatus.textContent = 'Loading recording...';
+            try {
+                let buf: ArrayBuffer;
+                if (typeof source === 'string') {
+                    const res = await fetch(source);
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    buf = await res.arrayBuffer();
+                } else {
+                    buf = await source.arrayBuffer();
+                }
+                const count = await this.replayHarness.loadZip(buf);
+                replayStatus.textContent = `Loaded ${count} samples`;
+                this.replayHarness.play(2);
+            } catch {
+                replayStatus.textContent = 'Failed to load recording ZIP';
+            }
+        };
+
+        customWalkInput.addEventListener('change', () => {
+            const file = customWalkInput.files?.[0];
+            if (file) void loadAndPlayRecording(file);
+        });
+
+        walkSelect.addEventListener('change', () => {
+            this.replayHarness.stop();
+            void loadAndPlayRecording(walkSelect.value);
+        });
+
+        const replayRow = document.createElement('div');
+        replayRow.className = 'kml-editor__btn-row';
+
+        const playBtn = button('Play Replay ▶', async () => {
+            if (this.replayHarness.getSamples().length === 0) {
+                await loadAndPlayRecording(walkSelect.value);
+            } else {
+                this.replayHarness.play(2);
+            }
+        });
+
+        const pauseBtn = button('Pause ❚❚', () => {
+            this.replayHarness.pause();
+        });
+
+        this.replayHarness.onStateChange((st) => {
+            replayStatus.textContent = `Status: ${st}`;
+        });
+
+        this.replayHarness.onSampleChange((_sample, idx) => {
+            replayStatus.textContent = `Step ${idx + 1}/${this.replayHarness.getSamples().length}`;
+        });
+
+        replayRow.append(playBtn, pauseBtn);
+        replayCard.append(
+            replayTitle,
+            formField('Walk Recording', walkSelect),
+            customWalkBtn,
+            customWalkInput,
+            replayRow,
+            replayStatus
+        );
+
+        sidebar.append(pickerGroup, this.message, listCard, this.inspectorContainer, replayCard);
         shell.append(sidebar, viewport);
         this.host.appendChild(shell);
 
@@ -230,6 +340,7 @@ export class EditorApp {
         if (this.disposed) return;
         this.disposed = true;
         this.unsubscribe?.(); this.unsubscribe = null;
+        this.replayHarness.dispose();
         this.registry.dispose();
         this.scene.dispose();
         this.persistence.dispose();
