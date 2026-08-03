@@ -220,14 +220,26 @@ export class ArApp {
     public async startArSession(): Promise<void> {
         this.sceneManager.setGridVisible(false);
         await this.sessionManager.requestSession(this.renderer);
+        
         let firstGpsFix = true;
 
         startGpsWatch(
             (pos) => {
+                const currentHeading = this.store.getState().device.heading ?? pos.heading ?? 0;
+                this.anchorCoordinator.updateGps(
+                    pos.lat,
+                    pos.lon,
+                    pos.altitude ?? 0,
+                    currentHeading,
+                    pos.accuracy
+                );
+
                 if (firstGpsFix) {
                     firstGpsFix = false;
-                    // Reset AR anchor to current device position on first fix
-                    this.anchorCoordinator.resetAnchor({ lon: pos.lon, lat: pos.lat, alt: pos.altitude ?? 0 }, pos.heading ?? 0);
+                    this.anchorCoordinator.resetAnchor(
+                        { lon: pos.lon, lat: pos.lat, alt: pos.altitude ?? 0 }, 
+                        currentHeading
+                    );
                     if (this.documentModel && this.containerFile) {
                         void this.sceneManager.reconcileFeatures(
                             this.documentModel.getFeatures(),
@@ -236,19 +248,14 @@ export class ArApp {
                         );
                     }
                 }
-                this.anchorCoordinator.updateGps(
-                    pos.lat,
-                    pos.lon,
-                    pos.altitude ?? 0,
-                    pos.heading ?? 0,
-                    pos.accuracy
-                );
             },
             (err) => console.warn('[ArApp] GPS watch error:', err.message)
         );
+
         startOrientationWatch((orient) => {
             if (orient.alpha !== null) {
                 const heading = (360 - orient.alpha) % 360;
+                this.store.setDeviceState({ heading });
                 const currentGps = this.store.getState().device.gpsPosition;
                 if (currentGps) {
                     this.anchorCoordinator.updateGps(

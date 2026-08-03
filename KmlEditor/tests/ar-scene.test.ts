@@ -35,25 +35,31 @@ class FakeRenderer implements IFeatureRenderer<IFeatureView, THREE.Object3D> {
 
 describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () => {
     let mockGeoBridge: IGeoBridge;
-    let anchorPosition: GeoPosition;
+    let anchorPosition: GeoPosition | null;
 
     beforeEach(() => {
-        anchorPosition = { lon: 6.06, lat: 50.77, alt: 200 };
+        anchorPosition = null;
         mockGeoBridge = {
             setAnchor: vi.fn((anchor) => {
                 anchorPosition = anchor.position;
             }),
-            getAnchor: vi.fn(() => ({ position: anchorPosition, heading: 0 })),
-            geoToWorld: vi.fn((pos: GeoPosition) => ({
-                x: (pos.lon - anchorPosition.lon) * 100000,
-                y: pos.alt - anchorPosition.alt,
-                z: (pos.lat - anchorPosition.lat) * 100000,
-            })),
-            worldToGeo: vi.fn((pos: WorldPosition) => ({
-                lon: anchorPosition.lon + pos.x / 100000,
-                lat: anchorPosition.lat + pos.z / 100000,
-                alt: anchorPosition.alt + pos.y,
-            })),
+            getAnchor: vi.fn(() => anchorPosition ? { position: anchorPosition, heading: 0 } : null),
+            geoToWorld: vi.fn((pos: GeoPosition) => {
+                if (!anchorPosition) return { x: 0, y: 0, z: 0 };
+                return {
+                    x: (pos.lon - anchorPosition.lon) * 100000,
+                    y: pos.alt - anchorPosition.alt,
+                    z: (pos.lat - anchorPosition.lat) * 100000,
+                };
+            }),
+            worldToGeo: vi.fn((pos: WorldPosition) => {
+                if (!anchorPosition) return { lon: 0, lat: 0, alt: 0 };
+                return {
+                    lon: anchorPosition.lon + pos.x / 100000,
+                    lat: anchorPosition.lat + pos.z / 100000,
+                    alt: anchorPosition.alt + pos.y,
+                };
+            }),
             formatCoordinate: vi.fn((val: number) => String(val)),
         };
     });
@@ -81,6 +87,7 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
         });
 
         it('resolves altitude policies correctly (clampToGround, relativeToGround, absolute)', () => {
+            anchorPosition = { lon: 6.06, lat: 50.77, alt: 200 };
             const store = createEditorStore();
             const coordinator = new ArAnchorCoordinator(mockGeoBridge, store);
             coordinator.setGroundY(5.0);
@@ -98,6 +105,7 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
         });
 
         it('buffers GPS updates when Anchor Lock is engaged during active 3D drags', () => {
+            anchorPosition = { lon: 6.06, lat: 50.77, alt: 200 };
             const store = createEditorStore();
             const coordinator = new ArAnchorCoordinator(mockGeoBridge, store);
 
@@ -118,6 +126,7 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
 
     describe('AR Phone-Space Touch Grab to Edit Command Translation', () => {
         it('turns a phone-space screen grab gesture into a MoveMarkerCommand on the document and store', async () => {
+            anchorPosition = { lon: 6.06, lat: 50.77, alt: 200 };
             const store = createEditorStore();
             const factory: IRendererFactory<THREE.Object3D> = {
                 createRenderer: () => new FakeRenderer(),
@@ -181,6 +190,7 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
 
     describe('AR Persistence Regression Guarantee (Round-Trip Persistence)', () => {
         it('persists AR edit commands losslessly back to KML container (reusing desktop round-trip guarantee)', async () => {
+            anchorPosition = { lon: 6.06, lat: 50.77, alt: 200 };
             const store = createEditorStore();
             const doc = createKmlDocument();
 
