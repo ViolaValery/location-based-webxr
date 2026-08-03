@@ -93,7 +93,8 @@ export class ArInteractionController {
         const ndc = this.getNdc(clientX, clientY);
         this.initialTouchNdc.copy(ndc);
 
-        TEMP_RAYCASTER.setFromCamera(ndc, this.sceneManager.camera);
+        const camera = this.sceneManager.getActiveCamera();
+        TEMP_RAYCASTER.setFromCamera(ndc, camera);
         const intersects = TEMP_RAYCASTER.intersectObjects(this.sceneManager.getPickableObjects(), true);
 
         if (intersects.length > 0) {
@@ -107,7 +108,7 @@ export class ArInteractionController {
                     this.initialFeatureWorldPos = nativeObject.position.clone();
 
                     // Create camera-facing drag plane at hit object depth
-                    const normal = TEMP_VEC3_A.copy(this.sceneManager.camera.position).sub(nativeObject.position).normalize();
+                    const normal = TEMP_VEC3_A.copy(camera.position).sub(nativeObject.position).normalize();
                     this.dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, nativeObject.position);
 
                     // Disable orbit controls during active feature drag so camera does not move
@@ -128,7 +129,8 @@ export class ArInteractionController {
         if (!this.activeDragFeatureId || !this.dragPlane || !this.initialFeatureWorldPos) return;
 
         const ndc = this.getNdc(clientX, clientY);
-        TEMP_RAYCASTER.setFromCamera(ndc, this.sceneManager.camera);
+        const camera = this.sceneManager.getActiveCamera();
+        TEMP_RAYCASTER.setFromCamera(ndc, camera);
 
         const targetPoint = TEMP_VEC3_B;
         if (TEMP_RAYCASTER.ray.intersectPlane(this.dragPlane, targetPoint)) {

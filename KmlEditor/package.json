@@ -22,6 +22,7 @@
     "vitest": "^4.1.6"
   },
   "dependencies": {
-    "@reduxjs/toolkit": "^2.11.2"
+    "@reduxjs/toolkit": "^2.11.2",
+    "gps-plus-slam-app-framework": "workspace:*"
   }
 }

@@ -15,6 +15,7 @@ export class ArSceneManager {
     public readonly featureGroup: THREE.Group;
     public readonly overlayGroup: THREE.Group;
     public readonly reticle: THREE.Mesh;
+    public readonly grid: THREE.GridHelper;
     public controls: OrbitControls | null = null;
 
     private readonly registry: FeatureSceneRegistry;
@@ -32,10 +33,10 @@ export class ArSceneManager {
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
         directionalLight.position.set(5, 20, 7);
 
-        const grid = new THREE.GridHelper(200, 100, 0x3b82f6, 0x1e293b);
-        grid.position.y = -0.01;
+        this.grid = new THREE.GridHelper(200, 100, 0x3b82f6, 0x1e293b);
+        this.grid.position.y = -0.01;
 
-        this.scene.add(ambientLight, directionalLight, grid);
+        this.scene.add(ambientLight, directionalLight, this.grid);
 
         // Feature and overlay group hierarchy
         this.featureGroup = new THREE.Group();
@@ -63,6 +64,17 @@ export class ArSceneManager {
         this.controls.enableDamping = true;
         this.controls.target.set(0, 0, 0);
         this.controls.update();
+    }
+
+    public getActiveCamera(): THREE.Camera {
+        if (this.renderer && this.renderer.xr.isPresenting) {
+            return this.renderer.xr.getCamera();
+        }
+        return this.camera;
+    }
+
+    public setGridVisible(visible: boolean): void {
+        this.grid.visible = visible;
     }
 
     public updateControls(): void {
