@@ -405,7 +405,10 @@ class KmlDocumentImpl implements IKmlDocument {
             ranges.push({ start: match.index, end, tagName });
         }
 
-        return ranges;
+        // Filter out nested ranges (e.g. <Model> inside <Placemark>)
+        return ranges.filter((r1, idx) => {
+            return !ranges.some((r2, idx2) => idx2 !== idx && r1.start > r2.start && r1.end <= r2.end);
+        });
     }
 
     private findMatchingTagEnd(xml: string, startIndex: number, tagName: string): number | null {
