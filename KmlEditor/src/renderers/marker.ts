@@ -65,7 +65,7 @@ export class MarkerRenderer extends BaseFeatureRenderer<IMarkerFeature> {
             this.sprite.material.needsUpdate = true;
         }
 
-        const scale = (feature.iconScale || 1.0) * 8.0;
+        const scale = (feature.iconScale || 1.0) * 0.8;
         this.sprite.scale.set(scale, scale, 1);
 
     }
