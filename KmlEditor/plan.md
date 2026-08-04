@@ -1,6 +1,6 @@
 # Interfaces
 
-<img width="810" height="901" alt="Interfaces" src="https://github.com/user-attachments/assets/1bb1ebef-46bc-4cb1-a4d6-78863d153cc2" />
+<img width="608" height="342" alt="Interfaces_2" src="https://github.com/user-attachments/assets/77003add-53f9-47eb-add5-33a982719994" />
 
 # KmlEditor — Ordnerstruktur
 
@@ -42,11 +42,9 @@
 
 ## `fixtures/` — Test-Fixtures
 
-- **Root** — Echte Google-Earth `.kmz`/`.kml` Dateien aus Task 1 (Marker, Lines, Overlays, Models, komplexe Styles/Folders/ExtendedData)
+- **`google-earth/`** — Echte Google-Earth `.kmz`/`.kml` Dateien aus Task 1 (Marker, Lines, Overlays, Models, komplexe Styles/Folders/ExtendedData)
 - **`recordings/`** — Task-1 GPS/AR Walk-Recordings (JSON) für deterministische Replay-E2E-Tests ohne Handy
 
 ## Implementierungs-Reihenfolge
 
 1. `contracts/` → 2. `kmz-io/` → 3. `kml-model/` → 4. `geo-bridge/` → 5. `renderers/` → 6. `commands/` → 7. `persistence/` → 8. `store/` → 9. `editor/` → 10. `ar-scene/`
-
-> **Harte Constraints:** Engine (1–4) vor Renderern (5), AR Scene (10) zuletzt.
