@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import {
+    getArWorldGroup,
+    getCamera,
+    registerFrameUpdate,
+} from 'gps-plus-slam-app-framework/ar';
 import { IFeatureView } from '../contracts/document-model';
 import { IGeoBridge } from '../contracts/geo-bridge';
 import { IAssetProvider } from '../contracts/kmz-container';
@@ -7,55 +12,42 @@ import { IRendererFactory } from '../contracts/renderer';
 import { FeatureId } from '../contracts/type';
 import { FeatureSceneRegistry } from '../editor/feature-scene-registry';
 
-const VRAM_BUDGET_BYTES = 256 * 1024 * 1024; // 256MB
+const LARGE_FEATURE_THRESHOLD = 500;
+const CULL_DISTANCE_METERS = 500;
 
+/**
+ * KmlSceneHelper — owns only the KML-specific scene objects:
+ * - FeatureSceneRegistry (KML features → THREE.Object3D)
+ * - featureGroup (child of getArWorldGroup())
+ * - GPS accuracy ring helper mesh
+ * - Desktop OrbitControls (non-AR mode only)
+ *
+ * Does NOT own: Scene, Renderer, Camera, AnimationLoop.
+ * Those are created by initAR() and retrieved via getArWorldGroup() / getCamera().
+ */
 export class ArSceneManager {
-    public readonly scene: THREE.Scene;
-    public readonly camera: THREE.PerspectiveCamera;
+    /** The group that holds all KML feature objects. Added to arWorldGroup after initAR(). */
     public readonly featureGroup: THREE.Group;
-    public readonly overlayGroup: THREE.Group;
-    public readonly reticle: THREE.Mesh;
-    public readonly accuracyRing: THREE.Mesh;
-    public readonly grid: THREE.GridHelper;
+    private readonly overlayGroup: THREE.Group;
+    private readonly accuracyRing: THREE.Mesh;
+    private readonly registry: FeatureSceneRegistry;
+
+    /** OrbitControls for desktop/replay mode. Only active when no XR session is presenting. */
     public controls: OrbitControls | null = null;
 
-    private readonly registry: FeatureSceneRegistry;
-    private renderer: THREE.WebGLRenderer | null = null;
-    private currentVramUsage = 0;
+    private unregisterFrameUpdate: (() => void) | null = null;
+    private largeFileWarningShown = false;
 
-    public constructor(rendererFactory: IRendererFactory<THREE.Object3D>) {
-        this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-        this.camera.position.set(0, 15, 30);
-        this.camera.lookAt(0, 0, 0);
-
-        // Lighting tuned for outdoor AR
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        directionalLight.position.set(5, 20, 7);
-
-        this.grid = new THREE.GridHelper(200, 100, 0x3b82f6, 0x1e293b);
-        this.grid.position.y = -0.01;
-
-        this.scene.add(ambientLight, directionalLight, this.grid);
-
-        // Feature and overlay group hierarchy
+    public constructor(private readonly rendererFactory: IRendererFactory<THREE.Object3D>) {
         this.featureGroup = new THREE.Group();
-        this.featureGroup.name = 'ar-feature-group';
+        this.featureGroup.name = 'kml-feature-group';
 
         this.overlayGroup = new THREE.Group();
-        this.overlayGroup.name = 'ar-overlay-group';
+        this.overlayGroup.name = 'kml-overlay-group';
 
-        this.scene.add(this.featureGroup, this.overlayGroup);
+        this.featureGroup.add(this.overlayGroup);
 
-        // WebXR Reticle helper
-        const reticleGeo = new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2);
-        const reticleMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, side: THREE.DoubleSide });
-        this.reticle = new THREE.Mesh(reticleGeo, reticleMat);
-        this.reticle.visible = false;
-        this.scene.add(this.reticle);
-
-        // 3D GPS Accuracy Ring helper
+        // GPS accuracy ring helper
         const ringGeo = new THREE.RingGeometry(0.98, 1.0, 64).rotateX(-Math.PI / 2);
         const ringMat = new THREE.MeshBasicMaterial({
             color: 0x00e5ff,
@@ -71,6 +63,56 @@ export class ArSceneManager {
         this.registry = new FeatureSceneRegistry(this.featureGroup, rendererFactory);
     }
 
+    /**
+     * Attach featureGroup to the framework's arWorldGroup and start the per-frame tick.
+     * Call this after initAR() succeeds.
+     *
+     * @param rendererDomElement - Canvas element for OrbitControls (desktop/replay mode).
+     */
+    public attachToFrameworkScene(rendererDomElement?: HTMLElement): void {
+        const worldGroup = getArWorldGroup();
+        if (worldGroup && this.featureGroup.parent !== worldGroup) {
+            worldGroup.add(this.featureGroup);
+        }
+
+        // Register a per-frame tick for OrbitControls update (desktop mode).
+        // In XR mode OrbitControls is disabled so this is a no-op.
+        this.unregisterFrameUpdate = registerFrameUpdate((_dt: number, _elapsed: number) => {
+            if (this.controls) {
+                this.controls.update();
+            }
+        });
+
+        // Create OrbitControls for desktop/replay preview.
+        if (rendererDomElement) {
+            const cam = getCamera();
+            if (cam) {
+                this.controls = new OrbitControls(cam, rendererDomElement);
+                this.controls.enableDamping = true;
+                this.controls.target.set(0, 0, 0);
+                this.controls.update();
+            }
+        }
+    }
+
+    /**
+     * Detach featureGroup from arWorldGroup and clean up the frame tick.
+     * Call this after endARSession() completes.
+     */
+    public detachFromFrameworkScene(): void {
+        this.featureGroup.removeFromParent();
+
+        if (this.unregisterFrameUpdate) {
+            this.unregisterFrameUpdate();
+            this.unregisterFrameUpdate = null;
+        }
+
+        if (this.controls) {
+            this.controls.dispose();
+            this.controls = null;
+        }
+    }
+
     public updateAccuracyRing(accuracyRadiusMeters: number): void {
         if (accuracyRadiusMeters <= 0 || !Number.isFinite(accuracyRadiusMeters)) {
             this.accuracyRing.visible = false;
@@ -80,39 +122,27 @@ export class ArSceneManager {
         this.accuracyRing.visible = true;
     }
 
-    public attachRenderer(renderer: THREE.WebGLRenderer): void {
-        this.renderer = renderer;
-        renderer.xr.enabled = true;
-        this.controls = new OrbitControls(this.camera, renderer.domElement);
-        this.controls.enableDamping = true;
-        this.controls.target.set(0, 0, 0);
-        this.controls.update();
-    }
-
-    public getActiveCamera(): THREE.Camera {
-        if (this.renderer && this.renderer.xr.isPresenting) {
-            return this.renderer.xr.getCamera();
-        }
-        return this.camera;
-    }
-
-    public setGridVisible(visible: boolean): void {
-        this.grid.visible = visible;
-    }
-
-    public updateControls(): void {
-        if (this.controls && (!this.renderer || !this.renderer.xr.isPresenting)) {
-            this.controls.update();
-        }
-    }
-
+    /**
+     * Reconcile IKmlDocument features to THREE.Object3D.
+     * Runs async so the framework AnimationLoop is never blocked.
+     * Shows a one-time warning when feature count exceeds LARGE_FEATURE_THRESHOLD.
+     *
+     * @returns true if the large-file warning was newly triggered (so ArHud can display it).
+     */
     public async reconcileFeatures(
         features: readonly IFeatureView[],
         assets: IAssetProvider,
         bridge: IGeoBridge
-    ): Promise<void> {
+    ): Promise<{ largeFileWarning: boolean }> {
+        const largeFileWarning =
+            features.length > LARGE_FEATURE_THRESHOLD && !this.largeFileWarningShown;
+        if (largeFileWarning) {
+            this.largeFileWarningShown = true;
+        }
+
         await this.registry.reconcile(features, assets, bridge);
-        this.updateVramUsage();
+        this.cullDistantFeatures();
+        return { largeFileWarning };
     }
 
     public getObjectForFeature(featureId: FeatureId): THREE.Object3D | null {
@@ -124,47 +154,32 @@ export class ArSceneManager {
     }
 
     public getPickableObjects(): THREE.Object3D[] {
-        return this.featureGroup.children;
-    }
-
-    public setReticlePosition(position: THREE.Vector3, visible = true): void {
-        this.reticle.position.copy(position);
-        this.reticle.visible = visible;
-    }
-
-    public render(renderer: THREE.WebGLRenderer): void {
-        this.updateControls();
-        renderer.render(this.scene, this.camera);
+        return this.featureGroup.children.filter((c: THREE.Object3D) => c !== this.overlayGroup);
     }
 
     public dispose(): void {
-        if (this.controls) {
-            this.controls.dispose();
-            this.controls = null;
-        }
+        this.detachFromFrameworkScene();
         this.registry.dispose();
-        this.reticle.geometry.dispose();
-        (this.reticle.material as THREE.Material).dispose();
-        this.scene.clear();
+        this.accuracyRing.geometry.dispose();
+        (this.accuracyRing.material as THREE.Material).dispose();
+        this.featureGroup.clear();
     }
 
-    private updateVramUsage(): void {
-        if (!this.renderer) return;
-        const info = this.renderer.info;
-        const textureMemory = info.memory.textures * 2 * 1024 * 1024;
-        this.currentVramUsage = textureMemory;
+    /**
+     * Cull features beyond CULL_DISTANCE_METERS from the camera.
+     * Uses world-space distance (THREE.Vector3.distanceTo) — no geo math.
+     */
+    private cullDistantFeatures(): void {
+        const cam = getCamera();
+        if (!cam) return;
+        const camWorldPos = new THREE.Vector3();
+        cam.getWorldPosition(camWorldPos);
 
-        if (this.currentVramUsage > VRAM_BUDGET_BYTES) {
-            console.warn(`[ArSceneManager] VRAM usage (${Math.round(this.currentVramUsage / 1024 / 1024)}MB) exceeds budget (${VRAM_BUDGET_BYTES / 1024 / 1024}MB). Culling distant features.`);
-            this.cullDistantFeatures(100);
-        }
-    }
-
-    private cullDistantFeatures(maxDistanceMeters: number): void {
-        const cameraPos = this.camera.position;
+        const featurePos = new THREE.Vector3();
         for (const child of this.featureGroup.children) {
-            const dist = child.position.distanceTo(cameraPos);
-            child.visible = dist <= maxDistanceMeters;
+            if (child === this.overlayGroup) continue;
+            child.getWorldPosition(featurePos);
+            child.visible = featurePos.distanceTo(camWorldPos) <= CULL_DISTANCE_METERS;
         }
     }
 }

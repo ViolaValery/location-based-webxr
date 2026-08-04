@@ -4,22 +4,35 @@ import {
     createMoveModelCommand,
     createMoveOverlayCommand,
 } from '../commands';
-import { IKmlDocument, IMarkerFeature, IModelFeature, IGroundOverlayFeature } from '../contracts/document-model';
+import { IKmlDocument, IGroundOverlayFeature } from '../contracts/document-model';
 import { IGeoBridge } from '../contracts/geo-bridge';
 import { IEditorStore } from '../contracts/store';
 import { FeatureId, WorldPosition } from '../contracts/type';
+import { getCamera } from 'gps-plus-slam-app-framework/ar';
 import { ArAnchorCoordinator } from './ar-anchor-coordinator';
 import { ArSceneManager } from './ar-scene-manager';
 
+// Pre-allocated to avoid per-frame heap allocations in the hot path
 const TEMP_VEC3_A = new THREE.Vector3();
 const TEMP_VEC3_B = new THREE.Vector3();
 const TEMP_RAYCASTER = new THREE.Raycaster();
 
+/**
+ * ArInteractionController — translates 2D pointer/touch events into 3D scene
+ * interactions and dispatches ICommand instances into IEditorStore.
+ *
+ * Uses getCamera() from the framework as the raycasting source — never holds
+ * a direct camera reference of its own. Feature picking is done against
+ * sceneManager.featureGroup children.
+ *
+ * Phone UX: grab-to-move via touchstart + touchmove + touchend.
+ * Desktop UX: mouse pointerdown + pointermove + pointerup.
+ * Shared math: identical drag-plane ray-intersection for both input types.
+ */
 export class ArInteractionController {
     private activeDragFeatureId: FeatureId | null = null;
     private dragPlane: THREE.Plane | null = null;
     private initialFeatureWorldPos: THREE.Vector3 | null = null;
-    private initialTouchNdc = new THREE.Vector2();
 
     public constructor(
         private readonly canvas: HTMLCanvasElement,
@@ -55,6 +68,8 @@ export class ArInteractionController {
         this.canvas.removeEventListener('pointerup', this.onPointerUp);
     }
 
+    // ---- Touch handlers (Phone / WebXR AR) ----
+
     private onTouchStart = (event: TouchEvent): void => {
         if (event.touches.length !== 1) return;
         event.preventDefault();
@@ -74,6 +89,8 @@ export class ArInteractionController {
         this.handlePointerEnd();
     };
 
+    // ---- Pointer handlers (Desktop / Replay) ----
+
     private onPointerDown = (event: PointerEvent): void => {
         if (event.pointerType === 'touch') return; // Handled by TouchEvent
         this.handlePointerStart(event.clientX, event.clientY);
@@ -89,11 +106,15 @@ export class ArInteractionController {
         this.handlePointerEnd();
     };
 
+    // ---- Shared logic ----
+
     private handlePointerStart(clientX: number, clientY: number): void {
         const ndc = this.getNdc(clientX, clientY);
-        this.initialTouchNdc.copy(ndc);
 
-        const camera = this.sceneManager.getActiveCamera();
+        // Use the camera from the framework — works for both XR and desktop replay.
+        const camera = getCamera();
+        if (!camera) return;
+
         TEMP_RAYCASTER.setFromCamera(ndc, camera);
         const intersects = TEMP_RAYCASTER.intersectObjects(this.sceneManager.getPickableObjects(), true);
 
@@ -107,16 +128,22 @@ export class ArInteractionController {
                     this.activeDragFeatureId = featureId;
                     this.initialFeatureWorldPos = nativeObject.position.clone();
 
-                    // Create camera-facing drag plane at hit object depth
-                    const normal = TEMP_VEC3_A.copy(camera.position).sub(nativeObject.position).normalize();
-                    this.dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, nativeObject.position);
+                    // Create camera-facing drag plane at the hit object's world position.
+                    const normal = TEMP_VEC3_A
+                        .copy(camera.position)
+                        .sub(nativeObject.position)
+                        .normalize();
+                    this.dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+                        normal,
+                        nativeObject.position
+                    );
 
-                    // Disable orbit controls during active feature drag so camera does not move
+                    // Disable OrbitControls during drag (desktop mode only).
                     if (this.sceneManager.controls) {
                         this.sceneManager.controls.enabled = false;
                     }
 
-                    // Engage Anchor Lock during active 3D drag
+                    // Engage Anchor Lock — GPS anchor stays fixed during active 3D drag.
                     this.anchorCoordinator.setAnchorLock(true);
                 }
             }
@@ -128,8 +155,10 @@ export class ArInteractionController {
     private handlePointerMove(clientX: number, clientY: number): void {
         if (!this.activeDragFeatureId || !this.dragPlane || !this.initialFeatureWorldPos) return;
 
+        const camera = getCamera();
+        if (!camera) return;
+
         const ndc = this.getNdc(clientX, clientY);
-        const camera = this.sceneManager.getActiveCamera();
         TEMP_RAYCASTER.setFromCamera(ndc, camera);
 
         const targetPoint = TEMP_VEC3_B;
@@ -142,16 +171,13 @@ export class ArInteractionController {
     }
 
     private handlePointerEnd(): void {
-        // Re-enable orbit controls after drag completes
+        // Re-enable OrbitControls after drag (desktop mode only).
         if (this.sceneManager.controls) {
             this.sceneManager.controls.enabled = true;
         }
 
         if (!this.activeDragFeatureId || !this.initialFeatureWorldPos) {
-            this.activeDragFeatureId = null;
-            this.dragPlane = null;
-            this.initialFeatureWorldPos = null;
-            this.anchorCoordinator.setAnchorLock(false);
+            this.resetDragState();
             return;
         }
 
@@ -186,18 +212,28 @@ export class ArInteractionController {
                         west: overlay.latLonBox.west + dLon,
                         rotation: overlay.latLonBox.rotation,
                     };
-                    const cmd = createMoveOverlayCommand(featureId, newLatLonBox, newGeoPos.alt, overlay.altitudeMode);
+                    const cmd = createMoveOverlayCommand(
+                        featureId,
+                        newLatLonBox,
+                        newGeoPos.alt,
+                        overlay.altitudeMode
+                    );
                     this.store.executeCommand(cmd);
                 }
             }
         }
 
+        this.resetDragState();
+    }
+
+    private resetDragState(): void {
         this.activeDragFeatureId = null;
         this.dragPlane = null;
         this.initialFeatureWorldPos = null;
         this.anchorCoordinator.setAnchorLock(false);
     }
 
+    /** Converts client pixel coordinates to WebGL normalized device coordinates. */
     private getNdc(clientX: number, clientY: number): THREE.Vector2 {
         const rect = this.canvas.getBoundingClientRect();
         return new THREE.Vector2(

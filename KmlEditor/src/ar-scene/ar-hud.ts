@@ -3,7 +3,7 @@ import { IKmlDocument } from '../contracts/document-model';
 import { IPersistenceService, SaveStatus } from '../contracts/persistence';
 import { IEditorStore, EditorState } from '../contracts/store';
 import { FeatureId } from '../contracts/type';
-import { TrackingState } from './ar-session-manager';
+
 
 export class ArHud {
     private element: HTMLElement | null = null;
@@ -184,7 +184,7 @@ export class ArHud {
         return hud;
     }
 
-    public updateTrackingState(state: TrackingState): void {
+    public updateTrackingState(state: string): void {
         if (!this.trackingBadge) return;
         this.trackingBadge.className = `ar-hud__badge ar-hud__badge--${state}`;
         this.trackingBadge.textContent = state.toUpperCase();
@@ -263,10 +263,10 @@ export class ArHud {
         const newDesc = this.descInput?.value.trim() ?? '';
 
         if (newName !== feature.name) {
-            this.store.executeCommand(createSetNameCommand(feature.id, newName, feature.name));
+            this.store.executeCommand(createSetNameCommand(feature.id, newName));
         }
         if (newDesc !== feature.description) {
-            this.store.executeCommand(createSetDescriptionCommand(feature.id, newDesc, feature.description));
+            this.store.executeCommand(createSetDescriptionCommand(feature.id, newDesc));
         }
     }
 

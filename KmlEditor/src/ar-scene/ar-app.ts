@@ -1,93 +1,101 @@
-import * as THREE from 'three';
 import { IKmlDocument } from '../contracts/document-model';
 import { IKmzContainer } from '../contracts/kmz-container';
 import { IPersistenceService } from '../contracts/persistence';
-import { IEditorStore } from '../contracts/store';
 import { IGeoBridge } from '../contracts/geo-bridge';
 import { KmzContainer } from '../kmz-io/container';
-import { createKmlDocument } from '../document-model';
 import { createPersistenceService } from '../persistence';
 import { RendererFactory } from '../renderers';
-import { createEditorStore } from '../store';
+import { EditorStoreImpl } from '../store';
 import { PersistenceCoordinator } from '../editor/persistence-coordinator';
 import { ArAnchorCoordinator } from './ar-anchor-coordinator';
 import { ArHud } from './ar-hud';
 import { ArInteractionController } from './ar-interaction-controller';
 import { ArReplayAdapter } from './ar-replay-adapter';
 import { ArSceneManager } from './ar-scene-manager';
-import { ArSessionManager } from './ar-session-manager';
 import './ar-hud.css';
 
-import templergrabenKml from '../../fixtures/google-earth/Templergraben.kml?raw';
-
-const DEFAULT_DEMO_KML = templergrabenKml;
-
 import {
-    startGpsWatch,
-    stopGpsWatch,
-    startOrientationWatch,
-    stopOrientationWatch,
-} from 'gps-plus-slam-app-framework/sensors';
+    createEnableGpsArController,
+    type EnableGpsArController,
+    type EnableGpsArState,
+    getArWorldGroup,
+    getCurrentArPose,
+    setTrackingLostCallback,
+    setTrackingStore,
+} from 'gps-plus-slam-app-framework/ar';
+import {
+    createGpsPositionHandler,
+    createSlamAppStore,
+    startSession,
+    updateDeviceOrientation,
+    type SubscribableStore,
+} from 'gps-plus-slam-app-framework/state';
+import { enableArWorldGroupAlignment } from 'gps-plus-slam-app-framework/visualization';
+import { NullStorageBackend } from 'gps-plus-slam-app-framework/storage';
 
 export interface ArAppOptions {
     container: HTMLElement;
-    store?: IEditorStore;
+    store?: EditorStoreImpl;
     persistenceService?: IPersistenceService;
 }
 
+/**
+ * ArApp — top-level composition root for the KML AR editor (Component 8).
+ *
+ * WebXR session lifecycle is fully delegated to the framework via
+ * createEnableGpsArController() → enable() → initAR().
+ *
+ * Framework alignment:
+ *   - createSlamAppStore initializes the Redux store with SLAM/GPS fusion tracking slices.
+ *   - enableArWorldGroupAlignment connects the alignment matrix to arWorldGroup so that
+ *     all features in featureGroup stay aligned to real-world North-Up-East space in AR.
+ */
 export class ArApp {
-    private readonly store: IEditorStore;
+    private readonly store: EditorStoreImpl;
     private readonly persistence: IPersistenceService;
     private readonly rendererFactory = new RendererFactory();
 
-    private readonly canvas: HTMLCanvasElement;
-    private readonly renderer: THREE.WebGLRenderer;
-    private readonly sessionManager: ArSessionManager;
     private readonly sceneManager: ArSceneManager;
     private readonly anchorCoordinator: ArAnchorCoordinator;
     private readonly interactionController: ArInteractionController;
     private readonly hud: ArHud;
     private readonly replayAdapter: ArReplayAdapter;
     private readonly persistenceCoordinator: PersistenceCoordinator;
+    private readonly enableGpsArController: EnableGpsArController;
+
+    private readonly slamStore = createSlamAppStore({ storageBackend: new NullStorageBackend() });
+    private readonly gpsHandler = createGpsPositionHandler({
+        store: this.slamStore,
+        getArPose: getCurrentArPose,
+    });
 
     private containerFile: IKmzContainer | null = null;
     private documentModel: IKmlDocument | null = null;
     private storeUnsubscribe: (() => void) | null = null;
+    private arStateUnsubscribe: (() => void) | null = null;
 
     private get geoBridge(): IGeoBridge {
-        return (this.store as any).geoBridge;
+        return this.store.geoBridge;
     }
 
     public constructor(options: ArAppOptions) {
-        this.store = options.store ?? createEditorStore();
+        this.store = options.store ?? new EditorStoreImpl();
         this.persistence = options.persistenceService ?? createPersistenceService();
 
         options.container.replaceChildren();
 
-        // WebGL Canvas
-        this.canvas = document.createElement('canvas');
-        this.canvas.style.width = '100%';
-        this.canvas.style.height = '100%';
-        this.canvas.style.display = 'block';
-        options.container.appendChild(this.canvas);
+        // Register tracking store with framework
+        setTrackingStore(this.slamStore as any);
 
-        this.renderer = new THREE.WebGLRenderer({
-            canvas: this.canvas,
-            alpha: true,
-            antialias: true,
-            powerPreference: 'high-performance',
-        });
-        this.renderer.setSize(options.container.clientWidth || window.innerWidth, options.container.clientHeight || window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        // ── Framework: EnableGpsArController ────────────────────────────────
+        this.enableGpsArController = createEnableGpsArController();
 
-        this.sceneManager = new ArSceneManager(this.rendererFactory);
-        this.sceneManager.attachRenderer(this.renderer);
+        // Probe AR support on boot so the HUD button can reflect availability.
+        void this.enableGpsArController.refreshSupport();
 
+        // ── App-owned modules ────────────────────────────────────────────────
         this.anchorCoordinator = new ArAnchorCoordinator(this.geoBridge, this.store);
-        this.sessionManager = new ArSessionManager({
-            canvas: this.canvas,
-            domOverlayRoot: options.container,
-        });
+        this.sceneManager = new ArSceneManager(this.rendererFactory);
 
         this.hud = new ArHud(
             options.container,
@@ -100,8 +108,9 @@ export class ArApp {
         );
         this.hud.mount();
 
+        const sentinelCanvas = document.createElement('canvas');
         this.interactionController = new ArInteractionController(
-            this.canvas,
+            sentinelCanvas,
             this.sceneManager,
             this.geoBridge,
             this.store,
@@ -110,109 +119,72 @@ export class ArApp {
         );
 
         this.replayAdapter = new ArReplayAdapter(this.anchorCoordinator, this.store);
+        this.persistenceCoordinator = new PersistenceCoordinator(this.persistence);
 
-        this.persistenceCoordinator = new PersistenceCoordinator(
-            this.store,
-            this.persistence,
-            () => this.containerFile,
-            () => this.documentModel
-        );
-
-        this.sessionManager.onTrackingStateChange((state) => {
-            this.hud.updateTrackingState(state);
-            const isAr = state === 'tracking' || state === 'searching';
-            this.store.setDeviceState({ isArActive: isAr });
-            this.sceneManager.setGridVisible(!isAr);
+        // Framework tracking-lost callback → HUD warning
+        setTrackingLostCallback(() => {
+            this.hud.updateTrackingState('lost');
+            this.store.setDeviceState({ isArActive: false });
         });
 
-        // Set unified animation loop for both desktop preview and WebXR sessions
-        this.renderer.setAnimationLoop((_time, frame) => {
-            if (frame) {
-                const refSpace = this.sessionManager.getReferenceSpace();
-                if (refSpace) {
-                    const pose = frame.getViewerPose(refSpace);
-                    if (pose) {
-                        this.anchorCoordinator.updateViewerPose(pose);
-                    }
+        // EnableGpsArController state → HUD badge
+        this.arStateUnsubscribe = this.enableGpsArController.subscribe(
+            (state: EnableGpsArState) => {
+                this.hud.updateTrackingState(state.status);
+                this.store.setDeviceState({ isArActive: state.status === 'running' });
+                if (state.status === 'error') {
+                    this.hud.updateFileStatus(`AR Error: ${state.error ?? 'unknown'}`);
                 }
             }
-            this.sceneManager.render(this.renderer);
-        });
+        );
 
+        // Subscribe to store changes → scene reconciliation + persistence
         this.storeUnsubscribe = this.store.subscribe(() => void this.onStoreChange());
-        window.addEventListener('resize', this.onWindowResize);
 
-        // Preload default demo document on startup
+        // Preload the default demo document (non-blocking)
         void this.loadDefaultDemo();
     }
 
-    public async openFile(file?: File | ArrayBuffer): Promise<void> {
-        const kmz = new KmzContainer();
-        if (file instanceof File) {
+    /**
+     * Open a .kml or .kmz file from a File object or ArrayBuffer and
+     * load it into the scene / store.
+     */
+    public async openFile(file: File | ArrayBuffer): Promise<void> {
+        try {
+            const kmz = new KmzContainer();
             await kmz.open(file);
-        } else if (file instanceof ArrayBuffer) {
-            await kmz.open(file);
-        } else {
-            return;
-        }
+            await this.store.loadContainer(kmz);
+            this.containerFile = kmz;
+            this.documentModel = this.store.document;
 
-        await this.store.loadContainer(kmz);
-        this.containerFile = kmz;
-        this.documentModel = this.store.document;
-
-        if (this.documentModel) {
-            await this.sceneManager.reconcileFeatures(
-                this.documentModel.getFeatures(),
-                kmz.getAssetProvider(),
-                this.geoBridge
-            );
-
+            const featureCount = this.documentModel?.getFeatures().length ?? 0;
             const fileName = file instanceof File ? file.name : 'Document';
-            this.hud.updateFileStatus(`Loaded ${fileName} (${this.documentModel.getFeatures().length} features)`);
+            this.hud.updateFileStatus(`Loaded ${fileName} (${featureCount} features)`);
+
+            // Reconcile into scene if a session is already active
+            await this.reconcileIfActive();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.hud.updateFileStatus(`Error: ${msg}`);
         }
     }
 
+    /**
+     * Start an AR session. MUST be called from a user gesture (button click) so
+     * the browser allows permission prompts.
+     */
     public async startArSession(): Promise<void> {
-        this.sceneManager.setGridVisible(false);
-        await this.sessionManager.requestSession(this.renderer);
-        
-        let firstGpsFix = true;
-        let initialHeadingSet = false;
+        this.anchorCoordinator.resetSessionState();
+        const container = this.hud['container'] as HTMLElement;
 
-        startOrientationWatch((orient) => {
-            if (orient.alpha !== null) {
-                const heading = orient.alpha;
-                this.store.setDeviceState({ heading });
-                
-                const currentGps = this.store.getState().device.gpsPosition;
-                if (currentGps) {
-                    this.anchorCoordinator.updateGps(
-                        currentGps.latitude,
-                        currentGps.longitude,
-                        currentGps.altitude,
-                        heading,
-                        this.store.getState().device.accuracy
-                    );
-                }
+        const result = await this.enableGpsArController.enable({
+            container,
 
-                const anchor = this.geoBridge.getAnchor();
-                if (anchor && (!initialHeadingSet || anchor.heading === 0) && heading !== 0) {
-                    initialHeadingSet = true;
-                    this.geoBridge.setAnchor({ position: anchor.position, heading });
-                    if (this.documentModel && this.containerFile) {
-                        void this.sceneManager.reconcileFeatures(
-                            this.documentModel.getFeatures(),
-                            this.containerFile.getAssetProvider(),
-                            this.geoBridge
-                        );
-                    }
-                }
-            }
-        });
+            // Feed GPS fixes into framework tracking store + anchor coordinator
+            onGpsPosition: (pos) => {
+                this.gpsHandler.handlePosition(pos);
 
-        startGpsWatch(
-            (pos) => {
-                const currentHeading = this.store.getState().device.heading ?? pos.heading ?? 0;
+                const currentHeading = this.store.getState().device.heading ?? 0;
                 this.anchorCoordinator.updateGps(
                     pos.lat,
                     pos.lon,
@@ -221,34 +193,54 @@ export class ArApp {
                     pos.accuracy
                 );
                 this.sceneManager.updateAccuracyRing(pos.accuracy);
+            },
 
-                if (firstGpsFix) {
-                    firstGpsFix = false;
-                    if (currentHeading !== 0) {
-                        initialHeadingSet = true;
-                    }
-                    this.anchorCoordinator.resetAnchor(
-                        { lon: pos.lon, lat: pos.lat, alt: pos.altitude ?? 0 }, 
-                        currentHeading
-                    );
-                    if (this.documentModel && this.containerFile) {
-                        void this.sceneManager.reconcileFeatures(
-                            this.documentModel.getFeatures(),
-                            this.containerFile.getAssetProvider(),
-                            this.geoBridge
-                        );
-                    }
+            // Feed device orientation into framework tracking store + anchor coordinator
+            onOrientation: (orient) => {
+                this.slamStore.dispatch(updateDeviceOrientation(orient));
+                if (orient.alpha !== null) {
+                    this.anchorCoordinator.updateHeading(orient.alpha);
                 }
             },
-            (err) => console.warn('[ArApp] GPS watch error:', err.message)
+        });
+
+        if (!result.ok) {
+            console.warn('[ArApp] AR session failed to start:', result.error);
+            return;
+        }
+
+        // Start tracking session in framework SLAM store
+        this.slamStore.dispatch(
+            startSession({
+                scenarioName: 'kml-ar',
+                sessionName: 'live',
+                startTime: Date.now(),
+            })
         );
+
+        // Enable group-level GPS alignment on arWorldGroup
+        const arWorldGroup = getArWorldGroup();
+        if (arWorldGroup) {
+            enableArWorldGroupAlignment({
+                store: this.slamStore as unknown as SubscribableStore,
+                arWorldGroup,
+            });
+        }
+
+        // Attach KML feature group to the framework's GPS-aligned world group.
+        this.sceneManager.attachToFrameworkScene();
+
+        // Reconcile features into the now-active framework scene.
+        await this.reconcileIfActive();
     }
 
+    /**
+     * Stop the active AR session.
+     */
     public async stopArSession(): Promise<void> {
-        stopGpsWatch();
-        stopOrientationWatch();
-        this.sceneManager.setGridVisible(true);
-        await this.sessionManager.endSession();
+        await this.enableGpsArController.disable();
+        this.sceneManager.detachFromFrameworkScene();
+        this.hud.updateTrackingState('ready');
     }
 
     public getReplayAdapter(): ArReplayAdapter {
@@ -256,57 +248,62 @@ export class ArApp {
     }
 
     public dispose(): void {
-        stopGpsWatch();
-        stopOrientationWatch();
-        window.removeEventListener('resize', this.onWindowResize);
+        void this.enableGpsArController.disable();
+        if (this.arStateUnsubscribe) this.arStateUnsubscribe();
         if (this.storeUnsubscribe) this.storeUnsubscribe();
-        this.sessionManager.dispose();
         this.sceneManager.dispose();
         this.interactionController.dispose();
         this.hud.dispose();
         this.replayAdapter.dispose();
-        this.persistenceCoordinator.dispose();
-        this.renderer.dispose();
+        this.anchorCoordinator.dispose();
     }
 
-    private async loadDefaultDemo(): Promise<void> {
-        const kmz = new KmzContainer();
-        kmz.setDocKml(DEFAULT_DEMO_KML);
-        await this.store.loadContainer(kmz);
-        this.containerFile = kmz;
-        this.documentModel = this.store.document;
+    // ── Private ──────────────────────────────────────────────────────────────
 
-        if (this.documentModel) {
-            const features = this.documentModel.getFeatures();
-            await this.sceneManager.reconcileFeatures(
-                features,
-                kmz.getAssetProvider(),
-                this.geoBridge
-            );
-            this.hud.updateFileStatus(`Templergraben Loaded (${features.length} features)`);
+    private async loadDefaultDemo(): Promise<void> {
+        try {
+            const response = await fetch('/fixtures/google-earth/Templergraben.kml');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const kmlText = await response.text();
+
+            const kmz = new KmzContainer();
+            kmz.setDocKml(kmlText);
+            await this.store.loadContainer(kmz);
+            this.containerFile = kmz;
+            this.documentModel = this.store.document;
+
+            const featureCount = this.documentModel?.getFeatures().length ?? 0;
+            this.hud.updateFileStatus(`Templergraben (${featureCount} features)`);
+            this.persistenceCoordinator.observe(this.documentModel, this.containerFile);
+        } catch (_err) {
+            // Silently skip if the fixture isn't served — happens in tests
         }
     }
 
-    private onWindowResize = (): void => {
-        const width = this.canvas.parentElement?.clientWidth || window.innerWidth;
-        const height = this.canvas.parentElement?.clientHeight || window.innerHeight;
-        this.cameraAspect(width, height);
-        this.renderer.setSize(width, height);
-    };
+    /** Reconcile KML features into the Three.js scene when both scene and document are active. */
+    private async reconcileIfActive(): Promise<void> {
+        if (!this.documentModel || !this.containerFile) return;
+        if (!this.sceneManager.featureGroup.parent) return;
 
-    private cameraAspect(width: number, height: number): void {
-        this.sceneManager.camera.aspect = width / height;
-        this.sceneManager.camera.updateProjectionMatrix();
+        const result = await this.sceneManager.reconcileFeatures(
+            this.documentModel.getFeatures(),
+            this.containerFile.getAssetProvider(),
+            this.geoBridge
+        );
+
+        if (result.largeFileWarning) {
+            const count = this.documentModel.getFeatures().length;
+            this.hud.updateFileStatus(
+                `⚠️ Large file (${count} features): only features within 500 m are rendered`
+            );
+        }
     }
 
     private async onStoreChange(): Promise<void> {
         if (this.documentModel && this.containerFile) {
-            await this.sceneManager.reconcileFeatures(
-                this.documentModel.getFeatures(),
-                this.containerFile.getAssetProvider(),
-                this.geoBridge
-            );
+            this.persistenceCoordinator.observe(this.documentModel, this.containerFile);
         }
+        await this.reconcileIfActive();
     }
 }
 
