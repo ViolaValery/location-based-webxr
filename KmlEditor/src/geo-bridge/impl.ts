@@ -29,6 +29,10 @@ export class GeoBridgeImpl implements IGeoBridge {
         this.anchor = anchor;
     }
 
+    public getAnchor(): GeoAnchor | null {
+        return this.anchor;
+    }
+
     public geoToWorld(position: GeoPosition, altitudeMode: AltitudeMode = 'clampToGround'): WorldPosition {
         const anchor = this.requireAnchor();
 
@@ -39,7 +43,7 @@ export class GeoBridgeImpl implements IGeoBridge {
         }
 
         const { east, north } = geoToLocalOffset(anchor.position, position);
-        const rotated = rotateHorizontal(east, north, anchor.heading * Math.PI / 180);
+        const rotated = rotateHorizontal(east, north, (anchor.heading * Math.PI) / 180);
 
         return {
             x: rotated.x,
@@ -57,7 +61,7 @@ export class GeoBridgeImpl implements IGeoBridge {
             throw new InvalidWorldPositionError(error instanceof Error ? error.message : 'Invalid world position');
         }
 
-        const unrotated = inverseRotateHorizontal(position.x, position.z, anchor.heading * Math.PI / 180);
+        const unrotated = inverseRotateHorizontal(position.x, position.z, (anchor.heading * Math.PI) / 180);
         const geo = localOffsetToGeo(anchor.position, unrotated.east, unrotated.north);
 
         return {

@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
     getArWorldGroup,
     getCamera,
+    getScene,
     registerFrameUpdate,
 } from 'gps-plus-slam-app-framework/ar';
 import { IFeatureView } from '../contracts/document-model';
@@ -72,15 +73,17 @@ export class ArSceneManager {
     public attachToFrameworkScene(rendererDomElement?: HTMLElement): void {
         const worldGroup = getArWorldGroup();
         if (worldGroup && this.featureGroup.parent !== worldGroup) {
+            // Basis transformation: Three.js (+X=East, -Z=North) -> arWorldGroup NUE (+X=North, +Z=East)
+            this.featureGroup.rotation.y = -Math.PI / 2;
             worldGroup.add(this.featureGroup);
         }
 
-        // Register a per-frame tick for OrbitControls update (desktop mode).
-        // In XR mode OrbitControls is disabled so this is a no-op.
+        // Register a per-frame tick for OrbitControls update (desktop mode) & dynamic distance culling.
         this.unregisterFrameUpdate = registerFrameUpdate((_dt: number, _elapsed: number) => {
             if (this.controls) {
                 this.controls.update();
             }
+            this.cullDistantFeatures();
         });
 
         // Create OrbitControls for desktop/replay preview.
@@ -100,6 +103,7 @@ export class ArSceneManager {
      * Call this after endARSession() completes.
      */
     public detachFromFrameworkScene(): void {
+        this.featureGroup.rotation.set(0, 0, 0);
         this.featureGroup.removeFromParent();
 
         if (this.unregisterFrameUpdate) {

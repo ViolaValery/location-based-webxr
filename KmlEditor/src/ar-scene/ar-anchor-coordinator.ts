@@ -2,29 +2,24 @@ import { AltitudeMode, GeoPosition, WorldPosition } from '../contracts/type';
 import { IGeoBridge } from '../contracts/geo-bridge';
 import { IEditorStore } from '../contracts/store';
 
+const MAX_GPS_ACCURACY_METERS = 15;
+
 /**
  * ArAnchorCoordinator — fuses GPS + heading into the IGeoBridge anchor.
  *
- * Receives GPS and orientation events from the framework sensor callbacks
- * (onGpsPosition / onOrientation inside EnableGpsArController) and updates
- * IGeoBridge accordingly. Implements Anchor Lock during active 3D drags.
- *
- * CRITICAL STABILITY RULE:
- * IGeoBridge's anchor position is initialized by the document loader (store.loadContainer)
- * to the document's spatial center. updateGps() MUST NOT overwrite the anchor position
- * with raw, noisy phone GPS fixes on session start — doing so causes feature positions
- * in featureGroup to jump around by 5-15 meters every time AR is restarted.
- *
- * updateGps() only sets an initial anchor if geoBridge has NO anchor yet.
- * Orientation/heading is applied to the existing anchor once compass data arrives.
+ * CRITICAL ARCHITECTURE RULE:
+ * `arWorldGroup.matrix` is driven by `enableArWorldGroupAlignment` from the framework,
+ * which ALREADY applies device orientation / compass alignment to arWorldGroup.
+ * Therefore, IGeoBridge anchor heading is kept at 0 to avoid applying compass rotation TWICE.
  */
 export class ArAnchorCoordinator {
+    public onAnchorChange?: (anchor: { position: GeoPosition; heading: number }) => void;
+
     private isLocked = false;
     private bufferedGps: { position: GeoPosition; heading: number; accuracy: number } | null = null;
-    private groundY = 0; // Local WebXR floor level Y (Y=0 in local-floor reference space)
+    private groundY = 0; // Local WebXR floor level Y
 
-    /** True once a non-zero compass heading has been applied to the anchor. */
-    private initialHeadingSet = false;
+    private sessionRunCount = 0;
 
     public constructor(
         private readonly geoBridge: IGeoBridge,
@@ -33,7 +28,6 @@ export class ArAnchorCoordinator {
 
     /**
      * Called by the framework GPS callback (onGpsPosition from EnableGpsArController).
-     * Updates device state in the store. Sets geo anchor ONLY if no anchor exists yet.
      */
     public updateGps(latitude: number, longitude: number, altitude: number, heading = 0, accuracy = 5): void {
         this.store.setDeviceState({
@@ -42,52 +36,42 @@ export class ArAnchorCoordinator {
             accuracy,
         });
 
+        if (accuracy > MAX_GPS_ACCURACY_METERS) {
+            console.warn(`[AR Diagnostic] Ignored low-accuracy GPS fix (${accuracy.toFixed(1)}m > ${MAX_GPS_ACCURACY_METERS}m threshold)`);
+            return;
+        }
+
         const newPosition: GeoPosition = { lon: longitude, lat: latitude, alt: altitude };
 
-        if (this.isLocked || accuracy > 15) {
+        if (this.isLocked) {
             this.bufferedGps = { position: newPosition, heading, accuracy };
             return;
         }
 
         const currentAnchor = this.geoBridge.getAnchor();
         if (!currentAnchor) {
-            // No anchor set yet — set initial anchor to this GPS position
-            this.geoBridge.setAnchor({ position: newPosition, heading });
-            if (heading !== 0) {
-                this.initialHeadingSet = true;
-            }
-        } else if (!this.initialHeadingSet && heading !== 0) {
-            // Anchor exists (e.g. set to document center), apply compass heading once
-            this.initialHeadingSet = true;
-            this.geoBridge.setAnchor({ position: currentAnchor.position, heading });
+            console.log(`[AR Diagnostic] Session #${this.sessionRunCount} — Setting initial anchor to (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`);
+            const anchor = { position: newPosition, heading: 0 };
+            this.geoBridge.setAnchor(anchor);
+            this.onAnchorChange?.(anchor);
         }
     }
 
     /**
      * Called by the framework orientation callback (onOrientation from EnableGpsArController).
-     * Applies compass heading to the existing anchor once.
-     *
-     * @param alpha - DeviceOrientationEvent.alpha (compass heading in degrees).
      */
     public updateHeading(alpha: number): void {
-        if (alpha === null || alpha === 0) return;
-
+        if (alpha === null || Number.isNaN(alpha)) return;
         this.store.setDeviceState({ heading: alpha });
-
-        if (this.initialHeadingSet) return;
-
-        const currentAnchor = this.geoBridge.getAnchor();
-        if (currentAnchor) {
-            this.initialHeadingSet = true;
-            this.geoBridge.setAnchor({ position: currentAnchor.position, heading: alpha });
-        }
     }
 
     public setAnchorLock(locked: boolean): void {
         this.isLocked = locked;
-        if (!locked && this.bufferedGps && this.bufferedGps.accuracy <= 15) {
-            const { position, heading } = this.bufferedGps;
-            this.geoBridge.setAnchor({ position, heading });
+        if (!locked && this.bufferedGps && this.bufferedGps.accuracy <= MAX_GPS_ACCURACY_METERS) {
+            const { position } = this.bufferedGps;
+            const anchor = { position, heading: 0 };
+            this.geoBridge.setAnchor(anchor);
+            this.onAnchorChange?.(anchor);
             this.bufferedGps = null;
         }
     }
@@ -106,11 +90,6 @@ export class ArAnchorCoordinator {
 
     /**
      * Resolves the 3D local Y-coordinate for features based on KML altitudeMode.
-     *
-     * Policy (documented in plan.md):
-     *   clampToGround    → Y = 0 (AR local-floor ground plane)
-     *   relativeToGround → Y = kml.alt (meters above AR ground plane)
-     *   absolute         → Y = kml.alt − anchor.alt (via geoBridge)
      */
     public applyAltitudePolicy(position: GeoPosition, mode: AltitudeMode = 'clampToGround'): WorldPosition {
         const worldPos = this.geoBridge.geoToWorld(position, mode);
@@ -130,21 +109,34 @@ export class ArAnchorCoordinator {
         }
     }
 
-    /**
-     * Resets the geo anchor to a specific position and heading.
-     * Used by ArReplayAdapter to inject synthetic sensor data.
-     */
     public resetAnchor(position: GeoPosition, heading = 0): void {
-        this.geoBridge.setAnchor({ position, heading });
+        const anchor = { position, heading: 0 };
+        this.geoBridge.setAnchor(anchor);
+        this.onAnchorChange?.(anchor);
         this.bufferedGps = null;
     }
 
     /**
-     * Resets session flags so a newly started AR session can capture initial heading.
+     * Resets session state before starting a new AR session and logs diagnostic info.
      */
     public resetSessionState(): void {
-        this.initialHeadingSet = false;
+        this.sessionRunCount++;
         this.bufferedGps = null;
+
+        const currentAnchor = this.geoBridge.getAnchor();
+        console.log(`[AR Diagnostic] --- Starting AR Session #${this.sessionRunCount} ---`);
+        if (currentAnchor) {
+            console.log(`[AR Diagnostic] Reference Anchor: lat=${currentAnchor.position.lat.toFixed(6)}, lon=${currentAnchor.position.lon.toFixed(6)}`);
+        } else {
+            console.log(`[AR Diagnostic] No reference anchor set yet.`);
+        }
+    }
+
+    public getDiagnosticInfo(): string {
+        const anchor = this.geoBridge.getAnchor();
+        if (!anchor) return 'Anchor: Unset';
+        const heading = this.store.getState().device.heading ?? 0;
+        return `Run #${this.sessionRunCount} | Anchor: ${anchor.position.lat.toFixed(4)}, ${anchor.position.lon.toFixed(4)} | Compass: ${heading.toFixed(0)}°`;
     }
 
     public dispose(): void {

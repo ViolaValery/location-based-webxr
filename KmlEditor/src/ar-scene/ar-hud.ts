@@ -9,6 +9,9 @@ export class ArHud {
     private element: HTMLElement | null = null;
     private trackingBadge: HTMLElement | null = null;
     private saveBadge: HTMLElement | null = null;
+    private diagBadge: HTMLElement | null = null;
+    private arToggleBtn: HTMLButtonElement | null = null;
+    private isArRunning = false;
     private undoBtn: HTMLButtonElement | null = null;
     private redoBtn: HTMLButtonElement | null = null;
     private featurePanel: HTMLElement | null = null;
@@ -64,7 +67,13 @@ export class ArHud {
         this.saveBadge.style.color = '#94a3b8';
         this.saveBadge.textContent = 'No File';
 
-        statusGroup.append(this.trackingBadge, this.saveBadge);
+        this.diagBadge = document.createElement('span');
+        this.diagBadge.style.fontSize = '0.75rem';
+        this.diagBadge.style.color = '#00e5ff';
+        this.diagBadge.style.fontFamily = 'monospace';
+        this.diagBadge.textContent = '';
+
+        statusGroup.append(this.trackingBadge, this.saveBadge, this.diagBadge);
 
         const actionsGroup = document.createElement('div');
         actionsGroup.style.display = 'flex';
@@ -78,26 +87,27 @@ export class ArHud {
             this.fileInput?.click();
         });
 
-        const arToggleBtn = document.createElement('button');
-        arToggleBtn.className = 'ar-hud__button';
-        arToggleBtn.textContent = 'Start AR';
-        let arActive = false;
-        arToggleBtn.addEventListener('click', (e) => {
+        this.arToggleBtn = document.createElement('button');
+        this.arToggleBtn.className = 'ar-hud__button';
+        this.arToggleBtn.textContent = 'Start AR';
+        this.arToggleBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            if (!arActive) {
-                this.onStartAr();
-                arToggleBtn.textContent = 'Exit AR';
-                arToggleBtn.className = 'ar-hud__button ar-hud__button--secondary';
-                arActive = true;
+            if (!this.isArRunning) {
+                this.arToggleBtn!.disabled = true;
+                this.arToggleBtn!.textContent = 'Starting…';
+                try {
+                    await this.onStartAr();
+                } catch (err) {
+                    console.error('[ArHud] Error starting AR:', err);
+                } finally {
+                    this.arToggleBtn!.disabled = false;
+                }
             } else {
-                this.onStopAr();
-                arToggleBtn.textContent = 'Start AR';
-                arToggleBtn.className = 'ar-hud__button';
-                arActive = false;
+                await this.onStopAr();
             }
         });
 
-        actionsGroup.append(openBtn, arToggleBtn);
+        actionsGroup.append(openBtn, this.arToggleBtn);
         topBar.append(statusGroup, actionsGroup);
 
         // Feature Editing Panel
@@ -188,6 +198,29 @@ export class ArHud {
         if (!this.trackingBadge) return;
         this.trackingBadge.className = `ar-hud__badge ar-hud__badge--${state}`;
         this.trackingBadge.textContent = state.toUpperCase();
+
+        this.isArRunning = state === 'running';
+
+        if (this.arToggleBtn) {
+            if (state === 'running') {
+                this.arToggleBtn.textContent = 'Exit AR';
+                this.arToggleBtn.className = 'ar-hud__button ar-hud__button--secondary';
+                this.arToggleBtn.disabled = false;
+            } else if (state === 'starting') {
+                this.arToggleBtn.textContent = 'Starting AR…';
+                this.arToggleBtn.disabled = true;
+            } else {
+                this.arToggleBtn.textContent = 'Start AR';
+                this.arToggleBtn.className = 'ar-hud__button';
+                this.arToggleBtn.disabled = false;
+            }
+        }
+    }
+
+    public updateDiagnosticInfo(text: string): void {
+        if (this.diagBadge) {
+            this.diagBadge.textContent = text;
+        }
     }
 
     public updateFileStatus(text: string): void {

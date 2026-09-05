@@ -12,7 +12,8 @@ export class MarkerRenderer extends BaseFeatureRenderer<IMarkerFeature> {
 
     public async update(feature: IMarkerFeature, assetProvider: IAssetProvider, geoBridge: IGeoBridge): Promise<void> {
         this.setFeatureId(feature.id);
-        const worldPos = geoBridge.geoToWorld(feature.position, 'clampToGround');
+        const altitudeMode = feature.altitudeMode ?? 'clampToGround';
+        const worldPos = geoBridge.geoToWorld(feature.position, altitudeMode);
         this.container.position.copy(worldPos);
 
         const iconHref = feature.iconHref;
@@ -58,11 +59,13 @@ export class MarkerRenderer extends BaseFeatureRenderer<IMarkerFeature> {
         if (!this.sprite) {
             const material = new THREE.SpriteMaterial({ map: textureToUse || undefined });
             this.sprite = new THREE.Sprite(material);
+            this.sprite.center.set(0.5, 0.0);
             this.sprite.userData = { featureId: this.featureId };
             this.container.add(this.sprite);
         } else if (textureToUse) {
             this.sprite.material.map = textureToUse;
             this.sprite.material.needsUpdate = true;
+            this.sprite.center.set(0.5, 0.0);
         }
 
         const scale = (feature.iconScale || 1.0) * 0.8;

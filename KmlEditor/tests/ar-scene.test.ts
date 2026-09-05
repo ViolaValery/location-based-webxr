@@ -16,8 +16,10 @@ import { getArWorldGroup } from 'gps-plus-slam-app-framework/ar';
 
 // ── Mock the framework so tests run without a real WebXR environment ──────────
 const mockWorldGroup = new THREE.Group();
+const mockScene = new THREE.Scene();
 
 vi.mock('gps-plus-slam-app-framework/ar', () => ({
+    getScene: vi.fn(() => mockScene),
     getArWorldGroup: vi.fn(() => mockWorldGroup),
     getCamera: vi.fn(() => new THREE.PerspectiveCamera()),
     registerFrameUpdate: vi.fn(() => vi.fn()),
@@ -141,28 +143,21 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
             coordinator.setAnchorLock(false);
             expect(mockGeoBridge.setAnchor).toHaveBeenCalledWith({
                 position: { lon: 6.07, lat: 50.78, alt: 210 },
-                heading: 45,
+                heading: 0,
             });
         });
 
-        it('applies heading from updateHeading() once to the existing anchor', () => {
+        it('applies heading from updateHeading() to store device state', () => {
             anchorPosition = { lon: 6.06, lat: 50.77, alt: 200 };
             const store = createEditorStore();
             const coordinator = new ArAnchorCoordinator(mockGeoBridge, store);
 
-            // Simulate first GPS fix (heading=0, so initialHeadingSet stays false)
+            // Simulate first GPS fix
             coordinator.updateGps(50.77, 6.06, 200, 0, 5);
 
-            // Later orientation callback fires with a real heading
+            // Orientation callback updates store state
             coordinator.updateHeading(90);
-            expect(mockGeoBridge.setAnchor).toHaveBeenCalledWith(
-                expect.objectContaining({ heading: 90 })
-            );
-
-            // A second updateHeading call must NOT update the anchor again
-            (mockGeoBridge.setAnchor as ReturnType<typeof vi.fn>).mockClear();
-            coordinator.updateHeading(135);
-            expect(mockGeoBridge.setAnchor).not.toHaveBeenCalled();
+            expect(store.getState().device.heading).toBe(90);
         });
     });
 
@@ -434,7 +429,7 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
             // Document anchor position must NOT have been overwritten by phone's raw GPS
             const session1Anchor = mockGeoBridge.getAnchor();
             expect(session1Anchor?.position).toEqual({ lon: 6.078, lat: 50.777, alt: 0 });
-            expect(session1Anchor?.heading).toBe(45);
+            expect(session1Anchor?.heading).toBe(0);
 
             // Feature 3D position in local world space must be identical
             const worldPosSession1 = coordinator.applyAltitudePolicy(markerFeature.position, 'absolute');

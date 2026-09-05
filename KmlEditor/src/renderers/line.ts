@@ -16,9 +16,10 @@ export class LineRenderer extends BaseFeatureRenderer<ILineFeature> {
 
     public async update(feature: ILineFeature, assetProvider: IAssetProvider, geoBridge: IGeoBridge): Promise<void> {
         this.setFeatureId(feature.id);
+        const altitudeMode = feature.altitudeMode ?? 'clampToGround';
         const positions: number[] = [];
         feature.coordinates.forEach((coord) => {
-            const worldPos = geoBridge.geoToWorld(coord, 'clampToGround');
+            const worldPos = geoBridge.geoToWorld(coord, altitudeMode);
             positions.push(worldPos.x, worldPos.y, worldPos.z);
         });
 
