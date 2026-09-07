@@ -323,6 +323,30 @@ O(1) per formatted value.
 - If `originalString` cannot be parsed, discard it and return the normalized value.
 - If `value` is invalid, propagate a `RangeError`.
 
+# Projection contexts and anchor ownership
+
+`IGeoBridge` deliberately represents one local projection with one anchor. An anchor
+is a coordinate origin, not permanent KML metadata. The application has two uses of
+that projection: document editing/preview and a live AR session.
+
+Do not add two selectable anchors to one `GeoBridgeImpl`: every renderer, command,
+and drag operation could accidentally choose the wrong frame. Instead, the higher
+composition layer owns separate bridge instances (or equivalent clearly separated
+projection contexts):
+
+1. The editor projection uses an anchor derived from the loaded document and is used
+   only for editor and desktop-preview work.
+2. A live AR session receives a separate projection anchored at its first accurate
+   GPS fix. It remains stable until that session ends.
+3. Within AR, renderers and `worldToGeo()` use only the session projection. The
+   session projection is discarded when AR stops.
+4. KML remains absolute WGS84 data. No projection anchor is persisted into it.
+
+The local ENU formula is deliberately a near-anchor approximation. A caller that
+renders AR must apply a range check before asking this component to make local
+Three.js coordinates for features in another city or country. GeoBridge remains pure:
+it owns no GPS watches, WebXR state, or Three.js visibility decisions.
+
 # State Management
 
 This component owns exactly one mutable state object: the current `GeoAnchor` and its derived constants.
@@ -537,6 +561,19 @@ The standalone demo for this component is a small browser page that proves its p
 - Detection: explicit error tests.
 - Mitigation: `AnchorNotSetError` and guard the upper layers so they never call conversions early.
 - Fallback: no fallback; this is a hard contract precondition.
+
+## 5. Document-anchor / session-anchor confusion
+
+- Why risky: A KML loader can set a document-centered anchor before AR begins. If the
+  first device GPS fix is accepted only when `anchor === null`, a far-away document
+  anchor is incorrectly reused as the local AR origin.
+- Detection: integration test with a KML in Aachen and the first AR GPS fix in
+  Gothenburg. The active AR projection must use Gothenburg and no Aachen feature may
+  be visible within the local AR radius.
+- Mitigation: separate projection contexts; first valid session fix always initializes
+  the AR projection; reject out-of-range features before local projection.
+- Fallback: do not start live AR, and show a clear HUD message, if no usable GPS fix
+  arrives in a reasonable timeout.
 
 # Milestones
 

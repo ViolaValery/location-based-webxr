@@ -307,6 +307,51 @@ User tippt "Stop AR" → ArApp.stopArSession()
 
 ---
 
+## Anchor decision: document projection vs. live AR projection
+
+A loaded KML document and a live AR session have two different, valid reference
+points. They must not silently use the same mutable `IGeoBridge` anchor.
+
+| Context | Anchor | Purpose | Lifetime |
+|---|---|---|---|
+| Editor / desktop preview | Center or local area of the loaded KML | Compact local-meter editing without GPS | While the document is loaded |
+| Live AR | First valid GPS fix of the device | Render objects relative to the user's real environment | One AR session |
+
+The document anchor describes the file. The session anchor describes where the
+person is. A document from Aachen may be opened in Gothenburg, so the Aachen
+center is useful for editing but must never become the AR origin in Gothenburg.
+
+### Required live-AR flow
+
+1. Loading KML may derive a document anchor for editor and preview use only. It
+   must not set an AR zero reference.
+2. `Start AR` waits for the first GPS fix with acceptable accuracy. This fix creates
+   the session anchor, even if the loaded document already has an anchor.
+3. `ArAnchorCoordinator` owns an explicit per-session `firstGpsFix` state. A check
+   such as `if (!geoBridge.getAnchor())` is incorrect because it confuses existing
+   document state with missing session state.
+4. `setZeroPos()` and every AR feature projection use the session anchor. The anchor
+   remains fixed for the session so normal GPS jitter does not move virtual objects.
+   Later GPS fixes update diagnostics and accuracy only; the existing drag-lock rule
+   remains the sole explicit exception.
+5. Stopping AR discards the session projection and preserves the document projection.
+
+### Visibility, editing, and caches
+
+- The local ENU projection is valid only near its anchor. Before a Three.js object is
+  created or updated, an appropriate geo/visibility layer must reject features beyond
+  the AR radius. A distant Aachen feature is therefore not projected as a huge object
+  in a Gothenburg session; it stays in the KML but is invisible in AR.
+- `worldToGeo()` during an AR drag must use the same session projection that
+  `geoToWorld()` used to render the object. Otherwise a small drag can write an
+  incorrect KML coordinate.
+- Switching between preview and AR invalidates cached Three.js positions; objects are
+  recalculated in the active context.
+- KML continues to store only absolute WGS84 coordinates. Neither anchor is persisted
+  in the KML file.
+- If no feature is in range, the HUD must show a clear message such as "No features
+  in AR range" instead of making an empty scene look like a tracking failure.
+
 ## Public Surface
 
 ```typescript
@@ -452,7 +497,7 @@ Fehler-Szenario                 Erkennung                              Recovery
 --------------------------------------------------------------------------------------------
 WebXR nicht unterstützt         enableGpsArController: 'unsupported'   ArHud: Fallback-Overlay
 Permissions abgelehnt           enableGpsArController: 'error'         ArHud: Fehlermeldung + Retry
-GPS nicht verfügbar             onGpsPosition nie aufgerufen           Anchor bleibt initial; manuelle Platzierung
+GPS nicht verfügbar             onGpsPosition nie aufgerufen           AR nicht in Live-Modus starten; HUD erklärt fehlenden Standort-Fix, Editor-Preview bleibt nutzbar
 Tracking verloren               setTrackingLostCallback feuert         ArHud: "Gerät bewegen" Warnung
 Korruptes KMZ / KML             KmzContainer.open() wirft             Toast-Fehler; vorherige Datei bleibt
 Persistence abgelehnt           IPersistenceService.status = 'error'  Export-Button in ArHud

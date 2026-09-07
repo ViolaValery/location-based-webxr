@@ -25,6 +25,80 @@ Performance (keine Riesen-Snapshots): Um das mit redux-undo zu lösen, müssten 
 Fazit: Die Command-Variante (command.undo()) führt stattdessen eine gezielte Gegen-Operation auf demselben KML-Baum aus. Das ist schneller mit
 O(1)) und schont den Speicher.
 
+# Erkenntnis aus dem AR-Test in Göteborg: Warum Aachener Marker sichtbar waren
+
+## Beobachtung
+
+Die Datei `Templergraben.kml` enthält Marker in Aachen. Beim Test in Göteborg waren
+diese Marker trotzdem in der AR-Kamera sichtbar. In einer ortsgebundenen AR-Anwendung
+sollten Marker, die mehrere hundert Kilometer entfernt sind, nicht neben der Person
+auftauchen.
+
+Der Standortzugriff funktionierte nach der HTTPS- und Browser-Berechtigungskorrektur.
+Der Fehler lag daher nicht am GPS des Telefons und auch nicht an den Koordinaten in
+der KML-Datei, sondern daran, wie die Anwendung zwei verschiedene "Ursprünge"
+behandelt hat.
+
+## Die Begriffe in einfacher Sprache
+
+GPS-Werte wie Aachen oder Göteborg sind globale Orte auf der Erde. Eine 3D-AR-Szene
+arbeitet hingegen mit kleinen lokalen Meterwerten, etwa "drei Meter rechts und fünf
+Meter vor mir". Um GPS in solche Meterwerte umzurechnen, braucht sie einen
+Bezugspunkt: einen Anchor.
+
+- Der **Dokument-Anchor** ist der Mittelpunkt der geöffneten KML-Datei. Bei
+  `Templergraben.kml` liegt er in Aachen. Er ist für Editor und Desktop-Vorschau
+  praktisch, weil die dortigen Marker nahe am lokalen Nullpunkt liegen.
+- Der **Session-Anchor** ist die reale Position des Telefons beim Start einer
+  AR-Session. Beim Test müsste er in Göteborg liegen.
+
+Beide Anchors sind sinnvoll, haben aber verschiedene Bedeutungen: Der erste
+beschreibt die Datei, der zweite beschreibt den Ort der Person.
+
+## Was im Code passiert ist
+
+1. Beim KML-Laden berechnet der Store den Mittelpunkt der Features und setzt ihn als
+   einzigen Anchor. Für die Testdatei war das Aachen.
+2. Beim AR-Start lieferte das Telefon einen GPS-Fix aus Göteborg.
+3. Der AR-Code übernahm einen GPS-Fix jedoch nur dann, wenn noch kein Anchor gesetzt
+   war. Der Dokument-Anchor aus Schritt 1 existierte bereits, also blieb Aachen aktiv.
+4. Marker wurden dadurch relativ zu Aachen in die lokale Three.js-Szene umgerechnet
+   und erschienen dort nahe am lokalen Nullpunkt.
+5. Die 500-Meter-Ausblendung verglich nur diese bereits lokalen Three.js-Positionen
+   mit der Kamera. Sie berechnete nicht erneut die Erd-Distanz Aachen--Göteborg und
+   konnte den Fehler deshalb nicht erkennen.
+
+Das war leicht zu übersehen, weil ein `GeoBridge`-Objekt für zwei Anwendungsfälle
+wiederverwendet wurde. Der Code fragte nur "gibt es schon einen Anchor?" statt
+"welcher Anchor gilt in diesem Modus?". Ein Test am gleichen Ort wie die KML deckt
+diesen Unterschied nicht auf.
+
+## Der geplante Fix
+
+Die KML-Koordinaten bleiben unverändert; die Datei speichert weiterhin globale
+GPS-Werte. Getrennt werden nur die lokalen Rechenkontexte:
+
+1. Der Editor erhält eine Dokument-Projektion mit KML-Mittelpunkt als Anchor, für
+   Import, Vorschau und Bearbeitung.
+2. Jede AR-Session erhält eine eigene kurzlebige Session-Projektion. Ihr Anchor ist
+   der erste ausreichend genaue GPS-Fix des Telefons.
+3. Dieser Fix setzt die AR-Nullposition. Der Anchor bleibt danach pro Session stabil,
+   damit GPS-Ungenauigkeit die Marker nicht sichtbar hin- und herspringen lässt.
+4. Features ausserhalb des lokalen AR-Bereichs werden vor der lokalen Three.js-
+   Projektion ausgeblendet. Eine Aachener Datei zeigt in Göteborg daher eine
+   verständliche Meldung wie "Keine Features in AR-Reichweite" statt falsche Marker.
+5. Beim Beenden der AR-Session wird nur die Session-Projektion verworfen. Die
+   Dokument-Projektion bleibt für den Editor erhalten.
+
+## Was wir daraus lernen
+
+Ein Anchor ist nicht nur eine technische Variable. Er legt fest, was in einer
+3D-Szene als "hier" gilt. Für einen KML-Editor bedeutet "hier" die Dokumentmitte;
+für Live-AR bedeutet es der Standort des Geräts. Wenn beide Bedeutungen dieselbe
+Variable teilen, kann GPS technisch funktionieren und trotzdem falsche AR-Ergebnisse
+liefern. Künftige Tests müssen deshalb mindestens zwei Fälle enthalten: einen Test
+nahe bei den KML-Markern und einen Test weit entfernt von ihnen.
+
 # Prompt for creating Plan.md for each component
 Create a plan.md for our folder kml-model/plan.md
 
