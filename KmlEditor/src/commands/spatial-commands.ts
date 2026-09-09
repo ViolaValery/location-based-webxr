@@ -16,7 +16,11 @@ import {
 class MoveMarkerCommand extends SpatialCommand {
     private originalPosition: GeoPosition | null = null;
 
-    public constructor(featureId: FeatureId, private readonly targetWorldPosition: WorldPosition) {
+    public constructor(
+        featureId: FeatureId,
+        private readonly targetWorldPosition: WorldPosition,
+        private readonly projectionOverride?: IGeoBridge
+    ) {
         super('move-marker', featureId, `Move marker ${String(featureId)}`);
     }
 
@@ -27,7 +31,8 @@ class MoveMarkerCommand extends SpatialCommand {
             this.originalPosition = cloneGeoPosition(feature.position);
         }
 
-        feature.position = geoBridge.worldToGeo(cloneWorldPosition(this.targetWorldPosition), 'absolute');
+        const projection = this.projectionOverride ?? geoBridge;
+        feature.position = projection.worldToGeo(cloneWorldPosition(this.targetWorldPosition), 'absolute');
     }
 
     public undo(document: IKmlDocument, _geoBridge: IGeoBridge): void {
@@ -254,8 +259,12 @@ class RotateModelCommand extends ModelCommand {
     }
 }
 
-export function createMoveMarkerCommand(featureId: FeatureId, targetWorldPosition: WorldPosition): ICommand {
-    return new MoveMarkerCommand(featureId, targetWorldPosition);
+export function createMoveMarkerCommand(
+    featureId: FeatureId,
+    targetWorldPosition: WorldPosition,
+    projectionOverride?: IGeoBridge
+): ICommand {
+    return new MoveMarkerCommand(featureId, targetWorldPosition, projectionOverride);
 }
 
 export function createMoveLineVertexCommand(featureId: FeatureId, vertexIndex: number, targetWorldPosition: WorldPosition): ICommand {

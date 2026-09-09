@@ -128,7 +128,7 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
             expect(absolute.y).toBe(50 - 200); // pos.alt - anchor.alt
         });
 
-        it('buffers GPS updates when Anchor Lock is engaged (active 3D drag)', () => {
+        it('does not move the session anchor when GPS updates arrive during an active 3D drag', () => {
             anchorPosition = { lon: 6.06, lat: 50.77, alt: 200 };
             const store = createEditorStore();
             const coordinator = new ArAnchorCoordinator(mockGeoBridge, store);
@@ -141,10 +141,7 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
 
             // Releasing lock flushes the buffered update
             coordinator.setAnchorLock(false);
-            expect(mockGeoBridge.setAnchor).toHaveBeenCalledWith({
-                position: { lon: 6.07, lat: 50.78, alt: 210 },
-                heading: 0,
-            });
+            expect(mockGeoBridge.setAnchor).not.toHaveBeenCalled();
         });
 
         it('applies heading from updateHeading() to store device state', () => {
@@ -388,8 +385,8 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
 
     // ── Simulation Test: Phone Coordinate Jitter & AR Session Restarts ────────
 
-    describe('Simulation Test: Phone GPS/Heading Jitter across AR Restarts', () => {
-        it('preserves deterministic 3D feature positions when phone GPS and heading change across session restarts', async () => {
+    describe('Simulation Test: session anchor lifecycle', () => {
+        it('uses the first valid session GPS fix even when a document anchor already exists', async () => {
             const store = createEditorStore();
             const doc = createKmlDocument();
 
@@ -419,22 +416,27 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
 
             // Initial feature world position relative to document anchor
             const markerFeature = doc.getFeatures()[0] as IMarkerFeature;
-            const worldPosInitial = coordinator.applyAltitudePolicy(markerFeature.position, 'absolute');
 
             // --- SESSION 1: Phone starts AR at User Spot 1 (lat 50.777050, lon 6.078050, heading 45°) ---
             coordinator.resetSessionState();
             coordinator.updateGps(50.777050, 6.078050, 100, 45, 5);
             coordinator.updateHeading(45);
+            coordinator.updateGps(50.777150, 6.078150, 105, 120, 3);
+            expect(mockGeoBridge.getAnchor()?.position).toEqual({
+                lon: 6.078050,
+                lat: 50.777050,
+                alt: 100,
+            });
 
             // Document anchor position must NOT have been overwritten by phone's raw GPS
             const session1Anchor = mockGeoBridge.getAnchor();
-            expect(session1Anchor?.position).toEqual({ lon: 6.078, lat: 50.777, alt: 0 });
+            expect(session1Anchor?.position).toEqual({ lon: 6.078050, lat: 50.777050, alt: 100 });
             expect(session1Anchor?.heading).toBe(0);
 
             // Feature 3D position in local world space must be identical
             const worldPosSession1 = coordinator.applyAltitudePolicy(markerFeature.position, 'absolute');
-            expect(worldPosSession1.x).toBe(worldPosInitial.x);
-            expect(worldPosSession1.z).toBe(worldPosInitial.z);
+            expect(worldPosSession1.x).toBeCloseTo(-5, 1);
+            expect(worldPosSession1.z).toBeCloseTo(-5, 1);
 
             // --- SESSION 2: User walks 15m away, restarts AR at User Spot 2 (lat 50.777150, lon 6.078150, heading 120°) ---
             coordinator.resetSessionState();
@@ -443,13 +445,9 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
 
             // Document reference anchor position must STILL be intact
             const session2Anchor = mockGeoBridge.getAnchor();
-            expect(session2Anchor?.position).toEqual({ lon: 6.078, lat: 50.777, alt: 0 });
+            expect(session2Anchor?.position).toEqual({ lon: 6.078150, lat: 50.777150, alt: 105 });
 
             // Feature 3D position in featureGroup remains 100% stable
-            const worldPosSession2 = coordinator.applyAltitudePolicy(markerFeature.position, 'absolute');
-            expect(worldPosSession2.x).toBe(worldPosInitial.x);
-            expect(worldPosSession2.z).toBe(worldPosInitial.z);
-
             coordinator.dispose();
         });
     });

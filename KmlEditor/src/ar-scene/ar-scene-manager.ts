@@ -10,7 +10,7 @@ import { IFeatureView } from '../contracts/document-model';
 import { IGeoBridge } from '../contracts/geo-bridge';
 import { IAssetProvider } from '../contracts/kmz-container';
 import { IRendererFactory } from '../contracts/renderer';
-import { FeatureId } from '../contracts/type';
+import { FeatureId, GeoPosition } from '../contracts/type';
 import { FeatureSceneRegistry } from '../editor/feature-scene-registry';
 
 const LARGE_FEATURE_THRESHOLD = 500;
@@ -137,16 +137,21 @@ export class ArSceneManager {
         features: readonly IFeatureView[],
         assets: IAssetProvider,
         bridge: IGeoBridge
-    ): Promise<{ largeFileWarning: boolean }> {
+    ): Promise<{ largeFileWarning: boolean; renderedFeatureCount: number }> {
         const largeFileWarning =
             features.length > LARGE_FEATURE_THRESHOLD && !this.largeFileWarningShown;
         if (largeFileWarning) {
             this.largeFileWarningShown = true;
         }
 
-        await this.registry.reconcile(features, assets, bridge);
+        const anchor = bridge.getAnchor();
+        const visibleFeatures = anchor
+            ? features.filter((feature) => featureIsWithinRange(feature, anchor.position, CULL_DISTANCE_METERS))
+            : [];
+
+        await this.registry.reconcile(visibleFeatures, assets, bridge);
         this.cullDistantFeatures();
-        return { largeFileWarning };
+        return { largeFileWarning, renderedFeatureCount: visibleFeatures.length };
     }
 
     public getObjectForFeature(featureId: FeatureId): THREE.Object3D | null {
@@ -184,6 +189,40 @@ export class ArSceneManager {
             if (child === this.overlayGroup) continue;
             child.getWorldPosition(featurePos);
             child.visible = featurePos.distanceTo(camWorldPos) <= CULL_DISTANCE_METERS;
+        }
+    }
+}
+
+/** Great-circle distance used only to reject non-local data before ENU projection. */
+function distanceMetres(a: GeoPosition, b: GeoPosition): number {
+    const radians = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * radians;
+    const dLon = (b.lon - a.lon) * radians;
+    const sinLat = Math.sin(dLat / 2);
+    const sinLon = Math.sin(dLon / 2);
+    const h = sinLat * sinLat + Math.cos(a.lat * radians) * Math.cos(b.lat * radians) * sinLon * sinLon;
+    return 6_371_000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function featureIsWithinRange(feature: IFeatureView, anchor: GeoPosition, radiusMetres: number): boolean {
+    const isNear = (position: GeoPosition): boolean => distanceMetres(anchor, position) <= radiusMetres;
+
+    switch (feature.type) {
+        case 'marker':
+            return isNear(feature.position);
+        case 'model':
+            return isNear(feature.location);
+        case 'line':
+            return feature.coordinates.some(isNear);
+        case 'ground-overlay': {
+            const { north, south, east, west } = feature.latLonBox;
+            return [
+                { lat: north, lon: east, alt: feature.altitude },
+                { lat: north, lon: west, alt: feature.altitude },
+                { lat: south, lon: east, alt: feature.altitude },
+                { lat: south, lon: west, alt: feature.altitude },
+                { lat: (north + south) / 2, lon: (east + west) / 2, alt: feature.altitude },
+            ].some(isNear);
         }
     }
 }

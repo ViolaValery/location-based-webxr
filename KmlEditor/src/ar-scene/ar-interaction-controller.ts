@@ -37,7 +37,7 @@ export class ArInteractionController {
     public constructor(
         private readonly canvas: HTMLCanvasElement,
         private readonly sceneManager: ArSceneManager,
-        private readonly geoBridge: IGeoBridge,
+        private geoBridge: IGeoBridge,
         private readonly store: IEditorStore,
         private readonly anchorCoordinator: ArAnchorCoordinator,
         private readonly getDocument: () => IKmlDocument | null
@@ -48,6 +48,11 @@ export class ArInteractionController {
 
     public dispose(): void {
         this.detachEventListeners();
+    }
+
+    /** AR sessions receive a new local projection for every session. */
+    public setGeoBridge(geoBridge: IGeoBridge): void {
+        this.geoBridge = geoBridge;
     }
 
     private attachEventListeners(): void {
@@ -196,7 +201,9 @@ export class ArInteractionController {
                 const newGeoPos = this.geoBridge.worldToGeo(newWorldPos);
 
                 if (feature.type === 'marker') {
-                    const cmd = createMoveMarkerCommand(featureId, newWorldPos);
+                    // Keep the session projection with the command so redo still
+                    // writes the same WGS84 coordinate after AR has stopped.
+                    const cmd = createMoveMarkerCommand(featureId, newWorldPos, this.geoBridge);
                     this.store.executeCommand(cmd);
                 } else if (feature.type === 'model') {
                     const cmd = createMoveModelCommand(featureId, newGeoPos);
