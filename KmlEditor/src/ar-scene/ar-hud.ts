@@ -200,6 +200,7 @@ export class ArHud {
         this.trackingBadge.textContent = state.toUpperCase();
 
         this.isArRunning = state === 'running';
+        this.trackingBadge.hidden = this.isArRunning;
 
         if (this.arToggleBtn) {
             if (state === 'running') {
@@ -227,6 +228,17 @@ export class ArHud {
         if (this.saveBadge) {
             this.saveBadge.textContent = text;
             this.saveBadge.style.color = '#2ecc71';
+        }
+    }
+
+    public updateLoadedFile(fileName: string | null, featureCount?: number): void {
+        if (this.saveBadge) {
+            const featureSuffix = typeof featureCount === 'number' ? ` (${featureCount} features)` : '';
+            this.saveBadge.textContent = fileName
+                ? `Loaded ${fileName}${featureSuffix}`
+                : 'No file loaded';
+            this.saveBadge.title = this.saveBadge.textContent;
+            this.saveBadge.style.color = '#94a3b8';
         }
     }
 

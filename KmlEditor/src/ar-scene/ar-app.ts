@@ -35,6 +35,10 @@ import {
 } from 'gps-plus-slam-app-framework/state';
 import { enableArWorldGroupAlignment } from 'gps-plus-slam-app-framework/visualization';
 import { NullStorageBackend } from 'gps-plus-slam-app-framework/storage';
+import { createGeoBridge } from '../geo-bridge';
+
+const DEFAULT_KML_URL = '/fixtures/google-earth/emilsborg.kml';
+const DEFAULT_KML_FILE_NAME = DEFAULT_KML_URL.split('/').pop() ?? 'default.kml';
 
 export interface ArAppOptions {
     container: HTMLElement;
@@ -63,6 +67,7 @@ export class ArApp {
     private readonly replayAdapter: ArReplayAdapter;
     private readonly persistenceCoordinator: PersistenceCoordinator;
     private readonly enableGpsArController: EnableGpsArController;
+    private sessionGeoBridge: IGeoBridge | null = null;
 
     private slamStore = createSlamAppStore({ storageBackend: new NullStorageBackend() });
     private gpsHandler = createGpsPositionHandler({
@@ -74,6 +79,7 @@ export class ArApp {
     private documentModel: IKmlDocument | null = null;
     private storeUnsubscribe: (() => void) | null = null;
     private arStateUnsubscribe: (() => void) | null = null;
+    private loadRequestId = 0;
 
     private get geoBridge(): IGeoBridge {
         return this.store.geoBridge;
@@ -92,7 +98,8 @@ export class ArApp {
         void this.enableGpsArController.refreshSupport();
 
         // ── App-owned modules ────────────────────────────────────────────────
-        this.anchorCoordinator = new ArAnchorCoordinator(this.geoBridge, this.store);
+        const initialSessionBridge = createGeoBridge();
+        this.anchorCoordinator = new ArAnchorCoordinator(initialSessionBridge, this.store);
         this.anchorCoordinator.onAnchorChange = (anchor) => {
             this.slamStore.dispatch(
                 setZeroPos({
@@ -120,7 +127,7 @@ export class ArApp {
         this.interactionController = new ArInteractionController(
             sentinelCanvas,
             this.sceneManager,
-            this.geoBridge,
+            initialSessionBridge,
             this.store,
             this.anchorCoordinator,
             () => this.documentModel
@@ -149,15 +156,21 @@ export class ArApp {
     }
 
     public async openFile(file: File | ArrayBuffer): Promise<void> {
+        const requestId = ++this.loadRequestId;
         try {
             const kmz = new KmzContainer();
             await kmz.open(file);
             await this.store.loadContainer(kmz);
+            if (requestId !== this.loadRequestId) {
+                kmz.dispose();
+                return;
+            }
             this.containerFile = kmz;
             this.documentModel = this.store.document;
 
             const featureCount = this.documentModel?.getFeatures().length ?? 0;
             const fileName = file instanceof File ? file.name : 'Document';
+            this.hud.updateLoadedFile(fileName, featureCount);
             this.hud.updateFileStatus(`Loaded ${fileName} (${featureCount} features)`);
 
             await this.reconcileIfActive();
@@ -169,20 +182,9 @@ export class ArApp {
 
     public async startArSession(): Promise<void> {
         this.resetSlamStore();
+        this.startSessionProjection();
         this.anchorCoordinator.resetSessionState();
         const container = this.hud['container'] as HTMLElement;
-
-        // Lock zeroReference in SLAM store to document anchor so zeroReference never shifts with raw GPS jitter
-        const docAnchor = this.geoBridge.getAnchor();
-        if (docAnchor) {
-            this.slamStore.dispatch(
-                setZeroPos({
-                    lat: docAnchor.position.lat,
-                    lon: docAnchor.position.lon,
-                    altitude: docAnchor.position.alt,
-                })
-            );
-        }
 
         const timeoutPromise = new Promise<{ ok: false; error: string }>((resolve) => {
             setTimeout(() => {
@@ -273,6 +275,7 @@ export class ArApp {
         }
         await this.enableGpsArController.disable();
         this.sceneManager.detachFromFrameworkScene();
+        this.sessionGeoBridge = null;
         this.resetSlamStore();
         this.hud.updateTrackingState('ready');
         this.hud.updateDiagnosticInfo('');
@@ -303,33 +306,37 @@ export class ArApp {
             getArPose: getCurrentArPose,
         });
 
-        // Re-apply zeroReference to document anchor if document is loaded
-        const docAnchor = this.geoBridge.getAnchor();
-        if (docAnchor) {
-            this.slamStore.dispatch(
-                setZeroPos({
-                    lat: docAnchor.position.lat,
-                    lon: docAnchor.position.lon,
-                    altitude: docAnchor.position.alt,
-                })
-            );
-        }
+    }
+
+    private startSessionProjection(): void {
+        const bridge = createGeoBridge();
+        this.sessionGeoBridge = bridge;
+        this.anchorCoordinator.setGeoBridge(bridge);
+        this.interactionController.setGeoBridge(bridge);
     }
 
     private async loadDefaultDemo(): Promise<void> {
+        const requestId = this.loadRequestId;
         try {
-            const response = await fetch('/fixtures/google-earth/Templergraben.kml');
+            const response = await fetch(DEFAULT_KML_URL);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const kmlText = await response.text();
+
+            if (requestId !== this.loadRequestId) return;
 
             const kmz = new KmzContainer();
             kmz.setDocKml(kmlText);
             await this.store.loadContainer(kmz);
+            if (requestId !== this.loadRequestId) {
+                kmz.dispose();
+                return;
+            }
             this.containerFile = kmz;
             this.documentModel = this.store.document;
 
             const featureCount = this.documentModel?.getFeatures().length ?? 0;
-            this.hud.updateFileStatus(`Templergraben (${featureCount} features)`);
+            this.hud.updateLoadedFile(DEFAULT_KML_FILE_NAME, featureCount);
+            this.hud.updateFileStatus(`Loaded ${DEFAULT_KML_FILE_NAME} (${featureCount} features)`);
             this.persistenceCoordinator.observe(this.documentModel, this.containerFile);
         } catch (_err) {
             // Silently skip if fixture isn't served
@@ -337,17 +344,30 @@ export class ArApp {
     }
 
     private async reconcileIfActive(): Promise<void> {
-        if (!this.documentModel || !this.containerFile) return;
+        const documentModel = this.documentModel;
+        const containerFile = this.containerFile;
+        if (!documentModel || !containerFile) return;
         if (!this.sceneManager.featureGroup.parent) return;
+        const sessionBridge = this.sessionGeoBridge;
+        if (!sessionBridge || !this.anchorCoordinator.hasAnchorForSession()) return;
 
         const result = await this.sceneManager.reconcileFeatures(
-            this.documentModel.getFeatures(),
-            this.containerFile.getAssetProvider(),
-            this.geoBridge
+            documentModel.getFeatures(),
+            containerFile.getAssetProvider(),
+            sessionBridge
         );
 
+        if (documentModel !== this.documentModel || containerFile !== this.containerFile) {
+            await this.reconcileIfActive();
+            return;
+        }
+
+        if (documentModel.getFeatures().length > 0 && result.renderedFeatureCount === 0) {
+            this.hud.updateFileStatus('No features in AR range (within 500 m)');
+        }
+
         if (result.largeFileWarning) {
-            const count = this.documentModel.getFeatures().length;
+            const count = documentModel.getFeatures().length;
             this.hud.updateFileStatus(
                 `⚠️ Large file (${count} features): only features within 500 m are rendered`
             );

@@ -16,13 +16,14 @@ export class ArAnchorCoordinator {
     public onAnchorChange?: (anchor: { position: GeoPosition; heading: number }) => void;
 
     private isLocked = false;
+    private hasSessionAnchor = false;
     private bufferedGps: { position: GeoPosition; heading: number; accuracy: number } | null = null;
     private groundY = 0; // Local WebXR floor level Y
 
     private sessionRunCount = 0;
 
     public constructor(
-        private readonly geoBridge: IGeoBridge,
+        private geoBridge: IGeoBridge,
         private readonly store: IEditorStore
     ) {}
 
@@ -48,11 +49,11 @@ export class ArAnchorCoordinator {
             return;
         }
 
-        const currentAnchor = this.geoBridge.getAnchor();
-        if (!currentAnchor) {
+        if (!this.hasSessionAnchor) {
             console.log(`[AR Diagnostic] Session #${this.sessionRunCount} — Setting initial anchor to (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`);
             const anchor = { position: newPosition, heading: 0 };
             this.geoBridge.setAnchor(anchor);
+            this.hasSessionAnchor = true;
             this.onAnchorChange?.(anchor);
         }
     }
@@ -67,11 +68,9 @@ export class ArAnchorCoordinator {
 
     public setAnchorLock(locked: boolean): void {
         this.isLocked = locked;
-        if (!locked && this.bufferedGps && this.bufferedGps.accuracy <= MAX_GPS_ACCURACY_METERS) {
-            const { position } = this.bufferedGps;
-            const anchor = { position, heading: 0 };
-            this.geoBridge.setAnchor(anchor);
-            this.onAnchorChange?.(anchor);
+        if (!locked) {
+            // The session anchor remains fixed after its first valid GPS fix.
+            // Applying buffered fixes would make the rendered world jump with GPS jitter.
             this.bufferedGps = null;
         }
     }
@@ -112,8 +111,20 @@ export class ArAnchorCoordinator {
     public resetAnchor(position: GeoPosition, heading = 0): void {
         const anchor = { position, heading: 0 };
         this.geoBridge.setAnchor(anchor);
+        this.hasSessionAnchor = true;
         this.onAnchorChange?.(anchor);
         this.bufferedGps = null;
+    }
+
+    /** Replace the short-lived projection used by the next AR session. */
+    public setGeoBridge(geoBridge: IGeoBridge): void {
+        this.geoBridge = geoBridge;
+        this.hasSessionAnchor = false;
+        this.bufferedGps = null;
+    }
+
+    public hasAnchorForSession(): boolean {
+        return this.hasSessionAnchor;
     }
 
     /**
@@ -122,6 +133,7 @@ export class ArAnchorCoordinator {
     public resetSessionState(): void {
         this.sessionRunCount++;
         this.bufferedGps = null;
+        this.hasSessionAnchor = false;
 
         const currentAnchor = this.geoBridge.getAnchor();
         console.log(`[AR Diagnostic] --- Starting AR Session #${this.sessionRunCount} ---`);

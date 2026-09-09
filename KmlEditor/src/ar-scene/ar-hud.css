@@ -37,6 +37,7 @@
     align-items: center;
     gap: 0.75rem;
     font-size: 0.85rem;
+    min-width: 0;
 }
 
 .ar-hud__badge {
