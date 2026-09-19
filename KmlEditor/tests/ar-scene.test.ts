@@ -13,6 +13,7 @@ import { ArReplayAdapter } from '../src/ar-scene/ar-replay-adapter';
 import { IFeatureRenderer, IRendererFactory } from '../src/contracts/renderer';
 import { IFeatureView, IMarkerFeature } from '../src/contracts/document-model';
 import { getArWorldGroup } from 'gps-plus-slam-app-framework/ar';
+import { ArSceneDiagnostics, compareDiagnosticLogs } from '../src/ar-scene/ar-scene-diagnostics';
 
 // ── Mock the framework so tests run without a real WebXR environment ──────────
 const mockWorldGroup = new THREE.Group();
@@ -52,6 +53,52 @@ class FakeRenderer implements IFeatureRenderer<IFeatureView, THREE.Object3D> {
 }
 
 describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () => {
+    it('records ordered GPS and rendered-pose stages for launch comparison', () => {
+        const diagnostics = new ArSceneDiagnostics();
+        diagnostics.startSession(1);
+        diagnostics.record({
+            stage: 'gps',
+            gps: { latitude: 50, longitude: 6, altitude: 100, accuracy: 4 },
+            heading: 12,
+            anchor: { lat: 50, lon: 6, alt: 100 },
+        });
+        diagnostics.record({
+            stage: 'frame',
+            anchor: { lat: 50, lon: 6, alt: 100 },
+            featureId: 'marker-1',
+            markerLocal: { x: 10, y: 0, z: -20 },
+            markerWorld: { x: 10, y: 0, z: -20 },
+            arWorldGroupMatrix: new THREE.Matrix4().toArray(),
+        });
+
+        const log = diagnostics.getLog();
+        expect(log.samples.map((sample) => sample.stage)).toEqual(['session-start', 'gps', 'frame']);
+        expect(log.samples[1].anchor).toEqual({ lat: 50, lon: 6, alt: 100 });
+        expect(log.samples[2].markerLocal).toEqual({ x: 10, y: 0, z: -20 });
+    });
+
+    it('classifies the first differing placement stage', () => {
+        const makeLog = (anchorLon: number, matrixX: number) => {
+            const diagnostics = new ArSceneDiagnostics();
+            diagnostics.startSession(1);
+            diagnostics.record({
+                stage: 'gps',
+                gps: { latitude: 50, longitude: anchorLon, altitude: 100, accuracy: 4 },
+                anchor: { lat: 50, lon: anchorLon, alt: 100 },
+            });
+            diagnostics.record({
+                stage: 'frame',
+                anchor: { lat: 50, lon: anchorLon, alt: 100 },
+                markerLocal: { x: 10, y: 0, z: -20 },
+                arWorldGroupMatrix: new THREE.Matrix4().makeTranslation(matrixX, 0, 0).toArray(),
+            });
+            return diagnostics.getLog();
+        };
+
+        expect(compareDiagnosticLogs(makeLog(6, 0), makeLog(6.001, 0))).toBe('gps-anchor');
+        expect(compareDiagnosticLogs(makeLog(6, 0), makeLog(6, 2))).toBe('ar-alignment');
+    });
+
     let mockGeoBridge: IGeoBridge;
     let anchorPosition: GeoPosition | null;
     let anchorHeading = 0;

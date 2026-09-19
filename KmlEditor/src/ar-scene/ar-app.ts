@@ -20,6 +20,7 @@ import {
     type EnableGpsArState,
     getArWorldGroup,
     getCurrentArPose,
+    registerFrameUpdate,
     setTrackingLostCallback,
     setTrackingStore,
     type TrackingSubscribableStore,
@@ -36,6 +37,7 @@ import {
 import { enableArWorldGroupAlignment } from 'gps-plus-slam-app-framework/visualization';
 import { NullStorageBackend } from 'gps-plus-slam-app-framework/storage';
 import { createGeoBridge } from '../geo-bridge';
+import { ArSceneDiagnostics } from './ar-scene-diagnostics';
 
 const DEFAULT_KML_URL = '/fixtures/google-earth/emilsborg.kml';
 const DEFAULT_KML_FILE_NAME = DEFAULT_KML_URL.split('/').pop() ?? 'default.kml';
@@ -66,7 +68,9 @@ export class ArApp {
     private readonly hud: ArHud;
     private readonly replayAdapter: ArReplayAdapter;
     private readonly persistenceCoordinator: PersistenceCoordinator;
+    private readonly diagnostics = new ArSceneDiagnostics();
     private readonly enableGpsArController: EnableGpsArController;
+    private diagnosticsFrameUnsubscribe: (() => void) | null = null;
     private sessionGeoBridge: IGeoBridge | null = null;
 
     private slamStore = createSlamAppStore({ storageBackend: new NullStorageBackend() });
@@ -119,9 +123,11 @@ export class ArApp {
             () => this.documentModel,
             (file) => void this.openFile(file),
             () => void this.startArSession(),
-            () => void this.stopArSession()
+            () => void this.stopArSession(),
+            () => this.diagnostics.download()
         );
         this.hud.mount();
+        window.__arSceneDiagnostics = this.diagnostics;
 
         const sentinelCanvas = document.createElement('canvas');
         this.interactionController = new ArInteractionController(
@@ -184,6 +190,8 @@ export class ArApp {
         this.resetSlamStore();
         this.startSessionProjection();
         this.anchorCoordinator.resetSessionState();
+        const sessionSnapshot = this.anchorCoordinator.getDiagnosticSnapshot();
+        this.diagnostics.startSession(sessionSnapshot.session);
         const container = this.hud['container'] as HTMLElement;
 
         const timeoutPromise = new Promise<{ ok: false; error: string }>((resolve) => {
@@ -212,6 +220,18 @@ export class ArApp {
                             currentHeading,
                             pos.accuracy
                         );
+                        const snapshot = this.anchorCoordinator.getDiagnosticSnapshot();
+                        this.diagnostics.record({
+                            stage: 'gps',
+                            gps: {
+                                latitude: pos.lat,
+                                longitude: pos.lon,
+                                altitude: pos.altitude ?? 0,
+                                accuracy: pos.accuracy,
+                            },
+                            heading: snapshot.heading,
+                            anchor: snapshot.anchor,
+                        });
                         this.sceneManager.updateAccuracyRing(pos.accuracy);
                         this.hud.updateDiagnosticInfo(this.anchorCoordinator.getDiagnosticInfo());
                     },
@@ -221,6 +241,12 @@ export class ArApp {
                         updateDeviceOrientation(orient);
                         if (orient.alpha !== null) {
                             this.anchorCoordinator.updateHeading(orient.alpha);
+                            const snapshot = this.anchorCoordinator.getDiagnosticSnapshot();
+                            this.diagnostics.record({
+                                stage: 'orientation',
+                                heading: snapshot.heading,
+                                anchor: snapshot.anchor,
+                            });
                             this.hud.updateDiagnosticInfo(this.anchorCoordinator.getDiagnosticInfo());
                         }
                     },
@@ -260,6 +286,13 @@ export class ArApp {
                 store: this.slamStore as unknown as SubscribableStore,
                 arWorldGroup,
             });
+            this.diagnosticsFrameUnsubscribe?.();
+            this.diagnosticsFrameUnsubscribe = registerFrameUpdate(() => {
+                const feature = this.documentModel?.getFeatures()[0];
+                const featureObject = feature ? this.sceneManager.getObjectForFeature(feature.id) : null;
+                const anchor = this.anchorCoordinator.getDiagnosticSnapshot().anchor;
+                this.diagnostics.recordFrame(arWorldGroup, feature?.id, featureObject, anchor);
+            });
         }
 
         // Attach KML feature group to framework scene
@@ -268,6 +301,8 @@ export class ArApp {
     }
 
     public async stopArSession(): Promise<void> {
+        this.diagnosticsFrameUnsubscribe?.();
+        this.diagnosticsFrameUnsubscribe = null;
         try {
             this.slamStore.dispatch(endSession());
         } catch (_err) {
@@ -286,6 +321,7 @@ export class ArApp {
     }
 
     public dispose(): void {
+        this.diagnosticsFrameUnsubscribe?.();
         void this.enableGpsArController.disable();
         if (this.arStateUnsubscribe) this.arStateUnsubscribe();
         if (this.storeUnsubscribe) this.storeUnsubscribe();

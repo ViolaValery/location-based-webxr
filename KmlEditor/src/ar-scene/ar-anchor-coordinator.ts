@@ -151,6 +151,15 @@ export class ArAnchorCoordinator {
         return `Run #${this.sessionRunCount} | Anchor: ${anchor.position.lat.toFixed(4)}, ${anchor.position.lon.toFixed(4)} | Compass: ${heading.toFixed(0)}°`;
     }
 
+    public getDiagnosticSnapshot(): { session: number; heading: number; anchor: GeoPosition | null } {
+        const anchor = this.geoBridge.getAnchor();
+        return {
+            session: this.sessionRunCount,
+            heading: this.store.getState().device.heading ?? 0,
+            anchor: anchor ? { ...anchor.position } : null,
+        };
+    }
+
     public dispose(): void {
         this.bufferedGps = null;
     }

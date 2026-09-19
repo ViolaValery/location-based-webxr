@@ -29,7 +29,8 @@ export class ArHud {
         private readonly getDocument: () => IKmlDocument | null,
         private readonly onOpenFile: (file: File) => void,
         private readonly onStartAr: () => void,
-        private readonly onStopAr: () => void
+        private readonly onStopAr: () => void,
+        private readonly onDownloadDiagnostics: () => void
     ) {}
 
     public mount(): HTMLElement {
@@ -87,6 +88,15 @@ export class ArHud {
             this.fileInput?.click();
         });
 
+        const diagnosticsBtn = document.createElement('button');
+        diagnosticsBtn.className = 'ar-hud__button ar-hud__button--secondary';
+        diagnosticsBtn.textContent = 'Save AR log';
+        diagnosticsBtn.title = 'Download GPS, marker, and alignment diagnostics';
+        diagnosticsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.onDownloadDiagnostics();
+        });
+
         this.arToggleBtn = document.createElement('button');
         this.arToggleBtn.className = 'ar-hud__button';
         this.arToggleBtn.textContent = 'Start AR';
@@ -107,7 +117,7 @@ export class ArHud {
             }
         });
 
-        actionsGroup.append(openBtn, this.arToggleBtn);
+        actionsGroup.append(openBtn, diagnosticsBtn, this.arToggleBtn);
         topBar.append(statusGroup, actionsGroup);
 
         // Feature Editing Panel
