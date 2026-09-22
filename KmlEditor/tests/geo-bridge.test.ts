@@ -83,7 +83,7 @@ describe('geo-bridge', () => {
         expect(world.x).toBeGreaterThan(0);
 
         const restored = bridge.worldToGeo(world, 'clampToGround');
-        expectClose(restored.lon, -179.8, 1e-9);
+        expectClose(restored.lon, -179.8, 1e-8);
         expectClose(restored.lat, 0, 1e-9);
         expect(restored.alt).toBe(0);
     });

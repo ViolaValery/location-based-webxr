@@ -12,7 +12,7 @@ import { ArInteractionController } from '../src/ar-scene/ar-interaction-controll
 import { ArReplayAdapter } from '../src/ar-scene/ar-replay-adapter';
 import { IFeatureRenderer, IRendererFactory } from '../src/contracts/renderer';
 import { IFeatureView, IMarkerFeature } from '../src/contracts/document-model';
-import { getArWorldGroup } from 'gps-plus-slam-app-framework/ar';
+import { getArWorldGroup, getScene } from 'gps-plus-slam-app-framework/ar';
 import { ArSceneDiagnostics, compareDiagnosticLogs } from '../src/ar-scene/ar-scene-diagnostics';
 
 // ── Mock the framework so tests run without a real WebXR environment ──────────
@@ -24,6 +24,7 @@ vi.mock('gps-plus-slam-app-framework/ar', () => ({
     getArWorldGroup: vi.fn(() => mockWorldGroup),
     getCamera: vi.fn(() => new THREE.PerspectiveCamera()),
     registerFrameUpdate: vi.fn(() => vi.fn()),
+    setTrackingCallbacks: vi.fn(),
     setTrackingLostCallback: vi.fn(),
     createEnableGpsArController: vi.fn(() => ({
         refreshSupport: vi.fn(async () => {}),
@@ -69,12 +70,26 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
             markerLocal: { x: 10, y: 0, z: -20 },
             markerWorld: { x: 10, y: 0, z: -20 },
             arWorldGroupMatrix: new THREE.Matrix4().toArray(),
+            featureGroupVisible: false,
+            trackingQuality: {
+                state: 'warming-up',
+                confidence: 0.22,
+                observationsSeen: 8,
+                coverage: 0.31,
+                convergence: 0.6,
+                gpsAccuracy: 0.8,
+                walkedDistanceM: 4,
+                directionSpreadDeg: 20,
+            },
         });
 
         const log = diagnostics.getLog();
         expect(log.samples.map((sample) => sample.stage)).toEqual(['session-start', 'gps', 'frame']);
         expect(log.samples[1].anchor).toEqual({ lat: 50, lon: 6, alt: 100 });
         expect(log.samples[2].markerLocal).toEqual({ x: 10, y: 0, z: -20 });
+        expect(log.samples[2].featureGroupVisible).toBe(false);
+        expect(log.samples[2].trackingQuality?.state).toBe('warming-up');
+        expect(log.samples[2].trackingQuality?.observationsSeen).toBe(8);
     });
 
     it('classifies the first differing placement stage', () => {
@@ -223,28 +238,91 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
             sceneManager.dispose();
         });
 
-        it('attaches featureGroup to the framework arWorldGroup on attachToFrameworkScene()', () => {
+        it('attaches featureGroup to the framework GPS-world scene on attachToFrameworkScene()', () => {
             const factory: IRendererFactory<THREE.Object3D> = {
                 createRenderer: () => new FakeRenderer(),
             };
             const sceneManager = new ArSceneManager(factory);
             sceneManager.attachToFrameworkScene();
 
-            // Framework's getArWorldGroup() returns a mocked group — verify featureGroup is a child
-            const worldGroup = getArWorldGroup();
-            expect(worldGroup?.children).toContain(sceneManager.featureGroup);
+            // Geographic feature coordinates belong in the framework scene root.
+            const scene = getScene();
+            expect(scene?.children).toContain(sceneManager.featureGroup);
 
             sceneManager.dispose();
         });
 
-        it('culls features > 500m from camera using world-space distanceTo (no geo math)', async () => {
+        it('gates feature visibility on framework tracking quality', () => {
+            const factory: IRendererFactory<THREE.Object3D> = {
+                createRenderer: () => new FakeRenderer(),
+            };
+            const sceneManager = new ArSceneManager(factory);
+
+            sceneManager.setTrackingQualityGate(true);
+            sceneManager.setTrackingQualityState('warming-up');
+            expect(sceneManager.featureGroup.visible).toBe(true);
+
+            sceneManager.setTrackingQualityState('degraded');
+            expect(sceneManager.featureGroup.visible).toBe(true);
+
+            sceneManager.setTrackingQualityState('ar-lost');
+            expect(sceneManager.featureGroup.visible).toBe(true);
+
+            sceneManager.setTrackingQualityState('ok');
+            expect(sceneManager.featureGroup.visible).toBe(true);
+
+            sceneManager.dispose();
+        });
+
+        it('converts GPS-world drag points back to the renderer local frame', () => {
             const factory: IRendererFactory<THREE.Object3D> = {
                 createRenderer: () => new FakeRenderer(),
             };
             const sceneManager = new ArSceneManager(factory);
             sceneManager.attachToFrameworkScene();
 
-            // Place a fake feature far away (> 500m) and a near one
+            const localPoint = new THREE.Vector3(12, 0, -7);
+            sceneManager.featureGroup.updateMatrixWorld(true);
+            const worldPoint = localPoint.clone().applyMatrix4(sceneManager.featureGroup.matrixWorld);
+
+            expect(sceneManager.worldToFeatureLocal(worldPoint).x).toBeCloseTo(localPoint.x, 8);
+            expect(sceneManager.worldToFeatureLocal(worldPoint).z).toBeCloseTo(localPoint.z, 8);
+            sceneManager.dispose();
+        });
+
+        it('does not expose hidden feature objects for picking', () => {
+            const factory: IRendererFactory<THREE.Object3D> = {
+                createRenderer: () => new FakeRenderer(),
+            };
+            const sceneManager = new ArSceneManager(factory);
+            sceneManager.setTrackingQualityGate(true);
+            sceneManager.setTrackingQualityState('warming-up');
+
+            expect(sceneManager.getPickableObjects()).toEqual([]);
+            sceneManager.dispose();
+        });
+
+        it('keeps featureGroup at local AR ground floor Y=0 so clampToGround features share the floor', async () => {
+            const factory: IRendererFactory<THREE.Object3D> = {
+                createRenderer: () => new FakeRenderer(),
+            };
+            anchorPosition = { lon: 6, lat: 50, alt: 94.5 };
+            const sceneManager = new ArSceneManager(factory);
+            await sceneManager.reconcileFeatures([], {} as any, mockGeoBridge);
+
+            // Floor level in WebXR local-floor is Y=0; must not push features 94.5m into the sky.
+            expect(sceneManager.featureGroup.position.y).toBe(0);
+            sceneManager.dispose();
+        });
+
+        it('culls features beyond proximity radius from camera using horizontal distance', async () => {
+            const factory: IRendererFactory<THREE.Object3D> = {
+                createRenderer: () => new FakeRenderer(),
+            };
+            const sceneManager = new ArSceneManager(factory);
+            sceneManager.attachToFrameworkScene();
+
+            // Place a fake feature far away (> 50m) and a near one (< 50m)
             const farObj = new THREE.Mesh();
             farObj.position.set(600, 0, 0); // 600m away
             farObj.userData.featureId = 'far-feature';
@@ -258,9 +336,63 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
             // Run reconcile with empty features so just culling runs
             await sceneManager.reconcileFeatures([], { getAssetUrl: vi.fn(), getAssetBytes: vi.fn(), hasAsset: vi.fn(), dispose: vi.fn(), release: vi.fn() } as any, mockGeoBridge);
 
-            // distanceTo-based culling; camera is at origin (mocked)
+            // Camera is at origin (mocked): 600m is culled, 10m is visible
             expect(farObj.visible).toBe(false);
             expect(nearObj.visible).toBe(true);
+
+            sceneManager.dispose();
+        });
+
+        it('dynamically toggles visibility based on user GPS position with hysteresis', async () => {
+            const factory: IRendererFactory<THREE.Object3D> = {
+                createRenderer: () => new FakeRenderer(),
+            };
+            const sceneManager = new ArSceneManager(factory);
+            sceneManager.setVisibilityRadius(50);
+
+            // Feature at Aachen doorstep: lat 50.7750, lon 6.0830
+            const doorstepMarker: IMarkerFeature = {
+                id: 'doorstep-marker' as FeatureId,
+                type: 'marker',
+                name: 'Haustür Aachen',
+                description: 'Directly in front of door',
+                position: { lat: 50.7750, lon: 6.0830, alt: 0 },
+                iconHref: null,
+                iconScale: 1,
+                altitudeMode: 'clampToGround',
+            };
+
+            const mockAssets = { getAssetUrl: vi.fn(), getAssetBytes: vi.fn(), hasAsset: vi.fn(), dispose: vi.fn(), release: vi.fn() } as any;
+            await sceneManager.reconcileFeatures([doorstepMarker], mockAssets, mockGeoBridge);
+
+            const markerObj = sceneManager.getObjectForFeature('doorstep-marker' as FeatureId);
+            expect(markerObj).not.toBeNull();
+
+            // Case 1: Phone is in Dortmund (~100 km away) -> Marker must be hidden
+            sceneManager.updateUserGpsPosition({ lat: 51.5136, lon: 7.4653, alt: 100 });
+            expect(markerObj?.visible).toBe(false);
+
+            // Case 2: Phone is at the doorstep in Aachen (~5 m away) -> Marker must be visible
+            sceneManager.updateUserGpsPosition({ lat: 50.77502, lon: 6.08303, alt: 0 });
+            expect(markerObj?.visible).toBe(true);
+
+            // Case 3: Phone moves 200m away -> Marker must be hidden
+            // 0.002 degrees lat is ~222 m
+            sceneManager.updateUserGpsPosition({ lat: 50.7770, lon: 6.0830, alt: 0 });
+            expect(markerObj?.visible).toBe(false);
+
+            // Case 4: Phone walks back to within 50m (e.g. 15m away) -> Marker becomes visible again
+            sceneManager.updateUserGpsPosition({ lat: 50.7751, lon: 6.0830, alt: 0 });
+            expect(markerObj?.visible).toBe(true);
+
+            // Case 5: Hysteresis check — at 53m (between 50m enter and 57.5m exit), a visible marker stays visible
+            // ~53m offset north is ~0.00048 degrees lat
+            sceneManager.updateUserGpsPosition({ lat: 50.77548, lon: 6.0830, alt: 0 });
+            expect(markerObj?.visible).toBe(true);
+
+            // Once past 60m (> 57.5m exit boundary), it hides
+            sceneManager.updateUserGpsPosition({ lat: 50.7756, lon: 6.0830, alt: 0 });
+            expect(markerObj?.visible).toBe(false);
 
             sceneManager.dispose();
         });

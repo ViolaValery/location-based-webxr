@@ -10,6 +10,8 @@ export default defineConfig({
       'gps-plus-slam-app-framework/storage': path.resolve(__dirname, '../GpsPlusSlamJs_AppFramework/src/storage/index.ts'),
       'gps-plus-slam-app-framework/state': path.resolve(__dirname, '../GpsPlusSlamJs_AppFramework/src/state/index.ts'),
       'gps-plus-slam-app-framework/visualization': path.resolve(__dirname, '../GpsPlusSlamJs_AppFramework/src/visualization/index.ts'),
+      'gps-plus-slam-app-framework/core': path.resolve(__dirname, '../GpsPlusSlamJs_AppFramework/src/core/index.ts'),
+      'gps-plus-slam-app-framework/licensing': path.resolve(__dirname, '../GpsPlusSlamJs_AppFramework/src/licensing/index.ts'),
       'gps-plus-slam-app-framework': path.resolve(__dirname, '../GpsPlusSlamJs_AppFramework/src/index.ts'),
     },
   },

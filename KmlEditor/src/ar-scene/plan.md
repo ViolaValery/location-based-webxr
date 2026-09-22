@@ -12,7 +12,7 @@
 
 **Es besitzt:**
 - Die anwendungsspezifische Wiring-Logik: Verbindung von Framework-GPS-Events → `ArAnchorCoordinator` → `IGeoBridge` und weiter zu `FeatureSceneRegistry`.
-- Das Einhängen der KML-Feature-Objekte als Kinder von `getArWorldGroup()` (Framework-Scene).
+- Das Einhängen der KML-Feature-Objekte in die GPS-Welt-Szene von `getScene()`.
 - Das AR HUD (DOM-Overlay für Tracking-Status, GPS-Genauigkeit, Undo/Redo, Property-Editing).
 - Die Touch-Gesten-Logik: Screen-Raycast → `ICommand` → `IEditorStore`.
 - Den `ArAnchorCoordinator` (Anchor-Lock, GPS-Filterung, Heading-Initialisierung, Altitude-Policy-Entscheidung).
@@ -35,7 +35,8 @@
 | `initAR(container, isolationOptions, sessionFeatures)` | `gps-plus-slam-app-framework/ar` | Startet WebXR, erstellt Renderer, Szene, AnimationLoop |
 | `endARSession()` | `gps-plus-slam-app-framework/ar` | Beendet Session, gibt GPU-Ressourcen frei |
 | `getScene()` | `gps-plus-slam-app-framework/ar` | Liefert die aktive `THREE.Scene` |
-| `getArWorldGroup()` | `gps-plus-slam-app-framework/ar` | Liefert die GPS-ausgerichtete `THREE.Group` — hier hängen KML-Objekte rein |
+| `getScene()` | `gps-plus-slam-app-framework/ar` | Liefert die GPS-Welt-Szene — hier hängen KML-Objekte mit GeoBridge-Koordinaten |
+| `getArWorldGroup()` | `gps-plus-slam-app-framework/ar` | Liefert die AR-lokale Gruppe für Kamera und AR-Inhalte |
 | `getCamera()` | `gps-plus-slam-app-framework/ar` | Liefert die aktive `THREE.PerspectiveCamera` |
 | `registerFrameUpdate(fn)` | `gps-plus-slam-app-framework/ar` | Registriert einen per-frame Tick ohne eigenen AnimationLoop |
 | `setTrackingLostCallback(cb)` | `gps-plus-slam-app-framework/ar` | Callback wenn Tracking verloren |
@@ -121,7 +122,7 @@ ArApp (Kompositionswurzel & Lifecycle)
  ├── EnableGpsArController         [Framework] orchestriert Permissions + Sensor + initAR
  ├── ArAnchorCoordinator           [App]        GPS-Events → IGeoBridge-Anchor-Updates
  ├── FeatureSceneRegistry          [Editor]     reconcile IKmlDocument.getFeatures() → THREE.Object3D
- │    └── hängt in getArWorldGroup()  [Framework] GPS-ausgerichtete THREE.Group
+ │    └── hängt in getScene()         [Framework] GPS-Welt-Szene
  ├── ArInteractionController       [App]        Touch → Raycast → ICommand
  ├── ArHud                         [App]        DOM-Overlay (Status, Undo/Redo, Properties)
  ├── ArReplayAdapter               [App]        phone-freie Tests via RecordedDataset
@@ -143,12 +144,12 @@ ArApp (Kompositionswurzel & Lifecycle)
 **Startsequenz `startArSession()`:**
 1. Ruft `enableGpsArController.enable({ container, onGpsPosition, onOrientation })` auf.
    - Intern: Framework fragt Permissions ab, startet `initAR(container)`, startet GPS/Orientation-Watches und feuert `onGpsPosition`/`onOrientation`-Callbacks für die App.
-2. Nach erfolgreichem `enable()`: holt `getArWorldGroup()` und hängt `featureGroup` (von `FeatureSceneRegistry`) als Kind ein.
+2. Nach erfolgreichem `enable()`: holt `getScene()` und hängt `featureGroup` (von `FeatureSceneRegistry`) als Kind ein.
 3. Registriert einen per-frame Tick via `registerFrameUpdate(fn)` für KML-Feature-Updates (z.B. Accuracy-Ring-Position, Anchor-Koordinaten-Refresh).
 
 **Stoppsequenz `stopArSession()`:**
 1. Ruft `enableGpsArController.disable()` auf → Framework stoppt GPS-Watch, Orientation-Watch und `endARSession()`.
-2. Entfernt `featureGroup` aus `getArWorldGroup()`.
+2. Entfernt `featureGroup` aus `getScene()`.
 3. Entregistriert per-frame Tick.
 
 **Inputs:** Host-DOM-Container, optionaler `IEditorStore`, optionaler `IPersistenceService`.
@@ -561,7 +562,7 @@ Dieser Test wird bei **jedem** Milestone-Deliverable durchgeführt — nicht nur
 
 ### Milestone 1: Framework-Integration & Replay-Harness
 - `ArApp` mit `createEnableGpsArController()` verknüpfen.
-- `featureGroup` in `getArWorldGroup()` einhängen.
+- `featureGroup` in `getScene()` einhängen.
 - `registerFrameUpdate` für Accuracy-Ring und OrbitControls.
 - `ArReplayAdapter` mit direktem `initAR()`-Aufruf für Desktop-Replay.
 - **Deliverable:** Phone-freier Desktop-Replay zeigt KML-Features in korrekter Framework-Szene.

@@ -21,6 +21,7 @@ import {
     getArWorldGroup,
     getCurrentArPose,
     registerFrameUpdate,
+    setTrackingCallbacks,
     setTrackingLostCallback,
     setTrackingStore,
     type TrackingSubscribableStore,
@@ -31,13 +32,15 @@ import {
     endSession,
     setZeroPos,
     startSession,
+    selectTrackingQuality,
     updateDeviceOrientation,
     type SubscribableStore,
 } from 'gps-plus-slam-app-framework/state';
 import { enableArWorldGroupAlignment } from 'gps-plus-slam-app-framework/visualization';
+import { odometryTrackingRestarted } from 'gps-plus-slam-app-framework/core';
 import { NullStorageBackend } from 'gps-plus-slam-app-framework/storage';
 import { createGeoBridge } from '../geo-bridge';
-import { ArSceneDiagnostics } from './ar-scene-diagnostics';
+import { ArSceneDiagnostics, type ArTrackingQualityDiagnostic } from './ar-scene-diagnostics';
 
 const DEFAULT_KML_URL = '/fixtures/google-earth/emilsborg.kml';
 const DEFAULT_KML_FILE_NAME = DEFAULT_KML_URL.split('/').pop() ?? 'default.kml';
@@ -97,6 +100,11 @@ export class ArApp {
 
         // Register tracking store with framework
         setTrackingStore(this.slamStore as unknown as TrackingSubscribableStore);
+        // Enable the framework tracking pipeline and rebase odometry after an
+        // XR reference-space reset, matching the framework examples.
+        setTrackingCallbacks((payload) => {
+            this.slamStore.dispatch(odometryTrackingRestarted(payload));
+        });
 
         this.enableGpsArController = createEnableGpsArController();
         void this.enableGpsArController.refreshSupport();
@@ -190,6 +198,8 @@ export class ArApp {
         this.resetSlamStore();
         this.startSessionProjection();
         this.anchorCoordinator.resetSessionState();
+        this.sceneManager.setTrackingQualityGate(true);
+        this.sceneManager.setTrackingQualityState(null);
         const sessionSnapshot = this.anchorCoordinator.getDiagnosticSnapshot();
         this.diagnostics.startSession(sessionSnapshot.session);
         const container = this.hud['container'] as HTMLElement;
@@ -204,6 +214,14 @@ export class ArApp {
         });
 
         try {
+            // Start before enabling sensors so GPS callbacks are recorded by the framework.
+            this.slamStore.dispatch(
+                startSession({
+                    scenarioName: 'kml-ar',
+                    sessionName: 'live',
+                    startTime: Date.now(),
+                })
+            );
             const result = await Promise.race([
                 this.enableGpsArController.enable({
                     container,
@@ -220,6 +238,11 @@ export class ArApp {
                             currentHeading,
                             pos.accuracy
                         );
+                        this.sceneManager.updateUserGpsPosition({
+                            lat: pos.lat,
+                            lon: pos.lon,
+                            alt: pos.altitude ?? 0,
+                        });
                         const snapshot = this.anchorCoordinator.getDiagnosticSnapshot();
                         this.diagnostics.record({
                             stage: 'gps',
@@ -233,7 +256,7 @@ export class ArApp {
                             anchor: snapshot.anchor,
                         });
                         this.sceneManager.updateAccuracyRing(pos.accuracy);
-                        this.hud.updateDiagnosticInfo(this.anchorCoordinator.getDiagnosticInfo());
+                        this.updateTrackingQualityGate();
                     },
 
                     // Feed device orientation into framework tracking store + anchor coordinator
@@ -247,7 +270,7 @@ export class ArApp {
                                 heading: snapshot.heading,
                                 anchor: snapshot.anchor,
                             });
-                            this.hud.updateDiagnosticInfo(this.anchorCoordinator.getDiagnosticInfo());
+                            this.updateTrackingQualityGate();
                         }
                     },
                 }),
@@ -258,6 +281,8 @@ export class ArApp {
                 console.warn('[ArApp] AR session failed to start:', result.error);
                 this.hud.updateFileStatus(`AR Error: ${result.error ?? 'failed to start'}`);
                 await this.enableGpsArController.disable();
+                this.slamStore.dispatch(endSession());
+                this.sceneManager.setTrackingQualityGate(false);
                 this.hud.updateTrackingState('ready');
                 return;
             }
@@ -266,18 +291,11 @@ export class ArApp {
             console.error('[ArApp] Exception during startArSession:', err);
             this.hud.updateFileStatus(`AR Exception: ${msg}`);
             await this.enableGpsArController.disable();
+            this.slamStore.dispatch(endSession());
+            this.sceneManager.setTrackingQualityGate(false);
             this.hud.updateTrackingState('ready');
             return;
         }
-
-        // Dispatch session start to framework SLAM store
-        this.slamStore.dispatch(
-            startSession({
-                scenarioName: 'kml-ar',
-                sessionName: 'live',
-                startTime: Date.now(),
-            })
-        );
 
         // Bind framework alignment lerp onto arWorldGroup
         const arWorldGroup = getArWorldGroup();
@@ -288,10 +306,18 @@ export class ArApp {
             });
             this.diagnosticsFrameUnsubscribe?.();
             this.diagnosticsFrameUnsubscribe = registerFrameUpdate(() => {
+                this.updateTrackingQualityGate();
                 const feature = this.documentModel?.getFeatures()[0];
                 const featureObject = feature ? this.sceneManager.getObjectForFeature(feature.id) : null;
                 const anchor = this.anchorCoordinator.getDiagnosticSnapshot().anchor;
-                this.diagnostics.recordFrame(arWorldGroup, feature?.id, featureObject, anchor);
+                this.diagnostics.recordFrame(
+                    arWorldGroup,
+                    feature?.id,
+                    featureObject,
+                    anchor,
+                    this.sceneManager.featureGroup.visible,
+                    this.getTrackingQualityDiagnostic()
+                );
             });
         }
 
@@ -312,6 +338,8 @@ export class ArApp {
         this.sceneManager.detachFromFrameworkScene();
         this.sessionGeoBridge = null;
         this.resetSlamStore();
+        this.sceneManager.setTrackingQualityGate(false);
+        this.sceneManager.setTrackingQualityState(null);
         this.hud.updateTrackingState('ready');
         this.hud.updateDiagnosticInfo('');
     }
@@ -342,6 +370,41 @@ export class ArApp {
             getArPose: getCurrentArPose,
         });
 
+    }
+
+    private updateTrackingQualityGate(): void {
+        const report = selectTrackingQuality(this.slamStore.getState());
+        this.sceneManager.setTrackingQualityState(report?.state ?? null);
+        const anchorInfo = this.anchorCoordinator.getDiagnosticInfo();
+        if (!report) {
+            this.hud.updateDiagnosticInfo(`${anchorInfo} | Markers hidden: waiting for tracking quality`);
+            return;
+        }
+        const markerStatus = report.state === 'ok'
+            ? 'Markers visible'
+            : `Markers provisional: tracking ${report.state}`;
+        const visibleCount = this.sceneManager.getVisibleFeatureCount();
+        const totalCount = this.documentModel?.getFeatures().length ?? 0;
+        const radius = this.sceneManager.getVisibilityRadius();
+        const proximityInfo = totalCount > 0 ? ` | ${visibleCount}/${totalCount} in range (${radius}m)` : '';
+        this.hud.updateDiagnosticInfo(
+            `${anchorInfo} | ${markerStatus} (${Math.round(report.confidence * 100)}%)${proximityInfo}`
+        );
+    }
+
+    private getTrackingQualityDiagnostic(): ArTrackingQualityDiagnostic | null {
+        const report = selectTrackingQuality(this.slamStore.getState());
+        if (!report) return null;
+        return {
+            state: report.state,
+            confidence: report.confidence,
+            observationsSeen: report.diagnostics.observationsSeen,
+            coverage: report.subScores.coverage,
+            convergence: report.subScores.convergence,
+            gpsAccuracy: report.subScores.gpsAccuracy,
+            walkedDistanceM: report.diagnostics.walkedDistanceM,
+            directionSpreadDeg: report.diagnostics.directionSpreadDeg,
+        };
     }
 
     private startSessionProjection(): void {
@@ -399,13 +462,13 @@ export class ArApp {
         }
 
         if (documentModel.getFeatures().length > 0 && result.renderedFeatureCount === 0) {
-            this.hud.updateFileStatus('No features in AR range (within 500 m)');
+            this.hud.updateFileStatus(`No features in AR proximity (within ${this.sceneManager.getVisibilityRadius()} m)`);
         }
 
         if (result.largeFileWarning) {
             const count = documentModel.getFeatures().length;
             this.hud.updateFileStatus(
-                `⚠️ Large file (${count} features): only features within 500 m are rendered`
+                `⚠️ Large file (${count} features)`
             );
         }
     }

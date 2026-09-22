@@ -55,10 +55,10 @@ export interface FeatureSnapshot {
 
 /** Template für neue Features */
 export type FeatureTemplate =
-    | { type: 'marker'; name: string; position: GeoPosition }
-    | { type: 'line'; name: string; coordinates: GeoPosition[] }
-    | { type: 'ground-overlay'; name: string; imageHref: string; latLonBox: LatLonBox }
-    | { type: 'model'; name: string; modelHref: string; location: GeoPosition; orientation?: ModelOrientation; scale?: ModelScale };
+    | { type: 'marker'; name: string; position: GeoPosition; altitudeMode?: AltitudeMode }
+    | { type: 'line'; name: string; coordinates: GeoPosition[]; altitudeMode?: AltitudeMode }
+    | { type: 'ground-overlay'; name: string; imageHref: string; latLonBox: LatLonBox; altitudeMode?: AltitudeMode }
+    | { type: 'model'; name: string; modelHref: string; location: GeoPosition; orientation?: ModelOrientation; scale?: ModelScale; altitudeMode?: AltitudeMode };
 
 /** Entry to be written to a ZIP archive (used by kmz-io) */
 export interface ZipArchiveEntry {
