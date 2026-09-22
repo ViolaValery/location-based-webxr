@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
-    getArWorldGroup,
     getCamera,
     getScene,
     registerFrameUpdate,
@@ -14,20 +13,20 @@ import { FeatureId, GeoPosition } from '../contracts/type';
 import { FeatureSceneRegistry } from '../editor/feature-scene-registry';
 
 const LARGE_FEATURE_THRESHOLD = 500;
-const CULL_DISTANCE_METERS = 500;
+const DEFAULT_VISIBILITY_RADIUS_METERS = 50;
 
 /**
  * KmlSceneHelper — owns only the KML-specific scene objects:
  * - FeatureSceneRegistry (KML features → THREE.Object3D)
- * - featureGroup (child of getArWorldGroup())
+ * - featureGroup (child of the GPS-world scene from getScene())
  * - GPS accuracy ring helper mesh
  * - Desktop OrbitControls (non-AR mode only)
  *
  * Does NOT own: Scene, Renderer, Camera, AnimationLoop.
- * Those are created by initAR() and retrieved via getArWorldGroup() / getCamera().
+ * Those are created by initAR() and retrieved via getScene() / getCamera().
  */
 export class ArSceneManager {
-    /** The group that holds all KML feature objects. Added to arWorldGroup after initAR(). */
+    /** The group that holds all KML feature objects. Added to the GPS-world scene after initAR(). */
     public readonly featureGroup: THREE.Group;
     private readonly overlayGroup: THREE.Group;
     private readonly accuracyRing: THREE.Mesh;
@@ -38,6 +37,12 @@ export class ArSceneManager {
 
     private unregisterFrameUpdate: (() => void) | null = null;
     private largeFileWarningShown = false;
+    private trackingQualityGateActive = false;
+    private trackingQualityReady = false;
+
+    private currentUserGps: GeoPosition | null = null;
+    private visibilityRadiusMeters: number = DEFAULT_VISIBILITY_RADIUS_METERS;
+    private features: readonly IFeatureView[] = [];
 
     public constructor(private readonly rendererFactory: IRendererFactory<THREE.Object3D>) {
         this.featureGroup = new THREE.Group();
@@ -65,25 +70,25 @@ export class ArSceneManager {
     }
 
     /**
-     * Attach featureGroup to the framework's arWorldGroup and start the per-frame tick.
+     * Attach featureGroup to the framework's GPS-world scene and start the per-frame tick.
      * Call this after initAR() succeeds.
      *
      * @param rendererDomElement - Canvas element for OrbitControls (desktop/replay mode).
      */
     public attachToFrameworkScene(rendererDomElement?: HTMLElement): void {
-        const worldGroup = getArWorldGroup();
-        if (worldGroup && this.featureGroup.parent !== worldGroup) {
-            // Basis transformation: Three.js (+X=East, -Z=North) -> arWorldGroup NUE (+X=North, +Z=East)
+        const scene = getScene();
+        if (scene && this.featureGroup.parent !== scene) {
+            // Basis transformation: GeoBridge (+X=East, -Z=North) -> GPS-world NUE (+X=North, +Z=East)
             this.featureGroup.rotation.y = -Math.PI / 2;
-            worldGroup.add(this.featureGroup);
+            scene.add(this.featureGroup);
         }
 
-        // Register a per-frame tick for OrbitControls update (desktop mode) & dynamic distance culling.
+        // Register a per-frame tick for OrbitControls update (desktop mode) & dynamic proximity culling.
         this.unregisterFrameUpdate = registerFrameUpdate((_dt: number, _elapsed: number) => {
             if (this.controls) {
                 this.controls.update();
             }
-            this.cullDistantFeatures();
+            this.updateProximityVisibility();
         });
 
         // Create OrbitControls for desktop/replay preview.
@@ -98,8 +103,21 @@ export class ArSceneManager {
         }
     }
 
+    /** Hide GPS features until the framework reports a converged AR/GPS fit. */
+    public setTrackingQualityGate(active: boolean): void {
+        this.trackingQualityGateActive = active;
+        this.updateFeatureVisibility();
+    }
+
+    public setTrackingQualityState(state: 'warming-up' | 'ar-lost' | 'degraded' | 'ok' | null): void {
+        // KML features live in GPS-world scene space, so they can still be
+        // inspected while AR tracking is lost. The HUD marks this as provisional.
+        this.trackingQualityReady = state !== null;
+        this.updateFeatureVisibility();
+    }
+
     /**
-     * Detach featureGroup from arWorldGroup and clean up the frame tick.
+     * Detach featureGroup from the GPS-world scene and clean up the frame tick.
      * Call this after endARSession() completes.
      */
     public detachFromFrameworkScene(): void {
@@ -126,6 +144,24 @@ export class ArSceneManager {
         this.accuracyRing.visible = true;
     }
 
+    /** Set the proximity visibility radius in meters. */
+    public setVisibilityRadius(radiusMeters: number): void {
+        if (radiusMeters > 0 && Number.isFinite(radiusMeters)) {
+            this.visibilityRadiusMeters = radiusMeters;
+            this.updateProximityVisibility();
+        }
+    }
+
+    public getVisibilityRadius(): number {
+        return this.visibilityRadiusMeters;
+    }
+
+    /** Feed the latest phone GPS fix to update dynamic marker visibility based on real user location. */
+    public updateUserGpsPosition(position: GeoPosition): void {
+        this.currentUserGps = position;
+        this.updateProximityVisibility();
+    }
+
     /**
      * Reconcile IKmlDocument features to THREE.Object3D.
      * Runs async so the framework AnimationLoop is never blocked.
@@ -144,14 +180,20 @@ export class ArSceneManager {
             this.largeFileWarningShown = true;
         }
 
-        const anchor = bridge.getAnchor();
-        const visibleFeatures = anchor
-            ? features.filter((feature) => featureIsWithinRange(feature, anchor.position, CULL_DISTANCE_METERS))
-            : [];
+        this.features = features;
 
-        await this.registry.reconcile(visibleFeatures, assets, bridge);
-        this.cullDistantFeatures();
-        return { largeFileWarning, renderedFeatureCount: visibleFeatures.length };
+        // In WebXR local-floor space, Y = 0 is the ground plane beneath user's feet.
+        // clampToGround features sit at local Y = 0 on this plane.
+        // Do NOT offset featureGroup.position.y with anchor altitude.
+        this.featureGroup.position.set(0, 0, 0);
+
+        // Keep all document features in the registry so they can be revealed dynamically
+        // when the user approaches, without requiring expensive re-parsing.
+        await this.registry.reconcile(features, assets, bridge);
+        this.updateProximityVisibility();
+
+        const renderedFeatureCount = this.getVisibleFeatureCount();
+        return { largeFileWarning, renderedFeatureCount };
     }
 
     public getObjectForFeature(featureId: FeatureId): THREE.Object3D | null {
@@ -163,7 +205,22 @@ export class ArSceneManager {
     }
 
     public getPickableObjects(): THREE.Object3D[] {
-        return this.featureGroup.children.filter((c: THREE.Object3D) => c !== this.overlayGroup);
+        if (!this.featureGroup.visible) return [];
+        return this.featureGroup.children.filter(
+            (c: THREE.Object3D) => c !== this.overlayGroup && c.visible
+        );
+    }
+
+    public getVisibleFeatureCount(): number {
+        return this.featureGroup.children.filter(
+            (c: THREE.Object3D) => c !== this.overlayGroup && c.visible
+        ).length;
+    }
+
+    /** Convert a GPS-world scene point into the local frame used by renderers. */
+    public worldToFeatureLocal(worldPosition: THREE.Vector3): THREE.Vector3 {
+        this.featureGroup.updateMatrixWorld(true);
+        return this.featureGroup.worldToLocal(worldPosition.clone());
     }
 
     public dispose(): void {
@@ -175,25 +232,65 @@ export class ArSceneManager {
     }
 
     /**
-     * Cull features beyond CULL_DISTANCE_METERS from the camera.
-     * Uses world-space distance (THREE.Vector3.distanceTo) — no geo math.
+     * Dynamically update visibility of features based on proximity to current user position.
+     * Uses horizontal distance (ignoring vertical Y) and hysteresis to prevent boundary flicker.
      */
-    private cullDistantFeatures(): void {
-        const cam = getCamera();
-        if (!cam) return;
-        const camWorldPos = new THREE.Vector3();
-        cam.getWorldPosition(camWorldPos);
+    public updateProximityVisibility(): void {
+        if (this.trackingQualityGateActive && !this.trackingQualityReady) {
+            this.featureGroup.visible = false;
+            return;
+        }
+        this.featureGroup.visible = true;
 
-        const featurePos = new THREE.Vector3();
+        const cam = getCamera();
+        const camWorldPos = cam ? new THREE.Vector3() : null;
+        if (cam && camWorldPos) {
+            cam.getWorldPosition(camWorldPos);
+        }
+
+        const childWorldPos = new THREE.Vector3();
+        const enterRadius = this.visibilityRadiusMeters;
+        const exitRadius = this.visibilityRadiusMeters * 1.15;
+
         for (const child of this.featureGroup.children) {
             if (child === this.overlayGroup) continue;
-            child.getWorldPosition(featurePos);
-            child.visible = featurePos.distanceTo(camWorldPos) <= CULL_DISTANCE_METERS;
+
+            const featureId = child.userData.featureId as FeatureId | undefined;
+            const feature = featureId ? this.features.find((f) => f.id === featureId) : null;
+
+            let dist: number | null = null;
+            if (feature && this.currentUserGps) {
+                dist = featureDistanceMetres(feature, this.currentUserGps);
+            } else if (camWorldPos) {
+                child.getWorldPosition(childWorldPos);
+                // Horizontal distance only (ignoring vertical Y)
+                dist = Math.hypot(childWorldPos.x - camWorldPos.x, childWorldPos.z - camWorldPos.z);
+            }
+
+            if (dist === null) {
+                continue;
+            }
+
+            const isCurrentlyVisible = child.visible;
+            if (isCurrentlyVisible) {
+                child.visible = dist <= exitRadius;
+            } else {
+                child.visible = dist <= enterRadius;
+            }
         }
+    }
+
+    /** Backward compatibility alias for updateProximityVisibility. */
+    public cullDistantFeatures(): void {
+        this.updateProximityVisibility();
+    }
+
+    private updateFeatureVisibility(): void {
+        this.featureGroup.visible = !this.trackingQualityGateActive || this.trackingQualityReady;
     }
 }
 
-/** Great-circle distance used only to reject non-local data before ENU projection. */
+/** Great-circle distance used for geo-proximity filtering. */
 function distanceMetres(a: GeoPosition, b: GeoPosition): number {
     const radians = Math.PI / 180;
     const dLat = (b.lat - a.lat) * radians;
@@ -204,25 +301,36 @@ function distanceMetres(a: GeoPosition, b: GeoPosition): number {
     return 6_371_000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-function featureIsWithinRange(feature: IFeatureView, anchor: GeoPosition, radiusMetres: number): boolean {
-    const isNear = (position: GeoPosition): boolean => distanceMetres(anchor, position) <= radiusMetres;
-
+function featureDistanceMetres(feature: IFeatureView, point: GeoPosition): number {
     switch (feature.type) {
         case 'marker':
-            return isNear(feature.position);
+            return distanceMetres(point, feature.position);
         case 'model':
-            return isNear(feature.location);
-        case 'line':
-            return feature.coordinates.some(isNear);
+            return distanceMetres(point, feature.location);
+        case 'line': {
+            if (feature.coordinates.length === 0) return Number.POSITIVE_INFINITY;
+            let minDist = Number.POSITIVE_INFINITY;
+            for (const coord of feature.coordinates) {
+                const d = distanceMetres(point, coord);
+                if (d < minDist) minDist = d;
+            }
+            return minDist;
+        }
         case 'ground-overlay': {
             const { north, south, east, west } = feature.latLonBox;
-            return [
+            const corners: GeoPosition[] = [
                 { lat: north, lon: east, alt: feature.altitude },
                 { lat: north, lon: west, alt: feature.altitude },
                 { lat: south, lon: east, alt: feature.altitude },
                 { lat: south, lon: west, alt: feature.altitude },
                 { lat: (north + south) / 2, lon: (east + west) / 2, alt: feature.altitude },
-            ].some(isNear);
+            ];
+            let minDist = Number.POSITIVE_INFINITY;
+            for (const c of corners) {
+                const d = distanceMetres(point, c);
+                if (d < minDist) minDist = d;
+            }
+            return minDist;
         }
     }
 }

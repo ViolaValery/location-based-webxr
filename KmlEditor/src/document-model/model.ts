@@ -106,12 +106,14 @@ class MarkerFeatureView extends BaseFeatureView implements IMarkerFeature {
     private _position: GeoPosition;
     public iconHref: string | null;
     public iconScale: number;
+    public altitudeMode: AltitudeMode;
 
-    constructor(document: KmlDocumentImpl, featureIndex: number, id: FeatureId, name: string, description: string, kmlId: string | undefined, position: GeoPosition, iconHref: string | null, iconScale: number) {
+    constructor(document: KmlDocumentImpl, featureIndex: number, id: FeatureId, name: string, description: string, kmlId: string | undefined, position: GeoPosition, iconHref: string | null, iconScale: number, altitudeMode: AltitudeMode = 'clampToGround') {
         super(document, featureIndex, 'marker', id, name, description, kmlId, 'Placemark');
         this._position = position;
         this.iconHref = iconHref;
         this.iconScale = iconScale;
+        this.altitudeMode = altitudeMode;
     }
 
     public set position(value: GeoPosition) {
@@ -127,10 +129,12 @@ class MarkerFeatureView extends BaseFeatureView implements IMarkerFeature {
 class LineFeatureView extends BaseFeatureView implements ILineFeature {
     public readonly type: 'line' = 'line';
     private _coordinates: GeoPosition[];
+    public altitudeMode: AltitudeMode;
 
-    constructor(document: KmlDocumentImpl, featureIndex: number, id: FeatureId, name: string, description: string, kmlId: string | undefined, coordinates: GeoPosition[]) {
+    constructor(document: KmlDocumentImpl, featureIndex: number, id: FeatureId, name: string, description: string, kmlId: string | undefined, coordinates: GeoPosition[], altitudeMode: AltitudeMode = 'clampToGround') {
         super(document, featureIndex, 'line', id, name, description, kmlId, 'Placemark');
         this._coordinates = coordinates;
+        this.altitudeMode = altitudeMode;
     }
 
     public set coordinates(value: GeoPosition[]) {
@@ -346,6 +350,7 @@ class KmlDocumentImpl implements IKmlDocument {
         }
 
         if (this.containsTag(fragment, 'Point')) {
+            const altitudeMode = (this.extractText(fragment, 'altitudeMode') || 'clampToGround') as AltitudeMode;
             return new MarkerFeatureView(
                 this,
                 index,
@@ -356,10 +361,12 @@ class KmlDocumentImpl implements IKmlDocument {
                 this.parsePosition(fragment),
                 this.extractIconHref(fragment),
                 this.extractNumber(fragment, 'scale') ?? 1,
+                altitudeMode,
             );
         }
 
         if (this.containsTag(fragment, 'LineString') || this.containsTag(fragment, 'Polygon')) {
+            const altitudeMode = (this.extractText(fragment, 'altitudeMode') || 'clampToGround') as AltitudeMode;
             return new LineFeatureView(
                 this,
                 index,
@@ -370,6 +377,7 @@ class KmlDocumentImpl implements IKmlDocument {
                 this.containsTag(fragment, 'Polygon')
                     ? this.parsePolygonCoordinates(fragment)
                     : this.parseLineCoordinates(fragment),
+                altitudeMode,
             );
         }
 
@@ -462,11 +470,13 @@ class KmlDocumentImpl implements IKmlDocument {
         switch (template.type) {
             case 'marker': {
                 const coords = formatGeoPosition(template.position);
-                return `<Placemark id="${id}"><name>${this.escapeXml(template.name)}</name><Point><coordinates>${coords}</coordinates></Point></Placemark>`;
+                const altModeXml = template.altitudeMode ? `<altitudeMode>${template.altitudeMode}</altitudeMode>` : '';
+                return `<Placemark id="${id}"><name>${this.escapeXml(template.name)}</name><Point>${altModeXml}<coordinates>${coords}</coordinates></Point></Placemark>`;
             }
             case 'line': {
                 const coords = template.coordinates.map((coordinate) => formatGeoPosition(coordinate)).join('\n');
-                return `<Placemark id="${id}"><name>${this.escapeXml(template.name)}</name><LineString><coordinates>${coords}</coordinates></LineString></Placemark>`;
+                const altModeXml = template.altitudeMode ? `<altitudeMode>${template.altitudeMode}</altitudeMode>` : '';
+                return `<Placemark id="${id}"><name>${this.escapeXml(template.name)}</name><LineString>${altModeXml}<coordinates>${coords}</coordinates></LineString></Placemark>`;
             }
             case 'ground-overlay': {
                 return `<GroundOverlay id="${id}"><name>${this.escapeXml(template.name)}</name><Icon><href>${this.escapeXml(template.imageHref)}</href></Icon><LatLonBox><north>${template.latLonBox.north}</north><south>${template.latLonBox.south}</south><east>${template.latLonBox.east}</east><west>${template.latLonBox.west}</west><rotation>${template.latLonBox.rotation}</rotation></LatLonBox></GroundOverlay>`;

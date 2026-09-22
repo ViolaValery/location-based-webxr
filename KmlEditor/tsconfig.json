@@ -26,6 +26,12 @@
       "gps-plus-slam-app-framework/sensors/*": [
         "../GpsPlusSlamJs_AppFramework/src/sensors/*.ts"
       ],
+      "gps-plus-slam-app-framework/core": [
+        "../GpsPlusSlamJs_AppFramework/src/core/index.ts"
+      ],
+      "gps-plus-slam-app-framework/licensing": [
+        "../GpsPlusSlamJs_AppFramework/src/licensing/index.ts"
+      ],
       "gps-plus-slam-app-framework": [
         "../GpsPlusSlamJs_AppFramework/src/index.ts"
       ]

@@ -1,9 +1,9 @@
 import { AnchorNotSetError, InvalidGeoPositionError, InvalidWorldPositionError } from './errors';
 import { formatCoordinate } from './format';
 import {
-    geoToLocalOffset,
-    localOffsetToGeo,
     inverseRotateHorizontal,
+    normalizeLonDelta,
+    normalizeLongitude,
     rotateHorizontal,
     validateGeoPosition,
     validateWorldPosition,
@@ -11,6 +11,14 @@ import {
 import { AltitudeMode, GeoPosition, WorldPosition } from '../contracts/type';
 import { GeoAnchor, IGeoBridge } from '../contracts/geo-bridge';
 import { geoAltitudeToWorldY, worldYToGeoAltitude } from './altitude-policy';
+import {
+    calcGpsCoords,
+    calcRelativeCoordsInMeters,
+    validateLicenseKey,
+} from 'gps-plus-slam-app-framework/core';
+import { COMMUNITY_LICENSE_KEY } from 'gps-plus-slam-app-framework/licensing';
+
+let frameworkCoreActivated = false;
 
 export class GeoBridgeImpl implements IGeoBridge {
     private anchor: GeoAnchor | null = null;
@@ -35,6 +43,7 @@ export class GeoBridgeImpl implements IGeoBridge {
 
     public geoToWorld(position: GeoPosition, altitudeMode: AltitudeMode = 'clampToGround'): WorldPosition {
         const anchor = this.requireAnchor();
+        activateFrameworkCore();
 
         try {
             validateGeoPosition(position);
@@ -42,7 +51,15 @@ export class GeoBridgeImpl implements IGeoBridge {
             throw new InvalidGeoPositionError(error instanceof Error ? error.message : 'Invalid geo position');
         }
 
-        const { east, north } = geoToLocalOffset(anchor.position, position);
+        const normalizedLongitude = anchor.position.lon + normalizeLonDelta(position.lon - anchor.position.lon);
+        const relativeNue = calcRelativeCoordsInMeters(
+            { lat: anchor.position.lat, lon: anchor.position.lon },
+            { lat: position.lat, lon: normalizedLongitude },
+            position.alt,
+            anchor.position.alt
+        );
+        const east = relativeNue[2];
+        const north = relativeNue[0];
         const rotated = rotateHorizontal(east, north, (anchor.heading * Math.PI) / 180);
 
         return {
@@ -54,6 +71,7 @@ export class GeoBridgeImpl implements IGeoBridge {
 
     public worldToGeo(position: WorldPosition, altitudeMode: AltitudeMode = 'clampToGround'): GeoPosition {
         const anchor = this.requireAnchor();
+        activateFrameworkCore();
 
         try {
             validateWorldPosition(position);
@@ -62,10 +80,13 @@ export class GeoBridgeImpl implements IGeoBridge {
         }
 
         const unrotated = inverseRotateHorizontal(position.x, position.z, (anchor.heading * Math.PI) / 180);
-        const geo = localOffsetToGeo(anchor.position, unrotated.east, unrotated.north);
+        const geo = calcGpsCoords(
+            { lat: anchor.position.lat, lon: anchor.position.lon },
+            [unrotated.north, 0, unrotated.east]
+        );
 
         return {
-            lon: geo.lon,
+            lon: normalizeLongitude(geo.lon),
             lat: geo.lat,
             alt: worldYToGeoAltitude(position, anchor.position.alt, altitudeMode),
         };
@@ -82,4 +103,10 @@ export class GeoBridgeImpl implements IGeoBridge {
 
         return this.anchor;
     }
+}
+
+function activateFrameworkCore(): void {
+    if (frameworkCoreActivated) return;
+    validateLicenseKey(COMMUNITY_LICENSE_KEY);
+    frameworkCoreActivated = true;
 }

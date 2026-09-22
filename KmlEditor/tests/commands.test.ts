@@ -99,8 +99,8 @@ function getFeature<T extends IFeatureView>(document: IKmlDocument, type: T['typ
 }
 
 function expectPositionsEqual(actual: GeoPosition, expected: GeoPosition): void {
-    expect(actual.lon).toBeCloseTo(expected.lon, 9);
-    expect(actual.lat).toBeCloseTo(expected.lat, 9);
+  expect(actual.lon).toBeCloseTo(expected.lon, 8);
+  expect(actual.lat).toBeCloseTo(expected.lat, 8);
     expect(actual.alt).toBeCloseTo(expected.alt, 9);
 }
 

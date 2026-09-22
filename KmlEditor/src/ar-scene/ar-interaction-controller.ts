@@ -170,7 +170,7 @@ export class ArInteractionController {
         if (TEMP_RAYCASTER.ray.intersectPlane(this.dragPlane, targetPoint)) {
             const nativeObject = this.sceneManager.getObjectForFeature(this.activeDragFeatureId);
             if (nativeObject) {
-                nativeObject.position.copy(targetPoint);
+                nativeObject.position.copy(this.sceneManager.worldToFeatureLocal(targetPoint));
             }
         }
     }

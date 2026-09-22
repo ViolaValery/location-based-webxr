@@ -44,12 +44,14 @@ export interface IMarkerFeature extends IFeatureView {
     position: GeoPosition;           // lon, lat, alt
     iconHref: string | null;         // KML IconStyle href
     iconScale: number;               // KML IconStyle scale
+    altitudeMode: AltitudeMode;
 }
 
 // Linie (Placemark → LineString)
 export interface ILineFeature extends IFeatureView {
     readonly type: 'line';
     coordinates: GeoPosition[];      // geordnete Vertex-Liste
+    altitudeMode: AltitudeMode;
 }
 
 // Ground Overlay

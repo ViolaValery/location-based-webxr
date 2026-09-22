@@ -131,6 +131,48 @@ describe('KML Document Model (Lossless & Typed Feature View)', () => {
       const diffLen = Math.abs(output.length - kml.length);
       expect(diffLen).toBeLessThan(100); // Only a small chunk changed
     });
+
+    it('should parse altitudeMode for marker and line features with clampToGround fallback', () => {
+      const kmlWithAltitude = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <Placemark id="pt-1">
+      <name>Relative Marker</name>
+      <Point>
+        <altitudeMode>relativeToGround</altitudeMode>
+        <coordinates>6.06,50.77,25.0</coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="ln-1">
+      <name>Absolute Line</name>
+      <LineString>
+        <altitudeMode>absolute</altitudeMode>
+        <coordinates>6.06,50.77,100 6.07,50.78,110</coordinates>
+      </LineString>
+    </Placemark>
+    <Placemark id="pt-default">
+      <name>Default Clamped Marker</name>
+      <Point>
+        <coordinates>6.06,50.77,0</coordinates>
+      </Point>
+    </Placemark>
+  </Document>
+</kml>`;
+      doc.parse(kmlWithAltitude);
+      const features = doc.getFeatures();
+
+      const relMarker = features.find(f => f.id === 'pt-1') as IMarkerFeature;
+      expect(relMarker).toBeDefined();
+      expect(relMarker.altitudeMode).toBe('relativeToGround');
+
+      const absLine = features.find(f => f.id === 'ln-1') as ILineFeature;
+      expect(absLine).toBeDefined();
+      expect(absLine.altitudeMode).toBe('absolute');
+
+      const defaultMarker = features.find(f => f.id === 'pt-default') as IMarkerFeature;
+      expect(defaultMarker).toBeDefined();
+      expect(defaultMarker.altitudeMode).toBe('clampToGround');
+    });
   });
 
   describe('Demo script output', () => {

@@ -11,6 +11,19 @@ export interface ArDiagnosticSample {
     markerLocal?: { x: number; y: number; z: number };
     markerWorld?: { x: number; y: number; z: number };
     arWorldGroupMatrix?: number[];
+    featureGroupVisible?: boolean;
+    trackingQuality?: ArTrackingQualityDiagnostic | null;
+}
+
+export interface ArTrackingQualityDiagnostic {
+    state: 'warming-up' | 'ar-lost' | 'degraded' | 'ok';
+    confidence: number;
+    observationsSeen: number;
+    coverage: number;
+    convergence: number;
+    gpsAccuracy: number;
+    walkedDistanceM: number;
+    directionSpreadDeg: number;
 }
 
 export interface ArDiagnosticLog {
@@ -50,7 +63,9 @@ export class ArSceneDiagnostics {
         worldGroup: THREE.Object3D,
         featureId: string | undefined,
         featureObject: THREE.Object3D | null,
-        anchor: { lat: number; lon: number; alt: number } | null
+        anchor: { lat: number; lon: number; alt: number } | null,
+        featureGroupVisible: boolean,
+        trackingQuality: ArTrackingQualityDiagnostic | null
     ): void {
         const now = performance.now();
         if (now - this.lastFrameMs < 250) return;
@@ -65,6 +80,8 @@ export class ArSceneDiagnostics {
             markerLocal: featureObject ? vectorToObject(featureObject.position) : undefined,
             markerWorld: markerWorld ? vectorToObject(markerWorld) : undefined,
             arWorldGroupMatrix: worldGroup.matrix.toArray(),
+            featureGroupVisible,
+            trackingQuality,
         });
     }
 
