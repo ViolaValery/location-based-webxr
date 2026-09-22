@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lab Final Presentation — Location-Based WebXR KML Editor</title>
+  <title>Location-Based WebXR KML Editor</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg-dark: #090d16;
-      --bg-card: rgba(18, 26, 43, 0.7);
-      --bg-card-hover: rgba(24, 34, 56, 0.85);
+      --bg-card: rgba(18, 26, 43, 0.75);
+      --bg-card-hover: rgba(24, 34, 56, 0.9);
       --border-color: rgba(255, 255, 255, 0.12);
       --border-accent: rgba(99, 102, 241, 0.4);
       --text-main: #f3f4f6;
@@ -82,16 +82,6 @@
       gap: 14px;
     }
 
-    .header-title span.tag {
-      background: rgba(99, 102, 241, 0.15);
-      color: #818cf8;
-      border: 1px solid rgba(99, 102, 241, 0.3);
-      padding: 4px 10px;
-      border-radius: 4px;
-      font-size: 0.8rem;
-      font-weight: 500;
-    }
-
     .header-controls {
       pointer-events: auto;
       display: flex;
@@ -117,7 +107,7 @@
       border-color: var(--primary);
     }
 
-    /* Widescreen Deck Viewport for 27-inch Monitors */
+    /* Widescreen Deck Viewport */
     .deck-container {
       width: 100vw;
       height: 100vh;
@@ -173,7 +163,7 @@
       font-weight: 400;
     }
 
-    /* Grid Layouts optimized for 27-inch Display */
+    /* Grids */
     .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -186,7 +176,7 @@
       gap: 24px;
     }
 
-    /* Step-by-Step Fragment Reveal Animation */
+    /* Fragments */
     .fragment {
       opacity: 0.12;
       transform: translateY(14px);
@@ -200,12 +190,12 @@
       filter: blur(0);
     }
 
-    /* Raw Clean Widescreen Glass Cards */
+    /* Cards */
     .glass-card {
       background: var(--bg-card);
       border: 1px solid var(--border-color);
       border-radius: 10px;
-      padding: 28px;
+      padding: 24px;
       transition: background 0.2s ease, border-color 0.2s ease;
       height: 100%;
       display: flex;
@@ -230,30 +220,30 @@
     }
 
     .card-title {
-      font-size: 1.35rem;
+      font-size: 1.25rem;
       font-weight: 600;
       color: #ffffff;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
     .card-text {
       color: var(--text-muted);
-      font-size: 1.05rem;
-      line-height: 1.6;
+      font-size: 1rem;
+      line-height: 1.55;
     }
 
-    /* Simple Bullet List */
+    /* Bullet List */
     .bullet-list {
       list-style-type: disc;
-      padding-left: 22px;
+      padding-left: 20px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     .bullet-item {
       color: #e2e8f0;
-      font-size: 1.05rem;
+      font-size: 0.98rem;
       line-height: 1.5;
     }
 
@@ -261,18 +251,47 @@
       color: #ffffff;
     }
 
-    /* Code Chips */
+    /* Code Block & Chips */
     .code-chip {
       font-family: var(--font-code);
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.15);
       color: #a5b4fc;
-      padding: 2px 8px;
+      padding: 2px 7px;
       border-radius: 4px;
-      font-size: 0.92rem;
+      font-size: 0.88rem;
     }
 
-    /* Embedded Demo Iframe Styling */
+    .code-block {
+      font-family: var(--font-code);
+      background: rgba(10, 14, 23, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+      line-height: 1.45;
+      overflow-x: auto;
+      margin-top: 8px;
+    }
+
+    .code-block span.highlight-green {
+      color: #34d399;
+      font-weight: bold;
+      background: rgba(16, 185, 129, 0.15);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    .code-block span.highlight-red {
+      color: #fb7185;
+      text-decoration: line-through;
+      background: rgba(244, 63, 94, 0.15);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    /* Demo Frame */
     .demo-frame-container {
       width: 100%;
       height: 560px;
@@ -304,46 +323,96 @@
     .demo-frame-header span.live-tag {
       color: #34d399;
       font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 6px;
     }
 
     /* Architecture Flow Grid */
     .architecture-flow {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 18px;
+      gap: 16px;
     }
 
     .flow-node {
       background: rgba(18, 26, 43, 0.8);
       border: 1px solid var(--border-color);
       border-radius: 8px;
-      padding: 18px;
+      padding: 16px;
       position: relative;
     }
 
     .flow-node-number {
       position: absolute;
-      top: 14px;
-      right: 16px;
-      font-size: 0.85rem;
+      top: 12px;
+      right: 14px;
+      font-size: 0.8rem;
       font-weight: 600;
       color: var(--primary);
     }
 
     .flow-node-title {
-      font-size: 1.1rem;
+      font-size: 1.05rem;
       font-weight: 600;
       color: #fff;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
 
-    .flow-node-desc {
-      font-size: 0.9rem;
+    /* Embedded Architecture Image Box */
+    .diagram-img-box {
+      width: 100%;
+      background: rgba(10, 14, 23, 0.85);
+      border: 1px solid var(--border-accent);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-top: 20px;
+    }
+
+    .diagram-img-box img {
+      max-width: 100%;
+      max-height: 280px;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+
+    /* Step-by-Step Flow Boxes for Slide 6 */
+    .flow-step-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .flow-step-card {
+      background: rgba(18, 26, 43, 0.85);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .flow-step-num {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--primary);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .flow-step-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .flow-step-desc {
+      font-size: 0.85rem;
       color: var(--text-muted);
       line-height: 1.4;
+      margin-bottom: 8px;
     }
 
     /* Bottom Control Bar */
@@ -429,57 +498,23 @@
       color: #ffffff;
     }
 
-    .hero-badges {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 30px;
-      justify-content: center;
-    }
-
-    .pill-badge {
-      padding: 6px 16px;
+    /* Small Concluding Footer Box for Slide 6 */
+    .mini-insight-box {
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid var(--border-accent);
       border-radius: 6px;
-      font-size: 0.95rem;
-      font-weight: 500;
-      background: rgba(99, 102, 241, 0.12);
-      border: 1px solid rgba(99, 102, 241, 0.3);
-      color: #a5b4fc;
-    }
-
-    /* Conceptual Cycle Graphic */
-    .cycle-container {
+      padding: 12px 18px;
+      margin-top: 18px;
+      font-size: 0.92rem;
+      color: #e2e8f0;
       display: flex;
       align-items: center;
-      justify-content: space-between;
       gap: 12px;
-      margin-top: 16px;
     }
 
-    .cycle-step {
-      background: rgba(18, 26, 43, 0.85);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 18px;
-      flex: 1;
-      text-align: left;
-    }
-
-    .cycle-step-num {
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--primary);
-      margin-bottom: 4px;
-    }
-
-    .cycle-step-title {
-      font-size: 1.05rem;
-      font-weight: 600;
-      color: #fff;
-    }
-
-    .cycle-arrow {
-      color: var(--text-muted);
-      font-size: 1.2rem;
+    .mini-insight-box strong {
+      color: #a5b4fc;
+      white-space: nowrap;
     }
   </style>
 </head>
@@ -494,7 +529,6 @@
   <header>
     <div class="header-title">
       <span>LOCATION-BASED WEBXR</span>
-      <span class="tag">LAB FINAL PRESENTATION</span>
     </div>
     <div class="header-controls">
       <div class="kbd-hint">
@@ -509,19 +543,13 @@
   <!-- Slide Viewport -->
   <main class="deck-container">
 
-    <!-- SLIDE 1: TITLE -->
+    <!-- SLIDE 1: TITLE (Clean & simple hero) -->
     <section class="slide hero-slide active" id="slide-1">
-      <div class="slide-section-num">LAB FINAL PRESENTATION</div>
       <h1 class="hero-title">Location-Based WebXR<br>KML / KMZ Editor</h1>
-      <div class="hero-badges fragment">
-        <span class="pill-badge">15 Min Presentation + 5 Min Q&amp;A</span>
-        <span class="pill-badge">Desktop 3D GIS &amp; Mobile AR</span>
-        <span class="pill-badge">Lossless KML AST</span>
-      </div>
       <p class="slide-subtitle fragment" style="text-align: center;">
-        A complete walkthrough of our lab work: motivation, implementation components, learnings, output results, challenges, and successes.
+        A comprehensive walkthrough of our lab work: project motivation, system architecture, KML losslessness, key challenges, and results.
       </p>
-      <div class="fragment" style="margin-top: 20px;">
+      <div class="fragment" style="margin-top: 25px;">
         <button class="btn-icon" style="padding: 12px 28px; font-size: 1rem; background: var(--primary); border-color: var(--primary);" onclick="nextStep()">
           Start Presentation
         </button>
@@ -532,146 +560,200 @@
     <section class="slide" id="slide-2">
       <div class="slide-section-num">1. INTRODUCTION &amp; MOTIVATION</div>
       <h2 class="slide-title">Why We Built This System</h2>
-      <p class="slide-subtitle">Traditional GIS software is restricted to desktop screens. We built a browser-based bridge for spatial WebXR.</p>
+      <p class="slide-subtitle">Bridging traditional desktop KML/KMZ GIS files with mobile browser AR.</p>
       
       <div class="grid-3">
         <div class="glass-card highlight fragment">
-          <div class="card-title">The Problem</div>
+          <div class="card-title">The Goal</div>
           <p class="card-text">
-            KML/KMZ files are standard for geographic data (markers, lines, 3D COLLADA models). Inspecting and editing them directly in the field at real GPS locations has traditionally required desktop software or native apps.
+            Load, view, and edit geographic KML/KMZ files directly in the browser and inspect features anchored at real GPS positions on mobile devices.
           </p>
         </div>
 
         <div class="glass-card highlight fragment">
           <div class="card-title">Our Solution</div>
           <p class="card-text">
-            A web-first system: a desktop 3D GIS editor paired with a mobile WebXR/Sensor AR application. Users can inspect geospatial assets at real coordinates and edit them in field POV.
+            A dual system: a 3D desktop map editor combined with a mobile web app for viewing and editing markers live outdoors.
           </p>
         </div>
 
         <div class="glass-card highlight fragment">
-          <div class="card-title">Practical Use Cases</div>
+          <div class="card-title">Key Advantage</div>
           <p class="card-text">
-            • Field GIS surveying and asset inspection.<br>
-            • Urban planning: placing 3D models at real coordinates.<br>
-            • Round-trip editing: edit in mobile AR, reopen in Google Earth.
+            Lossless editing: edit coordinates on mobile or desktop and reopen the file in Google Earth with 100% of original tags preserved.
           </p>
         </div>
       </div>
     </section>
 
-    <!-- SLIDE 3: SECTION 2 - IMPLEMENTATION OVERVIEW -->
+    <!-- SLIDE 3: SECTION 2 - SYSTEM ARCHITECTURE (Detailed 3+ keypoints per component & Embedded User Diagram) -->
     <section class="slide" id="slide-3">
-      <div class="slide-section-num">2. IMPLEMENTATION &amp; LEARNINGS</div>
-      <h2 class="slide-title">Architecture: The 9 Components</h2>
-      <p class="slide-subtitle">Modular design ensuring separation of concerns between XML data, spatial math, rendering, state, and WebXR tracking.</p>
+      <div class="slide-section-num">2. SYSTEM ARCHITECTURE</div>
+      <h2 class="slide-title">Core Components &amp; System Structure</h2>
+      <p class="slide-subtitle">Clear functional breakdown of each module and how data flows through the application.</p>
       
       <div class="architecture-flow">
         <div class="flow-node fragment">
           <span class="flow-node-number">01</span>
           <div class="flow-node-title">document-model</div>
-          <div class="flow-node-desc">Lossless KML AST parsing &amp; range replacement.</div>
+          <ul class="bullet-list">
+            <li class="bullet-item">Parses raw KML XML into an in-memory document tree.</li>
+            <li class="bullet-item">Tracks exact character range offsets for coordinates in XML text.</li>
+            <li class="bullet-item">100% Losslessness: editing coordinates preserves all unedited tags &amp; styles.</li>
+          </ul>
         </div>
+
         <div class="flow-node fragment">
           <span class="flow-node-number">02</span>
           <div class="flow-node-title">kmz-io</div>
-          <div class="flow-node-desc">ZIP container extraction &amp; Blob URL texture provider.</div>
+          <ul class="bullet-list">
+            <li class="bullet-item">Opens and unzips compressed <span class="code-chip">.kmz</span> archives in memory.</li>
+            <li class="bullet-item">Extracts <span class="code-chip">doc.kml</span>, images, and COLLADA <span class="code-chip">.dae</span> 3D models.</li>
+            <li class="bullet-item">Provides temporary Blob URLs so Three.js can load textures.</li>
+          </ul>
         </div>
+
         <div class="flow-node fragment">
           <span class="flow-node-number">03</span>
           <div class="flow-node-title">geo-bridge</div>
-          <div class="flow-node-desc">WGS84 GPS to Three.js NUE local 3D meter coordinate math.</div>
+          <ul class="bullet-list">
+            <li class="bullet-item">Converts WGS84 GPS (Lat, Lon) to 3D Cartesian meters (North, Up, East).</li>
+            <li class="bullet-item">Handles KML altitude modes (<span class="code-chip">clampToGround</span>, <span class="code-chip">relativeToGround</span>, <span class="code-chip">absolute</span>).</li>
+            <li class="bullet-item">Bi-directional: converts 3D meter drags back into micro-degrees of GPS.</li>
+          </ul>
         </div>
+
         <div class="flow-node fragment">
           <span class="flow-node-number">04</span>
           <div class="flow-node-title">renderers</div>
-          <div class="flow-node-desc">Three.js object renderers for markers, lines, overlays &amp; models.</div>
+          <ul class="bullet-list">
+            <li class="bullet-item">Converts abstract KML features into 3D Three.js visual objects.</li>
+            <li class="bullet-item">Renders Pin Markers, 3D Polylines, 2D GroundOverlays &amp; 3D COLLADA models.</li>
+            <li class="bullet-item">Uses an in-memory TextureCache to prevent duplicate GPU memory leaks.</li>
+          </ul>
         </div>
+
         <div class="flow-node fragment">
           <span class="flow-node-number">05</span>
           <div class="flow-node-title">store</div>
-          <div class="flow-node-desc">Redux Toolkit single source of truth for app &amp; device state.</div>
+          <ul class="bullet-list">
+            <li class="bullet-item">Central Redux state store managing the active document &amp; device state.</li>
+            <li class="bullet-item">Tracks selected feature IDs, dirty save flags &amp; active sensor state.</li>
+            <li class="bullet-item">Connects reducer mutation APIs to trigger UI and 3D scene re-renders.</li>
+          </ul>
         </div>
+
         <div class="flow-node fragment">
           <span class="flow-node-number">06</span>
           <div class="flow-node-title">commands</div>
-          <div class="flow-node-desc">Reversible Command Pattern for spatial/text edits &amp; Undo/Redo.</div>
+          <ul class="bullet-list">
+            <li class="bullet-item">Encapsulates edit actions into atomic, reversible command objects.</li>
+            <li class="bullet-item">Executes spatial edits (moving markers) and text property edits.</li>
+            <li class="bullet-item">Maintains an Undo/Redo stack for <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>.</li>
+          </ul>
         </div>
+
         <div class="flow-node fragment">
           <span class="flow-node-number">07</span>
           <div class="flow-node-title">persistence</div>
-          <div class="flow-node-desc">Debounced auto-save service via HTML5 File System API.</div>
+          <ul class="bullet-list">
+            <li class="bullet-item">Auto-saves modified KML/KMZ contents back to local file system.</li>
+            <li class="bullet-item">Uses a 500ms debounce timer to wait until dragging finishes before saving.</li>
+            <li class="bullet-item">Ensures exported files open seamlessly in Google Earth or QGIS.</li>
+          </ul>
         </div>
+
         <div class="flow-node fragment">
           <span class="flow-node-number">08</span>
-          <div class="flow-node-title">editor</div>
-          <div class="flow-node-desc">Desktop 3D GIS web editor with sidebar &amp; property panel.</div>
+          <div class="flow-node-title">editor (UI)</div>
+          <ul class="bullet-list">
+            <li class="bullet-item">Desktop 3D map viewport with OrbitControls for panning and zooming.</li>
+            <li class="bullet-item">Sidebar tree view showing all KML folders, features, and layers.</li>
+            <li class="bullet-item">Property inspector panel for editing names, descriptions &amp; coordinates.</li>
+          </ul>
         </div>
+
         <div class="flow-node fragment">
           <span class="flow-node-number">09</span>
-          <div class="flow-node-title">ar-scene</div>
-          <div class="flow-node-desc">Mobile WebXR &amp; Gyroscope fallback POV AR scene.</div>
+          <div class="flow-node-title">ar-scene (UI)</div>
+          <ul class="bullet-list">
+            <li class="bullet-item">Mobile AR camera view with WebXR or Gyroscope sensor fallbacks.</li>
+            <li class="bullet-item">Anchors KML features to real GPS locations in the smartphone camera view.</li>
+            <li class="bullet-item">Includes Mock GPS toggle to test field features at eye-level at your desk.</li>
+          </ul>
         </div>
+      </div>
+
+      <!-- User Uploaded Architecture Diagram -->
+      <div class="diagram-img-box fragment">
+        <img src="architecture-diagram.png" alt="Architecture Diagram (KMZ-IO, Store, Document-Model, Geo-Bridge, Editor, AR-Scene)">
       </div>
     </section>
 
-    <!-- SLIDE 4: SECTION 2 - DATA & MATH -->
+    <!-- SLIDE 4: SECTION 2 - DATA LOSSLESSNESS EXAMPLE -->
     <section class="slide" id="slide-4">
       <div class="slide-section-num">2. IMPLEMENTATION DETAILS</div>
-      <h2 class="slide-title">Data Losslessness &amp; Spatial Mathematics</h2>
-      <p class="slide-subtitle">Solving KML losslessness and GPS-to-3D spatial transformations.</p>
+      <h2 class="slide-title">Lossless KML Editing Example</h2>
+      <p class="slide-subtitle">Only the exact target coordinates change in the XML text — everything else remains untouched.</p>
       
       <div class="grid-2">
         <div class="glass-card highlight fragment">
-          <div class="card-title">Lossless KML AST (document-model)</div>
+          <div class="card-title">How Lossless Editing Works</div>
           <ul class="bullet-list">
             <li class="bullet-item">
-              <strong>The Challenge:</strong> Re-serializing XML breaks custom Google Earth tags, CDATA blocks, comments, and formatting.
+              <strong>The Problem with XML Parsers:</strong> Normal XML parsers re-serialize the whole document, deleting custom Google Earth tags, styles, and comments.
             </li>
             <li class="bullet-item">
-              <strong>Our Approach:</strong> Keep raw KML string intact and use <span class="code-chip">DOMParser</span> range lookups to find coordinate substrings.
+              <strong>Our Solution:</strong> We keep the raw KML string intact and find exact character range offsets for <span class="code-chip">&lt;coordinates&gt;</span>.
             </li>
             <li class="bullet-item">
-              <strong>Result:</strong> Moving a marker modifies only its specific coordinate substring, preserving 100% of unedited XML data.
+              <strong>Exact Substring Swap:</strong> Moving a marker replaces only the coordinate text in the raw file.
             </li>
           </ul>
         </div>
 
         <div class="glass-card highlight fragment">
-          <div class="card-title">Geodetic Bridge (geo-bridge)</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">
-              <strong>Coordinates:</strong> Converts WGS84 (Lat, Lon, Alt) into Three.js Cartesian meter space using <strong>NUE (North-Up-East)</strong>.
-            </li>
-            <li class="bullet-item">
-              <strong>Altitude Policies:</strong> Handles KML <span class="code-chip">clampToGround</span>, <span class="code-chip">relativeToGround</span>, and <span class="code-chip">absolute</span> height modes.
-            </li>
-            <li class="bullet-item">
-              <strong>Bi-directional:</strong> Converts 3D meter touch-drags back into exact micro-degrees of GPS location.
-            </li>
-          </ul>
+          <div class="card-title">Concrete KML Code Example</div>
+          <p class="card-text">Editing a marker position in KML text:</p>
+          
+          <div class="code-block">
+&lt;Placemark id="marker1"&gt;
+  &lt;name&gt;Templergraben Gate&lt;/name&gt;
+  &lt;styleUrl&gt;#customPinStyle&lt;/styleUrl&gt;
+  &lt;Point&gt;
+    &lt;coordinates&gt;<span class="highlight-red">6.08388,50.77534,0</span> <span class="highlight-green">6.08450,50.77610,0</span>&lt;/coordinates&gt;
+  &lt;/Point&gt;
+  &lt;!-- Custom Google Earth comments &amp; tags preserved --&gt;
+&lt;/Placemark&gt;
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- SLIDE 5: SECTION 2 - RENDERING & LIVE RENDERERS DEMO EMBED -->
+    <!-- SLIDE 5: SECTION 2 - RENDERING & LIVE RENDERERS DEMO (Based strictly on plan.md) -->
     <section class="slide" id="slide-5">
       <div class="slide-section-num">2. IMPLEMENTATION &amp; LIVE DEMO</div>
-      <h2 class="slide-title">Three.js Renderers &amp; Asset Pipeline</h2>
-      <p class="slide-subtitle">Live interactive rendering demo showing Pin Markers, 3D Polylines, GroundOverlays, and COLLADA .dae models.</p>
+      <h2 class="slide-title">Three.js Asset Renderers (plan.md Specs)</h2>
+      <p class="slide-subtitle">Rendering Pin Markers, Lines, GroundOverlays, and 3D COLLADA models as specified in Component 4.</p>
       
       <div class="grid-2" style="align-items: center;">
         <div class="glass-card highlight fragment">
-          <div class="card-title">Renderers Architecture (renderers)</div>
+          <div class="card-title">Renderers Specifications (Component 4)</div>
           <ul class="bullet-list">
             <li class="bullet-item">
-              <strong>Multi-Asset Support:</strong> Factory pattern producing renderers for Markers, Lines, GroundOverlays, and COLLADA <span class="code-chip">.dae</span> 3D models via <span class="code-chip">ColladaLoader</span>.
+              <strong>Marker Renderer:</strong> Custom map pins &amp; canvas icon sprites positioned in 3D meter space.
             </li>
             <li class="bullet-item">
-              <strong>TextureCache:</strong> In-memory texture caching avoids duplicate GPU VRAM allocations for shared textures extracted from KMZ archives.
+              <strong>Line Renderer:</strong> 3D polylines with configurable stroke width, color, and altitude mode.
             </li>
             <li class="bullet-item">
-              <strong>Interactive 3D Demo:</strong> Use your mouse in the live frame on the right to orbit, zoom, and inspect rendered KML assets in real-time.
+              <strong>GroundOverlay Renderer:</strong> 2D image overlays mapped onto terrain coordinates (bounding box).
+            </li>
+            <li class="bullet-item">
+              <strong>COLLADA 3D Model Renderer:</strong> Loads <span class="code-chip">.dae</span> 3D models with embedded textures via <span class="code-chip">ColladaLoader</span>.
+            </li>
+            <li class="bullet-item">
+              <strong>VRAM TextureCache:</strong> Reuses shared materials and textures to prevent memory leaks on GPU.
             </li>
           </ul>
         </div>
@@ -687,73 +769,99 @@
       </div>
     </section>
 
-    <!-- SLIDE 6: SECTION 3 - ARCHITECTURAL INSIGHTS -->
+    <!-- SLIDE 6: SECTION 3 - ARCHITECTURAL INSIGHTS & DETAILED CODE FLOW -->
     <section class="slide" id="slide-6">
       <div class="slide-section-num">3. ARCHITECTURAL INSIGHTS</div>
-      <h2 class="slide-title">Conceptual Data Flow &amp; Interaction Cycle</h2>
-      <p class="slide-subtitle">How a single user interaction propagates through the entire stack without direct file coupling.</p>
+      <h2 class="slide-title">Detailed Execution Step-by-Step Flow</h2>
+      <p class="slide-subtitle">How a user gesture triggers commands, spatial math, AST text editing, and debounced auto-save.</p>
       
-      <div class="cycle-container">
-        <div class="cycle-step fragment">
-          <div class="cycle-step-num">STEP 1</div>
-          <div class="cycle-step-title">Mobile Touch Drag</div>
-          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 4px;">User grabs marker in AR POV screen.</p>
+      <div class="flow-step-grid">
+        <!-- STEP 1 -->
+        <div class="flow-step-card fragment">
+          <div class="flow-step-num">STEP 1</div>
+          <div class="flow-step-title">User Edit Gesture</div>
+          <div class="flow-step-desc">User grabs a marker in desktop 3D view or mobile AR view.</div>
+          <div class="code-block">
+// Touch / Mouse Drag
+onMarkerDrag(newPos);
+          </div>
         </div>
-        <div class="cycle-arrow fragment">-&gt;</div>
-        <div class="cycle-step fragment">
-          <div class="cycle-step-num">STEP 2</div>
-          <div class="cycle-step-title">MoveMarkerCommand</div>
-          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 4px;">Dispatches command with delta offset.</p>
+
+        <!-- STEP 2 -->
+        <div class="flow-step-card fragment">
+          <div class="flow-step-num">STEP 2</div>
+          <div class="flow-step-title">Command Dispatch</div>
+          <div class="flow-step-desc">Creates atomic command &amp; pushes to Undo stack.</div>
+          <div class="code-block">
+const cmd = new
+ MoveMarkerCommand(
+  featureId, worldPos);
+stack.execute(cmd);
+          </div>
         </div>
-        <div class="cycle-arrow fragment">-&gt;</div>
-        <div class="cycle-step fragment">
-          <div class="cycle-step-num">STEP 3</div>
-          <div class="cycle-step-title">geo-bridge Math</div>
-          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 4px;">Converts 3D meters to new GPS Lat/Lon.</p>
+
+        <!-- STEP 3 -->
+        <div class="flow-step-card fragment">
+          <div class="flow-step-num">STEP 3</div>
+          <div class="flow-step-title">Geo-Bridge Math</div>
+          <div class="flow-step-desc">Converts 3D meters relative to anchor into GPS Lat/Lon.</div>
+          <div class="code-block">
+const gps =
+ geoBridge.worldToGeo(
+  worldPos, 'absolute');
+          </div>
         </div>
-        <div class="cycle-arrow fragment">-&gt;</div>
-        <div class="cycle-step fragment">
-          <div class="cycle-step-num">STEP 4</div>
-          <div class="cycle-step-title">Lossless AST Edit</div>
-          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 4px;">Replaces substring coordinates in KML.</p>
+
+        <!-- STEP 4 -->
+        <div class="flow-step-card fragment">
+          <div class="flow-step-num">STEP 4</div>
+          <div class="flow-step-title">AST XML Substring Edit</div>
+          <div class="flow-step-desc"><strong>AST</strong> = Abstract Syntax Tree (parsed XML in memory). Replaces coordinate string in-place.</div>
+          <div class="code-block">
+findFeatureRanges(xml);
+replaceSubstring(
+ range, newGpsText);
+          </div>
         </div>
-        <div class="cycle-arrow fragment">-&gt;</div>
-        <div class="cycle-step fragment">
-          <div class="cycle-step-num">STEP 5</div>
-          <div class="cycle-step-title">Debounced Persistence</div>
-          <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 4px;">Auto-saves to KMZ after 500ms settle.</p>
+
+        <!-- STEP 5 -->
+        <div class="flow-step-card fragment">
+          <div class="flow-step-num">STEP 5</div>
+          <div class="flow-step-title">Debounced Auto-Save</div>
+          <div class="flow-step-desc">Waits 500ms after dragging stops before writing file to disk (prevents lagging during 60 FPS drag).</div>
+          <div class="code-block">
+setTimeout(() =&gt; {
+ saveToKmzFile();
+}, 500);
+          </div>
         </div>
       </div>
 
-      <div class="glass-card highlight fragment" style="margin-top: 28px;">
-        <div class="card-title">Key Architectural Takeaway</div>
-        <p class="card-text">
-          By isolating state in <strong>Redux</strong> and routing edits through <strong>Commands</strong>, the AR view never touches ZIP archives or file handles directly. The persistence guarantee protects desktop edits and mobile AR field edits identically.
-        </p>
+      <!-- Mini Concluding Footer Box -->
+      <div class="mini-insight-box fragment">
+        <strong>Key Takeaway:</strong>
+        <span>Because commands &amp; math are isolated, both Desktop and AR views share 100% identical save logic and spatial math without code duplication.</span>
       </div>
     </section>
 
-    <!-- SLIDE 7: SECTION 4 - THE RESULTS & LIVE EDITOR DEMO EMBED -->
+    <!-- SLIDE 7: SECTION 4 - RESULTS & LIVE EDITOR DEMO EMBED -->
     <section class="slide" id="slide-7">
       <div class="slide-section-num">4. THE RESULTS &amp; LIVE DEMO</div>
-      <h2 class="slide-title">Desktop 3D GIS Editor &amp; Mobile AR</h2>
-      <p class="slide-subtitle">Live interactive preview of the complete merged desktop editor suite combining 8 core components.</p>
+      <h2 class="slide-title">Desktop Editor Live Preview</h2>
+      <p class="slide-subtitle">Live interactive preview of the desktop editor suite.</p>
       
       <div class="grid-2" style="align-items: center;">
         <div class="glass-card highlight fragment">
-          <div class="card-title">Final Results Overview</div>
+          <div class="card-title">Desktop Editor Features</div>
           <ul class="bullet-list">
             <li class="bullet-item">
-              <strong>Desktop 3D GIS Suite:</strong> Full 3D viewport with <span class="code-chip">OrbitControls</span>, feature hierarchy sidebar, property panel, and Undo/Redo (<kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>).
+              <strong>Interactive 3D Map:</strong> OrbitControls for navigating around KML features.
             </li>
             <li class="bullet-item">
-              <strong>Mobile Field AR App:</strong> Camera pass-through with spatial GPS feature rendering and in-camera <strong>Grab-to-Move</strong> spatial drag editing.
+              <strong>Sidebar &amp; Inspector:</strong> Feature tree view and property editing panel.
             </li>
             <li class="bullet-item">
-              <strong>100% Round-trip compatibility:</strong> Reopen saved KMZ in Google Earth or QGIS with modified coordinates intact.
-            </li>
-            <li class="bullet-item">
-              <strong>Live Test:</strong> Click &amp; edit features in the embedded frame on the right!
+              <strong>Undo / Redo:</strong> History stack supported via <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>.
             </li>
           </ul>
         </div>
@@ -762,7 +870,7 @@
         <div class="demo-frame-container fragment">
           <div class="demo-frame-header">
             <span>LIVE DEMO: editor-demo</span>
-            <span class="live-tag">Interactive Full Editor Suite</span>
+            <span class="live-tag">Interactive Desktop Editor</span>
           </div>
           <iframe src="/demos/editor-demo/" title="Live Desktop Editor Demo" loading="lazy"></iframe>
         </div>
@@ -772,23 +880,22 @@
     <!-- SLIDE 8: SECTION 5 - PROBLEMS ENCOUNTERED -->
     <section class="slide" id="slide-8">
       <div class="slide-section-num">5. PROBLEMS ENCOUNTERED</div>
-      <h2 class="slide-title">Lab Challenges &amp; Solutions</h2>
-      <p class="slide-subtitle">Key obstacles during development and how we solved them.</p>
+      <h2 class="slide-title">Lab Challenges &amp; Honest Learnings</h2>
+      <p class="slide-subtitle">Obstacles we faced during development under heavy workload.</p>
       
       <div class="grid-2">
         <div class="glass-card problem-card fragment">
-          <div class="card-title" style="color: #fb7185;">iOS Safari WebXR &amp; Sensor Security Restrictions</div>
+          <div class="card-title" style="color: #fb7185;">Code Comprehension under High Workload &amp; AI Code</div>
           <p class="card-text">
-            <strong>Problem:</strong> iOS Safari lacks native WebXR (<span class="code-chip">navigator.xr</span>) and blocks camera &amp; motion sensors on unencrypted <span class="code-chip">http://192.168.x.x</span> local network IPs.<br><br>
-            <strong>Solution:</strong> Built a custom Gyroscope/Compass sensor fallback engine and implemented Cloudflare/HTTPS tunneling workflows for mobile testing.
+            <strong>Challenge:</strong> Developing complex modules rapidly with heavy AI assistance made it difficult to gain deep, complete understanding of every underlying code layer under tight time constraints.
           </p>
         </div>
 
         <div class="glass-card problem-card fragment">
-          <div class="card-title" style="color: #fb7185;">Nested XML Range Parsing Bug</div>
+          <div class="card-title" style="color: #fb7185;">AR Marker Positioning Issues</div>
           <p class="card-text">
-            <strong>Problem:</strong> Nested KML elements (e.g. 3D <span class="code-chip">&lt;Model&gt;</span> tags containing child tags) caused substring range overlaps during coordinate edits.<br><br>
-            <strong>Solution:</strong> Refactored <span class="code-chip">findFeatureRanges()</span> in <span class="code-chip">document-model</span> to filter out nested child ranges, preserving clean outer element boundaries.
+            <strong>Challenge:</strong> Positioning markers accurately in AR proved problematic. Framework positioning functions were not utilized correctly by our viewer layer, overcomplicating position calculations.<br><br>
+            <strong>Status:</strong> Unresolved due to time constraints; fixing this properly would require refactoring the viewer layer from scratch.
           </p>
         </div>
       </div>
@@ -798,27 +905,20 @@
     <section class="slide" id="slide-9">
       <div class="slide-section-num">6. WHAT WORKED WELL</div>
       <h2 class="slide-title">Lab Successes</h2>
-      <p class="slide-subtitle">Architectural decisions that paid off significantly.</p>
+      <p class="slide-subtitle">What went well during development.</p>
       
-      <div class="grid-3">
+      <div class="grid-2">
         <div class="glass-card success-card fragment">
-          <div class="card-title" style="color: #34d399;">100% Test Coverage</div>
+          <div class="card-title" style="color: #34d399;">Fast Modular Prototyping</div>
           <p class="card-text">
-            Built an extensive automated unit test suite with <strong>164 / 164 passing Vitest tests</strong> across all 9 components, ensuring zero regressions when refactoring.
+            Individual components (parser, math bridge, renderers, store) were created quickly and modularly, establishing a clear separation of concerns across the system.
           </p>
         </div>
 
         <div class="glass-card success-card fragment">
-          <div class="card-title" style="color: #34d399;">Modular Decoupling</div>
+          <div class="card-title" style="color: #34d399;">Lossless KML Round-Trip Editing</div>
           <p class="card-text">
-            Strict component interfaces allowed desktop UI and mobile AR views to share 100% of renderers, commands, math, and persistence code without duplication.
-          </p>
-        </div>
-
-        <div class="glass-card success-card fragment">
-          <div class="card-title" style="color: #34d399;">OPFS &amp; Debounced Persistence</div>
-          <p class="card-text">
-            Origin Private File System (OPFS) &amp; debounced saving provided smooth 60 FPS spatial dragging without disk bottlenecking.
+            The lossless editing mechanism works reliably: modifying coordinates in our app updates only the target values, leaving all other XML tags and styling intact when reopened in external tools.
           </p>
         </div>
       </div>
@@ -829,7 +929,7 @@
       <div class="slide-section-num">7. SUMMARY &amp; QUESTIONS</div>
       <h2 class="hero-title" style="font-size: 3.5rem;">Thank You</h2>
       <p class="slide-subtitle fragment" style="text-align: center; max-width: 900px;">
-        We built a WebXR location-based KML/KMZ editor that brings desktop GIS features into field AR.
+        Location-based WebXR KML/KMZ Editor — Lab Final Presentation
       </p>
 
       <div class="glass-card highlight fragment" style="max-width: 650px; text-align: center; margin: 15px auto;">
