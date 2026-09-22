@@ -26,6 +26,7 @@ export default defineConfig({
   server: {
     host: true,
     port: 5185,
+    allowedHosts: true,
   },
   test: {
     include: ['tests/**/*.test.ts'],

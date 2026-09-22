@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev:ar-scene": "vite --open /demos/ar-scene-demo/",
+    "dev:presentation": "vite --open /presentation.html",
     "dev:commands": "vite --open /demos/commands-demo/",
     "dev:geo-bridge": "vite --open /demos/geo-bridge-demo/",
     "dev:document-model": "vite --open /demos/document-model-demo/",
