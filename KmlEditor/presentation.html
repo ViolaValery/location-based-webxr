@@ -516,7 +516,130 @@
       color: #a5b4fc;
       white-space: nowrap;
     }
-  </style>
+  /* ===== KML Vorher/Nachher Vergleich ===== */
+    .kml-compare {
+      display: flex;
+      gap: 16px;
+      align-items: stretch;
+      margin-top: 8px;
+    }
+
+    .kml-col {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .kml-col-label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 600;
+    }
+
+    .kml-block {
+      font-family: var(--font-code);
+      background: rgba(10, 14, 23, 0.9);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 14px 16px;
+      font-size: 0.82rem;
+      color: #cbd5e1;
+      line-height: 1.55;
+      overflow-x: auto;
+      margin: 0;
+      white-space: pre;
+    }
+
+    .kt {
+      color: #a5b4fc;
+    }
+
+    .kd {
+      color: #fcd34d;
+      background: rgba(245, 158, 11, 0.15);
+    }
+
+    .kd-val {
+      color: #fbbf24;
+      font-weight: 700;
+      background: rgba(245, 158, 11, 0.15);
+    }
+
+    .kml-arrow {
+      align-self: center;
+      font-size: 1.6rem;
+      color: var(--primary);
+      flex: 0 0 auto;
+    }
+
+    .kml-legend {
+      margin-top: 12px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+
+    .legend-changed {
+      background: #fbbf24;
+    }
+
+    .legend-unchanged {
+      background: #a5b4fc;
+    }
+    .recap-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      max-width: 1100px;
+      margin: 0 auto 20px auto;
+      width: 100%;
+    }
+
+    .recap-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 14px 16px;
+      text-align: left;
+      transition: border-color 0.2s ease;
+    }
+
+    .recap-card:hover {
+      border-color: var(--border-accent);
+    }
+
+    .recap-icon {
+      font-size: 1.4rem;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .recap-title {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .recap-text {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+</style>
 </head>
 <body>
 
@@ -549,14 +672,10 @@
       <p class="slide-subtitle fragment" style="text-align: center;">
         A comprehensive walkthrough of our lab work: project motivation, system architecture, KML losslessness, key challenges, and results.
       </p>
-      <div class="fragment" style="margin-top: 25px;">
-        <button class="btn-icon" style="padding: 12px 28px; font-size: 1rem; background: var(--primary); border-color: var(--primary);" onclick="nextStep()">
-          Start Presentation
-        </button>
-      </div>
     </section>
 
     <!-- SLIDE 2: SECTION 1 - INTRODUCTION & MOTIVATION -->
+     
     <section class="slide" id="slide-2">
       <div class="slide-section-num">1. INTRODUCTION &amp; MOTIVATION</div>
       <h2 class="slide-title">Why We Built This System</h2>
@@ -571,17 +690,55 @@
         </div>
 
         <div class="glass-card highlight fragment">
-          <div class="card-title">Our Solution</div>
-          <p class="card-text">
-            A dual system: a 3D desktop map editor combined with a mobile web app for viewing and editing markers live outdoors.
-          </p>
-        </div>
-
-        <div class="glass-card highlight fragment">
           <div class="card-title">Key Advantage</div>
           <p class="card-text">
-            Lossless editing: edit coordinates on mobile or desktop and reopen the file in Google Earth with 100% of original tags preserved.
+            Lossless round-trip: edit coordinates on mobile or desktop and reopen the file in Google Earth with 100% of original tags preserved.
           </p>
+          
+        </div>
+        <!-- KML Vorher/Nachher Beispiel -->
+        <div class="glass-card fragment" style="grid-column: 1 / -1;">
+          <div class="card-title">Example: Lossless Round-Trip</div>
+          <p class="card-text" style="margin-bottom:0.75rem;">
+            Only the coordinates of the marker are changed in the AR view — all other tags remain byte-identical.
+          </p>
+
+          <div class="kml-compare">
+            <div class="kml-col">
+              <div class="kml-col-label">Original (Desktop / Google Earth)</div>
+              <pre class="kml-block"><code><span class="kt">&lt;Placemark&gt;</span>
+          <span class="kt">&lt;name&gt;</span>Sensor_042<span class="kt">&lt;/name&gt;</span>
+          <span class="kt">&lt;description&gt;</span>Battery: 78%<span class="kt">&lt;/description&gt;</span>
+          <span class="kt">&lt;coordinates&gt;</span>13.4050,52.5200,0<span class="kt">&lt;/coordinates&gt;</span>
+          <span class="kt">&lt;ExtendedData&gt;</span>
+            <span class="kt">&lt;Data name="battery"&gt;</span>
+              <span class="kt">&lt;value&gt;</span>78<span class="kt">&lt;/value&gt;</span>
+            <span class="kt">&lt;/Data&gt;</span>
+          <span class="kt">&lt;/ExtendedData&gt;</span>
+        <span class="kt">&lt;/Placemark&gt;</span></code></pre>
+            </div>
+
+            <div class="kml-arrow">→</div>
+
+            <div class="kml-col">
+              <div class="kml-col-label">Nach Bearbeitung (Mobile AR)</div>
+              <pre class="kml-block"><code><span class="kt">&lt;Placemark&gt;</span>
+          <span class="kt">&lt;name&gt;</span>Sensor_042<span class="kt">&lt;/name&gt;</span>
+          <span class="kt">&lt;description&gt;</span>Battery: 78%<span class="kt">&lt;/description&gt;</span>
+          <span class="kd">&lt;coordinates&gt;</span><span class="kd-val">13.4061,52.5210,0</span><span class="kd">&lt;/coordinates&gt;</span>
+          <span class="kt">&lt;ExtendedData&gt;</span>
+            <span class="kt">&lt;Data name="battery"&gt;</span>
+              <span class="kt">&lt;value&gt;</span>78<span class="kt">&lt;/value&gt;</span>
+            <span class="kt">&lt;/Data&gt;</span>
+          <span class="kt">&lt;/ExtendedData&gt;</span>
+        <span class="kt">&lt;/Placemark&gt;</span></code></pre>
+            </div>
+          </div>
+
+          <div class="kml-legend">
+            <span class="legend-dot legend-changed"></span> geänderte Zeile &nbsp;&nbsp;
+            <span class="legend-dot legend-unchanged"></span> unverändert (100% erhalten)
+          </div>
         </div>
       </div>
     </section>
@@ -713,19 +870,21 @@
         </div>
 
         <div class="glass-card highlight fragment">
-          <div class="card-title">Concrete KML Code Example</div>
-          <p class="card-text">Editing a marker position in KML text:</p>
-          
+          <div class="card-title">Editing a marker position in KML text</div>
           <div class="code-block">
-&lt;Placemark id="marker1"&gt;
-  &lt;name&gt;Templergraben Gate&lt;/name&gt;
-  &lt;styleUrl&gt;#customPinStyle&lt;/styleUrl&gt;
-  &lt;Point&gt;
-    &lt;coordinates&gt;<span class="highlight-red">6.08388,50.77534,0</span> <span class="highlight-green">6.08450,50.77610,0</span>&lt;/coordinates&gt;
-  &lt;/Point&gt;
-  &lt;!-- Custom Google Earth comments &amp; tags preserved --&gt;
-&lt;/Placemark&gt;
+            &lt;Placemark id="marker1"&gt;
+              &lt;name&gt;Templergraben Gate&lt;/name&gt;
+              &lt;styleUrl&gt;#customPinStyle&lt;/styleUrl&gt;
+              &lt;Point&gt;
+                &lt;coordinates&gt;<span class="highlight-red">6.08388,50.77534,0</span> <span class="highlight-green">6.08450,50.77610,0</span>&lt;/coordinates&gt;
+              &lt;/Point&gt;
+              &lt;!-- Custom Google Earth comments &amp; tags preserved --&gt;
+            &lt;/Placemark&gt;
           </div>
+        </div>
+
+        <div class="glass-card highlight fragment">
+          <div class="card-title">Hier noch die demo zeigen?</div>
         </div>
       </div>
     </section>
@@ -734,11 +893,11 @@
     <section class="slide" id="slide-5">
       <div class="slide-section-num">2. IMPLEMENTATION &amp; LIVE DEMO</div>
       <h2 class="slide-title">Three.js Asset Renderers (plan.md Specs)</h2>
-      <p class="slide-subtitle">Rendering Pin Markers, Lines, GroundOverlays, and 3D COLLADA models as specified in Component 4.</p>
+      <p class="slide-subtitle">Rendering Pin Markers, Lines, GroundOverlays, and 3D COLLADA models - Component 4.</p>
       
       <div class="grid-2" style="align-items: center;">
         <div class="glass-card highlight fragment">
-          <div class="card-title">Renderers Specifications (Component 4)</div>
+          <div class="card-title">Renderers Specifications</div>
           <ul class="bullet-list">
             <li class="bullet-item">
               <strong>Marker Renderer:</strong> Custom map pins &amp; canvas icon sprites positioned in 3D meter space.
@@ -772,7 +931,7 @@
     <!-- SLIDE 6: SECTION 3 - ARCHITECTURAL INSIGHTS & DETAILED CODE FLOW -->
     <section class="slide" id="slide-6">
       <div class="slide-section-num">3. ARCHITECTURAL INSIGHTS</div>
-      <h2 class="slide-title">Detailed Execution Step-by-Step Flow</h2>
+      <h2 class="slide-title">Detailed Execution Flow</h2>
       <p class="slide-subtitle">How a user gesture triggers commands, spatial math, AST text editing, and debounced auto-save.</p>
       
       <div class="flow-step-grid">
@@ -839,8 +998,8 @@ setTimeout(() =&gt; {
 
       <!-- Mini Concluding Footer Box -->
       <div class="mini-insight-box fragment">
-        <strong>Key Takeaway:</strong>
-        <span>Because commands &amp; math are isolated, both Desktop and AR views share 100% identical save logic and spatial math without code duplication.</span>
+        <strong>Note:</strong>
+        <span>Because commands &amp; math are isolated, both Desktop and AR views share identical save logic and spatial math without code duplication.</span>
       </div>
     </section>
 
@@ -873,6 +1032,21 @@ setTimeout(() =&gt; {
             <span class="live-tag">Interactive Desktop Editor</span>
           </div>
           <iframe src="/demos/editor-demo/" title="Live Desktop Editor Demo" loading="lazy"></iframe>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 7.1: SECTION 4 - DEMO MOBILE AR VIEW -->
+    <section class="slide" id="slide-7">
+      <div class="slide-section-num">4. THE RESULTS &amp; LIVE DEMO</div>
+      <h2 class="slide-title">Mobile XR Editor Preview</h2>
+
+        <span>To be added</span>
+        <!-- EMBEDDED video -->
+        <div class="demo-frame-container fragment">
+          <div class="demo-frame-header">
+            <span class="live-tag">Mobile web XR</span>
+          </div>
         </div>
       </div>
     </section>
@@ -927,12 +1101,47 @@ setTimeout(() =&gt; {
     <!-- SLIDE 10: SECTION 7 - SUMMARY & QUESTIONS -->
     <section class="slide hero-slide" id="slide-10">
       <div class="slide-section-num">7. SUMMARY &amp; QUESTIONS</div>
-      <h2 class="hero-title" style="font-size: 3.5rem;">Thank You</h2>
-      <p class="slide-subtitle fragment" style="text-align: center; max-width: 900px;">
-        Location-based WebXR KML/KMZ Editor — Lab Final Presentation
-      </p>
+      <h2 class="hero-title" style="font-size: 2.6rem;">Recap &amp; Discussion</h2>
 
-      <div class="glass-card highlight fragment" style="max-width: 650px; text-align: center; margin: 15px auto;">
+      <div class="recap-grid">
+        <div class="recap-card fragment">
+          <span class="recap-icon">🎯</span>
+          <div class="recap-title">Motivation</div>
+          <div class="recap-text">Bridging desktop KML/KMZ files with mobile AR — edit anywhere, stay compatible.</div>
+        </div>
+
+        <div class="recap-card fragment">
+          <span class="recap-icon">🧩</span>
+          <div class="recap-title">Architecture</div>
+          <div class="recap-text">9 modular components: parsing, geo-math, rendering, state &amp; persistence.</div>
+        </div>
+
+        <div class="recap-card fragment">
+          <span class="recap-icon">🔒</span>
+          <div class="recap-title">Lossless Editing</div>
+          <div class="recap-text">Substring-level XML edits — only coordinates change, everything else stays intact.</div>
+        </div>
+
+        <div class="recap-card fragment">
+          <span class="recap-icon">🖥️</span>
+          <div class="recap-title">Live Demos</div>
+          <div class="recap-text">3D renderers &amp; desktop editor shown running with real KML data.</div>
+        </div>
+
+        <div class="recap-card fragment">
+          <span class="recap-icon">⚠️</span>
+          <div class="recap-title">Challenges</div>
+          <div class="recap-text">AR marker positioning &amp; deep code review under time pressure with AI-assisted dev.</div>
+        </div>
+
+        <div class="recap-card fragment">
+          <span class="recap-icon">✅</span>
+          <div class="recap-title">Result</div>
+          <div class="recap-text">Working, modular AR/desktop KML editor with reliable round-trip fidelity.</div>
+        </div>
+      </div>
+
+      <div class="glass-card highlight fragment" style="max-width: 650px; text-align: center; margin: 0 auto;">
         <div class="card-title" style="justify-content: center; font-size: 1.5rem; color: #a5b4fc;">
           Questions &amp; Discussion
         </div>
@@ -941,7 +1150,7 @@ setTimeout(() =&gt; {
         </p>
       </div>
 
-      <div class="fragment" style="margin-top: 25px;">
+      <div class="fragment" style="margin-top: 20px;">
         <button class="btn-icon" style="padding: 10px 24px; font-size: 0.95rem;" onclick="goToSlide(0)">
           Restart Deck
         </button>
