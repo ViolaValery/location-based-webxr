@@ -189,13 +189,24 @@ export class ArSceneManager {
         this.features = features;
 
         // In WebXR local-floor space, Y = 0 is the ground plane beneath user's feet.
-        // clampToGround features sit at local Y = 0 on this plane.
-        // Do NOT offset featureGroup.position.y with anchor altitude.
+        // Clamp negative Y altitudes so topological MSL elevation differences (e.g. -38m)
+        // do not bury features underground beneath local WebXR floor level Y = 0.
         this.featureGroup.position.set(0, 0, 0);
+
+        const arBridge: IGeoBridge = {
+            ...bridge,
+            geoToWorld: (pos, mode) => {
+                const world = bridge.geoToWorld(pos, mode);
+                if (world.y < 0) {
+                    return { x: world.x, y: 0, z: world.z };
+                }
+                return world;
+            },
+        };
 
         // Keep all document features in the registry so they can be revealed dynamically
         // when the user approaches, without requiring expensive re-parsing.
-        await this.registry.reconcile(features, assets, bridge);
+        await this.registry.reconcile(features, assets, arBridge);
         this.updateProximityVisibility();
 
         const renderedFeatureCount = this.getVisibleFeatureCount();
