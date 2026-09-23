@@ -6,20 +6,21 @@
   <title>Location-Based WebXR KML Editor</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg-dark: #090d16;
-      --bg-card: rgba(18, 26, 43, 0.75);
-      --bg-card-hover: rgba(24, 34, 56, 0.9);
-      --border-color: rgba(255, 255, 255, 0.12);
-      --border-accent: rgba(99, 102, 241, 0.4);
+      --bg-card: rgba(18, 26, 43, 0.85);
+      --bg-card-hover: rgba(24, 34, 56, 0.95);
+      --border-color: rgba(255, 255, 255, 0.14);
+      --border-accent: rgba(99, 102, 241, 0.5);
       --text-main: #f3f4f6;
       --text-muted: #9ca3af;
       --primary: #6366f1;
       --secondary: #a855f7;
       --emerald: #10b981;
       --rose: #f43f5e;
+      --amber: #f59e0b;
       --font-body: 'Inter', -apple-system, sans-serif;
       --font-code: 'Fira Code', monospace;
     }
@@ -58,7 +59,7 @@
       transition: width 0.25s ease;
     }
 
-    /* Top Navigation Header */
+    /* Top Header */
     header {
       position: fixed;
       top: 24px;
@@ -72,14 +73,11 @@
     }
 
     .header-title {
-      font-weight: 600;
-      font-size: 0.95rem;
-      letter-spacing: 0.8px;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: 1px;
       color: var(--text-muted);
       text-transform: uppercase;
-      display: flex;
-      align-items: center;
-      gap: 14px;
     }
 
     .header-controls {
@@ -90,24 +88,24 @@
     }
 
     .btn-icon {
-      background: rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.06);
       border: 1px solid var(--border-color);
       color: var(--text-main);
-      padding: 9px 18px;
+      padding: 10px 20px;
       border-radius: 6px;
       cursor: pointer;
       font-family: var(--font-body);
-      font-size: 0.9rem;
+      font-size: 0.95rem;
       font-weight: 500;
       transition: all 0.2s ease;
     }
 
     .btn-icon:hover {
-      background: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.15);
       border-color: var(--primary);
     }
 
-    /* Widescreen Deck Viewport */
+    /* Full Widescreen Deck Viewport */
     .deck-container {
       width: 100vw;
       height: 100vh;
@@ -117,7 +115,7 @@
     .slide {
       position: absolute;
       inset: 0;
-      padding: 85px 56px 85px 56px;
+      padding: 70px 48px 80px 48px;
       opacity: 0;
       visibility: hidden;
       transform: translateY(10px);
@@ -126,7 +124,7 @@
       flex-direction: column;
       justify-content: center;
       width: 100%;
-      max-width: 1800px;
+      max-width: 1850px;
       margin: 0 auto;
     }
 
@@ -136,10 +134,10 @@
       transform: translateY(0);
     }
 
-    /* Widescreen Typography */
+    /* Typography */
     .slide-section-num {
-      font-size: 0.95rem;
-      font-weight: 600;
+      font-size: 1.05rem;
+      font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 2px;
       color: var(--primary);
@@ -147,41 +145,38 @@
     }
 
     .slide-title {
-      font-size: 2.8rem;
-      font-weight: 700;
+      font-size: 3.2rem;
+      font-weight: 800;
       line-height: 1.15;
-      margin-bottom: 14px;
+      margin-bottom: 24px;
       color: #ffffff;
-    }
-
-    .slide-subtitle {
-      font-size: 1.2rem;
-      color: var(--text-muted);
-      max-width: 1200px;
-      line-height: 1.45;
-      margin-bottom: 28px;
-      font-weight: 400;
     }
 
     /* Grids */
     .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 28px;
+      gap: 32px;
     }
 
     .grid-3 {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
       gap: 24px;
     }
 
-    /* Fragments */
+    /* Fragment Animation */
     .fragment {
       opacity: 0.12;
-      transform: translateY(14px);
+      transform: translateY(12px);
       transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease;
-      filter: blur(1.5px);
+      filter: blur(1px);
     }
 
     .fragment.visible {
@@ -190,12 +185,12 @@
       filter: blur(0);
     }
 
-    /* Cards */
+    /* Full-Screen Glass Cards */
     .glass-card {
       background: var(--bg-card);
       border: 1px solid var(--border-color);
-      border-radius: 10px;
-      padding: 24px;
+      border-radius: 12px;
+      padding: 32px;
       transition: background 0.2s ease, border-color 0.2s ease;
       height: 100%;
       display: flex;
@@ -220,86 +215,87 @@
     }
 
     .card-title {
-      font-size: 1.25rem;
-      font-weight: 600;
+      font-size: 1.5rem;
+      font-weight: 700;
       color: #ffffff;
-      margin-bottom: 10px;
+      margin-bottom: 16px;
     }
 
     .card-text {
-      color: var(--text-muted);
-      font-size: 1rem;
-      line-height: 1.55;
+      color: #cbd5e1;
+      font-size: 1.15rem;
+      line-height: 1.65;
     }
 
-    /* Bullet List */
+    /* Large Bullet List */
     .bullet-list {
       list-style-type: disc;
-      padding-left: 20px;
+      padding-left: 24px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 16px;
     }
 
     .bullet-item {
-      color: #e2e8f0;
-      font-size: 0.98rem;
-      line-height: 1.5;
+      color: #f1f5f9;
+      font-size: 1.18rem;
+      line-height: 1.55;
     }
 
     .bullet-item strong {
       color: #ffffff;
+      font-weight: 700;
     }
 
     /* Code Block & Chips */
     .code-chip {
       font-family: var(--font-code);
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
       color: #a5b4fc;
-      padding: 2px 7px;
+      padding: 2px 8px;
       border-radius: 4px;
-      font-size: 0.88rem;
+      font-size: 1rem;
     }
 
     .code-block {
       font-family: var(--font-code);
-      background: rgba(10, 14, 23, 0.9);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 6px;
-      padding: 12px;
-      font-size: 0.85rem;
+      background: rgba(10, 14, 23, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 0.95rem;
       color: #cbd5e1;
-      line-height: 1.45;
+      line-height: 1.5;
       overflow-x: auto;
-      margin-top: 8px;
+      margin-top: 12px;
     }
 
     .code-block span.highlight-green {
       color: #34d399;
       font-weight: bold;
-      background: rgba(16, 185, 129, 0.15);
-      padding: 1px 4px;
+      background: rgba(16, 185, 129, 0.2);
+      padding: 2px 6px;
       border-radius: 3px;
     }
 
     .code-block span.highlight-red {
       color: #fb7185;
       text-decoration: line-through;
-      background: rgba(244, 63, 94, 0.15);
-      padding: 1px 4px;
+      background: rgba(244, 63, 94, 0.2);
+      padding: 2px 6px;
       border-radius: 3px;
     }
 
-    /* Demo Frame */
-    .demo-frame-container {
+    /* Demo Frame & Video Frame */
+    .demo-frame-container, .video-frame-container {
       width: 100%;
-      height: 560px;
-      border-radius: 10px;
+      height: 620px;
+      border-radius: 12px;
       overflow: hidden;
       border: 1px solid var(--border-accent);
       background: rgba(10, 14, 23, 0.95);
-      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
       position: relative;
     }
 
@@ -309,110 +305,144 @@
       border: none;
     }
 
-    .demo-frame-header {
+    .demo-frame-header, .video-frame-header {
       background: rgba(18, 26, 43, 0.95);
       border-bottom: 1px solid var(--border-color);
-      padding: 8px 16px;
+      padding: 10px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.8rem;
+      font-size: 0.88rem;
       color: var(--text-muted);
     }
 
-    .demo-frame-header span.live-tag {
+    .demo-frame-header span.live-tag, .video-frame-header span.live-tag {
       color: #34d399;
-      font-weight: 600;
+      font-weight: 700;
     }
 
-    /* Architecture Flow Grid */
-    .architecture-flow {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
+    /* Screenshot Placeholder Cards */
+    .screenshot-card {
+      background: rgba(10, 14, 23, 0.8);
+      border: 2px dashed rgba(99, 102, 241, 0.35);
+      border-radius: 10px;
+      height: 340px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 20px;
+      transition: all 0.2s ease;
     }
 
-    .flow-node {
-      background: rgba(18, 26, 43, 0.8);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 16px;
-      position: relative;
+    .screenshot-card:hover {
+      border-color: var(--primary);
+      background: rgba(99, 102, 241, 0.08);
     }
 
-    .flow-node-number {
-      position: absolute;
-      top: 12px;
-      right: 14px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--primary);
-    }
-
-    .flow-node-title {
-      font-size: 1.05rem;
-      font-weight: 600;
-      color: #fff;
+    .screenshot-card span.title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #a5b4fc;
       margin-bottom: 8px;
     }
 
-    /* Embedded Architecture Image Box */
-    .diagram-img-box {
+    /* VECTOR RENDERED DIAGRAM CONTAINER (Slide 3) */
+    .rendered-vector-diagram-container {
       width: 100%;
+      height: 680px;
       background: rgba(10, 14, 23, 0.85);
       border: 1px solid var(--border-accent);
-      border-radius: 8px;
-      padding: 12px;
+      border-radius: 14px;
+      padding: 10px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
       display: flex;
-      justify-content: center;
       align-items: center;
-      margin-top: 20px;
+      justify-content: center;
+      overflow: hidden;
     }
 
-    .diagram-img-box img {
-      max-width: 100%;
-      max-height: 280px;
-      object-fit: contain;
-      border-radius: 4px;
-    }
-
-    /* Step-by-Step Flow Boxes for Slide 6 */
+    /* Step-by-Step Flow Cards for Slide 6 */
     .flow-step-grid {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 14px;
+      gap: 16px;
       margin-top: 14px;
     }
 
     .flow-step-card {
-      background: rgba(18, 26, 43, 0.85);
+      background: rgba(18, 26, 43, 0.9);
       border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 16px;
+      border-radius: 10px;
+      padding: 22px;
       display: flex;
       flex-direction: column;
+      height: 100%;
     }
 
     .flow-step-num {
-      font-size: 0.75rem;
-      font-weight: 700;
+      font-size: 0.85rem;
+      font-weight: 800;
       color: var(--primary);
       text-transform: uppercase;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
     }
 
     .flow-step-title {
-      font-size: 0.95rem;
-      font-weight: 600;
+      font-size: 1.25rem;
+      font-weight: 700;
       color: #ffffff;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
 
     .flow-step-desc {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      line-height: 1.4;
-      margin-bottom: 8px;
+      font-size: 1.05rem;
+      color: #cbd5e1;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+
+    .flow-diagram-snippet {
+      background: rgba(10, 14, 23, 0.9);
+      border: 1.5px solid var(--border-accent);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.9rem;
+      color: #a5b4fc;
+      font-family: var(--font-code);
+      margin-top: auto;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .flow-diagram-snippet span.comp {
+      font-weight: bold;
+      color: #60a5fa;
+    }
+
+    /* Large Concluding Key Takeaway Banner */
+    .large-takeaway-banner {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.15));
+      border: 2px solid var(--border-accent);
+      border-radius: 10px;
+      padding: 20px 32px;
+      margin-top: 24px;
+      font-size: 1.25rem;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .large-takeaway-banner strong {
+      color: #a5b4fc;
+      font-size: 1.3rem;
+      white-space: nowrap;
     }
 
     /* Bottom Control Bar */
@@ -428,8 +458,8 @@
     }
 
     .slide-counter {
-      font-weight: 500;
-      font-size: 0.95rem;
+      font-weight: 600;
+      font-size: 1rem;
       color: var(--text-muted);
     }
 
@@ -443,8 +473,8 @@
     }
 
     .btn-nav {
-      width: 44px;
-      height: 44px;
+      width: 48px;
+      height: 48px;
       border-radius: 6px;
       background: rgba(18, 26, 43, 0.85);
       border: 1px solid var(--border-color);
@@ -491,155 +521,13 @@
     }
 
     .hero-title {
-      font-size: 4rem;
-      font-weight: 700;
+      font-size: 4.5rem;
+      font-weight: 800;
       line-height: 1.15;
-      margin-bottom: 20px;
+      margin-bottom: 24px;
       color: #ffffff;
     }
-
-    /* Small Concluding Footer Box for Slide 6 */
-    .mini-insight-box {
-      background: rgba(99, 102, 241, 0.1);
-      border: 1px solid var(--border-accent);
-      border-radius: 6px;
-      padding: 12px 18px;
-      margin-top: 18px;
-      font-size: 0.92rem;
-      color: #e2e8f0;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .mini-insight-box strong {
-      color: #a5b4fc;
-      white-space: nowrap;
-    }
-  /* ===== KML Vorher/Nachher Vergleich ===== */
-    .kml-compare {
-      display: flex;
-      gap: 16px;
-      align-items: stretch;
-      margin-top: 8px;
-    }
-
-    .kml-col {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .kml-col-label {
-      font-size: 0.78rem;
-      color: var(--text-muted);
-      margin-bottom: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      font-weight: 600;
-    }
-
-    .kml-block {
-      font-family: var(--font-code);
-      background: rgba(10, 14, 23, 0.9);
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      padding: 14px 16px;
-      font-size: 0.82rem;
-      color: #cbd5e1;
-      line-height: 1.55;
-      overflow-x: auto;
-      margin: 0;
-      white-space: pre;
-    }
-
-    .kt {
-      color: #a5b4fc;
-    }
-
-    .kd {
-      color: #fcd34d;
-      background: rgba(245, 158, 11, 0.15);
-    }
-
-    .kd-val {
-      color: #fbbf24;
-      font-weight: 700;
-      background: rgba(245, 158, 11, 0.15);
-    }
-
-    .kml-arrow {
-      align-self: center;
-      font-size: 1.6rem;
-      color: var(--primary);
-      flex: 0 0 auto;
-    }
-
-    .kml-legend {
-      margin-top: 12px;
-      font-size: 0.82rem;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .legend-dot {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 2px;
-      margin-right: 4px;
-      vertical-align: middle;
-    }
-
-    .legend-changed {
-      background: #fbbf24;
-    }
-
-    .legend-unchanged {
-      background: #a5b4fc;
-    }
-    .recap-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 14px;
-      max-width: 1100px;
-      margin: 0 auto 20px auto;
-      width: 100%;
-    }
-
-    .recap-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 14px 16px;
-      text-align: left;
-      transition: border-color 0.2s ease;
-    }
-
-    .recap-card:hover {
-      border-color: var(--border-accent);
-    }
-
-    .recap-icon {
-      font-size: 1.4rem;
-      margin-bottom: 6px;
-      display: block;
-    }
-
-    .recap-title {
-      font-size: 0.92rem;
-      font-weight: 600;
-      color: #ffffff;
-      margin-bottom: 4px;
-    }
-
-    .recap-text {
-      font-size: 0.82rem;
-      color: var(--text-muted);
-      line-height: 1.4;
-    }
-</style>
+  </style>
 </head>
 <body>
 
@@ -666,254 +554,199 @@
   <!-- Slide Viewport -->
   <main class="deck-container">
 
-    <!-- SLIDE 1: TITLE (Clean & simple hero) -->
+    <!-- SLIDE 1: TITLE -->
     <section class="slide hero-slide active" id="slide-1">
       <h1 class="hero-title">Location-Based WebXR<br>KML / KMZ Editor</h1>
-      <p class="slide-subtitle fragment" style="text-align: center;">
-        A comprehensive walkthrough of our lab work: project motivation, system architecture, KML losslessness, key challenges, and results.
-      </p>
+      <div class="fragment" style="margin-top: 30px;">
+        <button class="btn-icon" style="padding: 14px 36px; font-size: 1.1rem; background: var(--primary); border-color: var(--primary);" onclick="nextStep()">
+          Start Presentation
+        </button>
+      </div>
     </section>
 
     <!-- SLIDE 2: SECTION 1 - INTRODUCTION & MOTIVATION -->
-     
     <section class="slide" id="slide-2">
       <div class="slide-section-num">1. INTRODUCTION &amp; MOTIVATION</div>
       <h2 class="slide-title">Why We Built This System</h2>
-      <p class="slide-subtitle">Bridging traditional desktop KML/KMZ GIS files with mobile browser AR.</p>
       
-      <div class="grid-3">
-        <div class="glass-card highlight fragment">
+      <!-- Top Bullet Points -->
+      <div class="grid-2 fragment" style="margin-bottom: 28px;">
+        <div class="glass-card highlight">
           <div class="card-title">The Goal</div>
-          <p class="card-text">
-            Load, view, and edit geographic KML/KMZ files directly in the browser and inspect features anchored at real GPS positions on mobile devices.
-          </p>
+          <ul class="bullet-list">
+            <li class="bullet-item">Load, view, and edit geographic KML/KMZ files directly in the browser.</li>
+            <li class="bullet-item">Inspect and edit markers anchored at real GPS positions on smartphones.</li>
+          </ul>
         </div>
 
-        <div class="glass-card highlight fragment">
-          <div class="card-title">Key Advantage</div>
-          <p class="card-text">
-            Lossless round-trip: edit coordinates on mobile or desktop and reopen the file in Google Earth with 100% of original tags preserved.
-          </p>
-          
+        <div class="glass-card highlight">
+          <div class="card-title">Our Solution</div>
+          <ul class="bullet-list">
+            <li class="bullet-item">Dual-mode application: 3D Desktop Map Editor + Mobile Field AR View.</li>
+            <li class="bullet-item">Unified architecture ensuring edits persist identically across desktop and mobile.</li>
+          </ul>
         </div>
-        <!-- KML Vorher/Nachher Beispiel -->
-        <div class="glass-card fragment" style="grid-column: 1 / -1;">
-          <div class="card-title">Example: Lossless Round-Trip</div>
-          <p class="card-text" style="margin-bottom:0.75rem;">
-            Only the coordinates of the marker are changed in the AR view — all other tags remain byte-identical.
-          </p>
+      </div>
 
-          <div class="kml-compare">
-            <div class="kml-col">
-              <div class="kml-col-label">Original (Desktop / Google Earth)</div>
-              <pre class="kml-block"><code><span class="kt">&lt;Placemark&gt;</span>
-          <span class="kt">&lt;name&gt;</span>Sensor_042<span class="kt">&lt;/name&gt;</span>
-          <span class="kt">&lt;description&gt;</span>Battery: 78%<span class="kt">&lt;/description&gt;</span>
-          <span class="kt">&lt;coordinates&gt;</span>13.4050,52.5200,0<span class="kt">&lt;/coordinates&gt;</span>
-          <span class="kt">&lt;ExtendedData&gt;</span>
-            <span class="kt">&lt;Data name="battery"&gt;</span>
-              <span class="kt">&lt;value&gt;</span>78<span class="kt">&lt;/value&gt;</span>
-            <span class="kt">&lt;/Data&gt;</span>
-          <span class="kt">&lt;/ExtendedData&gt;</span>
-        <span class="kt">&lt;/Placemark&gt;</span></code></pre>
-            </div>
-
-            <div class="kml-arrow">→</div>
-
-            <div class="kml-col">
-              <div class="kml-col-label">Nach Bearbeitung (Mobile AR)</div>
-              <pre class="kml-block"><code><span class="kt">&lt;Placemark&gt;</span>
-          <span class="kt">&lt;name&gt;</span>Sensor_042<span class="kt">&lt;/name&gt;</span>
-          <span class="kt">&lt;description&gt;</span>Battery: 78%<span class="kt">&lt;/description&gt;</span>
-          <span class="kd">&lt;coordinates&gt;</span><span class="kd-val">13.4061,52.5210,0</span><span class="kd">&lt;/coordinates&gt;</span>
-          <span class="kt">&lt;ExtendedData&gt;</span>
-            <span class="kt">&lt;Data name="battery"&gt;</span>
-              <span class="kt">&lt;value&gt;</span>78<span class="kt">&lt;/value&gt;</span>
-            <span class="kt">&lt;/Data&gt;</span>
-          <span class="kt">&lt;/ExtendedData&gt;</span>
-        <span class="kt">&lt;/Placemark&gt;</span></code></pre>
-            </div>
-          </div>
-
-          <div class="kml-legend">
-            <span class="legend-dot legend-changed"></span> geänderte Zeile &nbsp;&nbsp;
-            <span class="legend-dot legend-unchanged"></span> unverändert (100% erhalten)
-          </div>
+      <!-- 3 Screenshot Placeholders for Final System UI -->
+      <div class="grid-3 fragment">
+        <div class="screenshot-card">
+          <span class="title">Screenshot 1: Desktop 3D Editor</span>
+          <span>3D map viewport with feature tree &amp; property inspector</span>
+        </div>
+        <div class="screenshot-card">
+          <span class="title">Screenshot 2: Mobile AR View</span>
+          <span>Live smartphone camera view with anchored GPS features</span>
+        </div>
+        <div class="screenshot-card">
+          <span class="title">Screenshot 3: Google Earth Export</span>
+          <span>Edited KMZ file reopened seamlessly in Google Earth</span>
         </div>
       </div>
     </section>
 
-    <!-- SLIDE 3: SECTION 2 - SYSTEM ARCHITECTURE (Detailed 3+ keypoints per component & Embedded User Diagram) -->
+    <!-- SLIDE 3: SECTION 2 - SYSTEM ARCHITECTURE (PERFECT VECTOR SVG DIAGRAM) -->
     <section class="slide" id="slide-3">
       <div class="slide-section-num">2. SYSTEM ARCHITECTURE</div>
-      <h2 class="slide-title">Core Components &amp; System Structure</h2>
-      <p class="slide-subtitle">Clear functional breakdown of each module and how data flows through the application.</p>
+      <h2 class="slide-title">Core Components &amp; Data Flow</h2>
       
-      <div class="architecture-flow">
-        <div class="flow-node fragment">
-          <span class="flow-node-number">01</span>
-          <div class="flow-node-title">document-model</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">Parses raw KML XML into an in-memory document tree.</li>
-            <li class="bullet-item">Tracks exact character range offsets for coordinates in XML text.</li>
-            <li class="bullet-item">100% Losslessness: editing coordinates preserves all unedited tags &amp; styles.</li>
-          </ul>
-        </div>
+      <div class="rendered-vector-diagram-container fragment">
+        <svg viewBox="0 0 1350 640" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <!-- Arrow Markers -->
+            <marker id="arrow-purple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#c084fc" />
+            </marker>
+            <marker id="arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#60a5fa" />
+            </marker>
+            <marker id="arrow-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#34d399" />
+            </marker>
+            <marker id="arrow-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#2dd4bf" />
+            </marker>
+          </defs>
 
-        <div class="flow-node fragment">
-          <span class="flow-node-number">02</span>
-          <div class="flow-node-title">kmz-io</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">Opens and unzips compressed <span class="code-chip">.kmz</span> archives in memory.</li>
-            <li class="bullet-item">Extracts <span class="code-chip">doc.kml</span>, images, and COLLADA <span class="code-chip">.dae</span> 3D models.</li>
-            <li class="bullet-item">Provides temporary Blob URLs so Three.js can load textures.</li>
-          </ul>
-        </div>
+          <!-- ARROWS -->
+          <!-- 1. User -> kmz-io (Curved Purple) -->
+          <path d="M 310 170 C 400 170, 420 110, 520 110" fill="none" stroke="#c084fc" stroke-width="3" marker-end="url(#arrow-purple)" />
 
-        <div class="flow-node fragment">
-          <span class="flow-node-number">03</span>
-          <div class="flow-node-title">geo-bridge</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">Converts WGS84 GPS (Lat, Lon) to 3D Cartesian meters (North, Up, East).</li>
-            <li class="bullet-item">Handles KML altitude modes (<span class="code-chip">clampToGround</span>, <span class="code-chip">relativeToGround</span>, <span class="code-chip">absolute</span>).</li>
-            <li class="bullet-item">Bi-directional: converts 3D meter drags back into micro-degrees of GPS.</li>
-          </ul>
-        </div>
+          <!-- 2. User -> store device state (Dashed Purple) -->
+          <path d="M 310 260 C 370 260, 390 320, 470 320" fill="none" stroke="#c084fc" stroke-width="2.5" stroke-dasharray="6,5" marker-end="url(#arrow-purple)" />
 
-        <div class="flow-node fragment">
-          <span class="flow-node-number">04</span>
-          <div class="flow-node-title">renderers</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">Converts abstract KML features into 3D Three.js visual objects.</li>
-            <li class="bullet-item">Renders Pin Markers, 3D Polylines, 2D GroundOverlays &amp; 3D COLLADA models.</li>
-            <li class="bullet-item">Uses an in-memory TextureCache to prevent duplicate GPU memory leaks.</li>
-          </ul>
-        </div>
+          <!-- 3. kmz-io -> store (Dashed Slate) -->
+          <path d="M 640 135 L 640 210" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-dasharray="6,5" marker-end="url(#arrow-blue)" />
 
-        <div class="flow-node fragment">
-          <span class="flow-node-number">05</span>
-          <div class="flow-node-title">store</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">Central Redux state store managing the active document &amp; device state.</li>
-            <li class="bullet-item">Tracks selected feature IDs, dirty save flags &amp; active sensor state.</li>
-            <li class="bullet-item">Connects reducer mutation APIs to trigger UI and 3D scene re-renders.</li>
-          </ul>
-        </div>
+          <!-- 4. kmz-io -> store right side (Curved Teal) -->
+          <path d="M 760 110 C 890 110, 890 260, 830 260" fill="none" stroke="#2dd4bf" stroke-width="3" marker-end="url(#arrow-teal)" />
 
-        <div class="flow-node fragment">
-          <span class="flow-node-number">06</span>
-          <div class="flow-node-title">commands</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">Encapsulates edit actions into atomic, reversible command objects.</li>
-            <li class="bullet-item">Executes spatial edits (moving markers) and text property edits.</li>
-            <li class="bullet-item">Maintains an Undo/Redo stack for <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>.</li>
-          </ul>
-        </div>
+          <!-- 5. store <-> geo-bridge (Double Green) -->
+          <path d="M 825 320 L 970 320" fill="none" stroke="#34d399" stroke-width="3.5" marker-start="url(#arrow-green)" marker-end="url(#arrow-green)" />
 
-        <div class="flow-node fragment">
-          <span class="flow-node-number">07</span>
-          <div class="flow-node-title">persistence</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">Auto-saves modified KML/KMZ contents back to local file system.</li>
-            <li class="bullet-item">Uses a 500ms debounce timer to wait until dragging finishes before saving.</li>
-            <li class="bullet-item">Ensures exported files open seamlessly in Google Earth or QGIS.</li>
-          </ul>
-        </div>
+          <!-- 6. UIs -> store (Upward Blue) -->
+          <path d="M 640 515 L 640 430" fill="none" stroke="#60a5fa" stroke-width="3" marker-end="url(#arrow-blue)" />
 
-        <div class="flow-node fragment">
-          <span class="flow-node-number">08</span>
-          <div class="flow-node-title">editor (UI)</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">Desktop 3D map viewport with OrbitControls for panning and zooming.</li>
-            <li class="bullet-item">Sidebar tree view showing all KML folders, features, and layers.</li>
-            <li class="bullet-item">Property inspector panel for editing names, descriptions &amp; coordinates.</li>
-          </ul>
-        </div>
+          <!-- NODES -->
+          <!-- Node: User / Mobile Device -->
+          <g transform="translate(60, 140)">
+            <rect x="0" y="0" width="250" height="150" rx="10" fill="#4c1d95" stroke="#a855f7" stroke-width="2.5" />
+            <text x="20" y="38" fill="#ffffff" font-size="18" font-weight="700">User / Mobile Device</text>
+            <text x="20" y="70" fill="#e9d5ff" font-size="13.5">• Selects KMZ file</text>
+            <text x="20" y="98" fill="#e9d5ff" font-size="13.5">• Provides GPS &amp; Gyro sensors</text>
+          </g>
 
-        <div class="flow-node fragment">
-          <span class="flow-node-number">09</span>
-          <div class="flow-node-title">ar-scene (UI)</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">Mobile AR camera view with WebXR or Gyroscope sensor fallbacks.</li>
-            <li class="bullet-item">Anchors KML features to real GPS locations in the smartphone camera view.</li>
-            <li class="bullet-item">Includes Mock GPS toggle to test field features at eye-level at your desk.</li>
-          </ul>
-        </div>
-      </div>
+          <!-- Node: kmz-io -->
+          <g transform="translate(520, 85)">
+            <rect x="0" y="0" width="240" height="50" rx="8" fill="#334155" stroke="#64748b" stroke-width="2.5" />
+            <text x="120" y="31" fill="#ffffff" font-size="16" font-weight="700" text-anchor="middle">kmz-io (ZIP &amp; Textures)</text>
+          </g>
 
-      <!-- User Uploaded Architecture Diagram -->
-      <div class="diagram-img-box fragment">
-        <img src="architecture-diagram.png" alt="Architecture Diagram (KMZ-IO, Store, Document-Model, Geo-Bridge, Editor, AR-Scene)">
+          <!-- Node: store (Redux State) - Expanded Width 350px -->
+          <g transform="translate(470, 215)">
+            <rect x="0" y="0" width="350" height="205" rx="12" fill="#1e3a8a" stroke="#3b82f6" stroke-width="2.5" />
+            <text x="175" y="35" fill="#93c5fd" font-size="20" font-weight="800" text-anchor="middle">store (Redux State)</text>
+            
+            <!-- sub-node: document-model -->
+            <rect x="15" y="50" width="320" height="42" rx="6" fill="#0f172a" stroke="#60a5fa" stroke-width="1.5" />
+            <text x="25" y="75" fill="#f8fafc" font-size="13.5" font-weight="700">- document-model (Lossless AST)</text>
+            <text x="325" y="75" fill="#60a5fa" font-size="11" font-weight="600" text-anchor="end">⟷ geo-bridge</text>
+
+            <text x="20" y="118" fill="#cbd5e1" font-size="13">• - device state (GPS Position / Compass Heading)</text>
+            <text x="20" y="144" fill="#cbd5e1" font-size="13">• + feature view (Renderables)</text>
+            <text x="20" y="170" fill="#cbd5e1" font-size="13">• + mutation APIs = Reducers</text>
+          </g>
+
+          <!-- Node: geo-bridge -->
+          <g transform="translate(975, 260)">
+            <rect x="0" y="0" width="240" height="120" rx="10" fill="#064e3b" stroke="#10b981" stroke-width="2.5" />
+            <text x="120" y="44" fill="#a7f3d0" font-size="18" font-weight="700" text-anchor="middle">geo-bridge</text>
+            <text x="120" y="68" fill="#a7f3d0" font-size="15" font-weight="700" text-anchor="middle">(WGS84 ↔ 3D Meters)</text>
+            <text x="120" y="96" fill="#6ee7b7" font-size="12.5" text-anchor="middle">⇄ Bidirectional Link</text>
+          </g>
+
+          <!-- Node: editor UI -->
+          <g transform="translate(440, 515)">
+            <rect x="0" y="0" width="185" height="48" rx="8" fill="#881337" stroke="#f43f5e" stroke-width="2" />
+            <text x="92" y="29" fill="#fecdd3" font-size="14.5" font-weight="700" text-anchor="middle">editor (Desktop 3D UI)</text>
+          </g>
+
+          <!-- Node: ar-scene UI -->
+          <g transform="translate(655, 515)">
+            <rect x="0" y="0" width="185" height="48" rx="8" fill="#78350f" stroke="#f59e0b" stroke-width="2" />
+            <text x="92" y="29" fill="#fde68a" font-size="14.5" font-weight="700" text-anchor="middle">ar-scene (Mobile AR View)</text>
+          </g>
+
+        </svg>
       </div>
     </section>
 
-    <!-- SLIDE 4: SECTION 2 - DATA LOSSLESSNESS EXAMPLE -->
+    <!-- SLIDE 4: SECTION 2 - DATA LOSSLESSNESS (Original Slide 2 Example) -->
     <section class="slide" id="slide-4">
       <div class="slide-section-num">2. IMPLEMENTATION DETAILS</div>
-      <h2 class="slide-title">Lossless KML Editing Example</h2>
-      <p class="slide-subtitle">Only the exact target coordinates change in the XML text — everything else remains untouched.</p>
+      <h2 class="slide-title">Data Losslessness &amp; Geo-Bridge</h2>
       
       <div class="grid-2">
         <div class="glass-card highlight fragment">
-          <div class="card-title">How Lossless Editing Works</div>
+          <div class="card-title">Lossless Roundtrip Editing</div>
           <ul class="bullet-list">
-            <li class="bullet-item">
-              <strong>The Problem with XML Parsers:</strong> Normal XML parsers re-serialize the whole document, deleting custom Google Earth tags, styles, and comments.
-            </li>
-            <li class="bullet-item">
-              <strong>Our Solution:</strong> We keep the raw KML string intact and find exact character range offsets for <span class="code-chip">&lt;coordinates&gt;</span>.
-            </li>
-            <li class="bullet-item">
-              <strong>Exact Substring Swap:</strong> Moving a marker replaces only the coordinate text in the raw file.
-            </li>
+            <li class="bullet-item"><strong>Lossless Roundtrip:</strong> Edit coordinates on desktop or mobile AR, save the file, and reopen in Google Earth.</li>
+            <li class="bullet-item"><strong>100% Tag Preservation:</strong> All custom Google Earth styles, CDATA blocks, comments, and structure tags remain intact.</li>
+            <li class="bullet-item"><strong>Substring Range Search:</strong> Uses <span class="code-chip">DOMParser</span> to locate exact character offsets of <span class="code-chip">&lt;coordinates&gt;</span>.</li>
+            <li class="bullet-item"><strong>Targeted Text Replacement:</strong> Replaces only coordinate numbers in the raw XML text without re-serializing.</li>
           </ul>
         </div>
 
         <div class="glass-card highlight fragment">
-          <div class="card-title">Editing a marker position in KML text</div>
+          <div class="card-title">Concrete KML Code Example</div>
           <div class="code-block">
-            &lt;Placemark id="marker1"&gt;
-              &lt;name&gt;Templergraben Gate&lt;/name&gt;
-              &lt;styleUrl&gt;#customPinStyle&lt;/styleUrl&gt;
-              &lt;Point&gt;
-                &lt;coordinates&gt;<span class="highlight-red">6.08388,50.77534,0</span> <span class="highlight-green">6.08450,50.77610,0</span>&lt;/coordinates&gt;
-              &lt;/Point&gt;
-              &lt;!-- Custom Google Earth comments &amp; tags preserved --&gt;
-            &lt;/Placemark&gt;
+&lt;Placemark id="marker1"&gt;
+  &lt;name&gt;Templergraben Gate&lt;/name&gt;
+  &lt;styleUrl&gt;#customPinStyle&lt;/styleUrl&gt;
+  &lt;Point&gt;
+    &lt;coordinates&gt;<span class="highlight-red">6.08388,50.77534,0</span> <span class="highlight-green">6.08450,50.77610,0</span>&lt;/coordinates&gt;
+  &lt;/Point&gt;
+  &lt;!-- Custom Google Earth tags &amp; comments preserved --&gt;
+&lt;/Placemark&gt;
           </div>
-        </div>
-
-        <div class="glass-card highlight fragment">
-          <div class="card-title">Hier noch die demo zeigen?</div>
         </div>
       </div>
     </section>
 
-    <!-- SLIDE 5: SECTION 2 - RENDERING & LIVE RENDERERS DEMO (Based strictly on plan.md) -->
+    <!-- SLIDE 5: SECTION 2 - RENDERING & LIVE RENDERERS DEMO -->
     <section class="slide" id="slide-5">
       <div class="slide-section-num">2. IMPLEMENTATION &amp; LIVE DEMO</div>
-      <h2 class="slide-title">Three.js Asset Renderers (plan.md Specs)</h2>
-      <p class="slide-subtitle">Rendering Pin Markers, Lines, GroundOverlays, and 3D COLLADA models - Component 4.</p>
+      <h2 class="slide-title">Three.js Asset Renderers</h2>
       
       <div class="grid-2" style="align-items: center;">
         <div class="glass-card highlight fragment">
           <div class="card-title">Renderers Specifications</div>
           <ul class="bullet-list">
-            <li class="bullet-item">
-              <strong>Marker Renderer:</strong> Custom map pins &amp; canvas icon sprites positioned in 3D meter space.
-            </li>
-            <li class="bullet-item">
-              <strong>Line Renderer:</strong> 3D polylines with configurable stroke width, color, and altitude mode.
-            </li>
-            <li class="bullet-item">
-              <strong>GroundOverlay Renderer:</strong> 2D image overlays mapped onto terrain coordinates (bounding box).
-            </li>
-            <li class="bullet-item">
-              <strong>COLLADA 3D Model Renderer:</strong> Loads <span class="code-chip">.dae</span> 3D models with embedded textures via <span class="code-chip">ColladaLoader</span>.
-            </li>
-            <li class="bullet-item">
-              <strong>VRAM TextureCache:</strong> Reuses shared materials and textures to prevent memory leaks on GPU.
-            </li>
+            <li class="bullet-item"><strong>Marker Renderer:</strong> Pins &amp; canvas icon sprites positioned in 3D meter space.</li>
+            <li class="bullet-item"><strong>Line Renderer:</strong> 3D polylines with custom stroke width, color, and altitude mode.</li>
+            <li class="bullet-item"><strong>GroundOverlay Renderer:</strong> 2D image overlays projected onto terrain bounding box.</li>
+            <li class="bullet-item"><strong>3D Model Renderer:</strong> Loads <span class="code-chip">.dae</span> COLLADA models with textures via <span class="code-chip">ColladaLoader</span>.</li>
+            <li class="bullet-item"><strong>VRAM TextureCache:</strong> Reuses shared materials to prevent GPU memory leaks.</li>
           </ul>
         </div>
 
@@ -928,21 +761,20 @@
       </div>
     </section>
 
-    <!-- SLIDE 6: SECTION 3 - ARCHITECTURAL INSIGHTS & DETAILED CODE FLOW -->
+    <!-- SLIDE 6: SECTION 3 - ARCHITECTURAL INSIGHTS (How It Works with Diagram Snippets) -->
     <section class="slide" id="slide-6">
       <div class="slide-section-num">3. ARCHITECTURAL INSIGHTS</div>
-      <h2 class="slide-title">Detailed Execution Flow</h2>
-      <p class="slide-subtitle">How a user gesture triggers commands, spatial math, AST text editing, and debounced auto-save.</p>
+      <h2 class="slide-title">How It Works</h2>
       
       <div class="flow-step-grid">
         <!-- STEP 1 -->
         <div class="flow-step-card fragment">
           <div class="flow-step-num">STEP 1</div>
           <div class="flow-step-title">User Edit Gesture</div>
-          <div class="flow-step-desc">User grabs a marker in desktop 3D view or mobile AR view.</div>
-          <div class="code-block">
-// Touch / Mouse Drag
-onMarkerDrag(newPos);
+          <div class="flow-step-desc">User drags a marker on the 3D map or smartphone AR screen.</div>
+          <div class="flow-diagram-snippet">
+            <span class="comp">UI Layer</span>
+            <span>editor / ar-scene</span>
           </div>
         </div>
 
@@ -950,12 +782,10 @@ onMarkerDrag(newPos);
         <div class="flow-step-card fragment">
           <div class="flow-step-num">STEP 2</div>
           <div class="flow-step-title">Command Dispatch</div>
-          <div class="flow-step-desc">Creates atomic command &amp; pushes to Undo stack.</div>
-          <div class="code-block">
-const cmd = new
- MoveMarkerCommand(
-  featureId, worldPos);
-stack.execute(cmd);
+          <div class="flow-step-desc">Creates atomic command object &amp; pushes to Redux Undo stack.</div>
+          <div class="flow-diagram-snippet">
+            <span class="comp">State Layer</span>
+            <span>commands ➔ store</span>
           </div>
         </div>
 
@@ -963,11 +793,10 @@ stack.execute(cmd);
         <div class="flow-step-card fragment">
           <div class="flow-step-num">STEP 3</div>
           <div class="flow-step-title">Geo-Bridge Math</div>
-          <div class="flow-step-desc">Converts 3D meters relative to anchor into GPS Lat/Lon.</div>
-          <div class="code-block">
-const gps =
- geoBridge.worldToGeo(
-  worldPos, 'absolute');
+          <div class="flow-step-desc">Converts 3D drag meters relative to anchor into GPS Lat/Lon.</div>
+          <div class="flow-diagram-snippet">
+            <span class="comp">Math Layer</span>
+            <span>geo-bridge (WGS84)</span>
           </div>
         </div>
 
@@ -975,11 +804,10 @@ const gps =
         <div class="flow-step-card fragment">
           <div class="flow-step-num">STEP 4</div>
           <div class="flow-step-title">AST XML Substring Edit</div>
-          <div class="flow-step-desc"><strong>AST</strong> = Abstract Syntax Tree (parsed XML in memory). Replaces coordinate string in-place.</div>
-          <div class="code-block">
-findFeatureRanges(xml);
-replaceSubstring(
- range, newGpsText);
+          <div class="flow-step-desc"><strong>AST</strong> = Parsed XML tree in memory. Replaces coordinate substring in-place.</div>
+          <div class="flow-diagram-snippet">
+            <span class="comp">AST Model</span>
+            <span>document-model</span>
           </div>
         </div>
 
@@ -988,18 +816,17 @@ replaceSubstring(
           <div class="flow-step-num">STEP 5</div>
           <div class="flow-step-title">Debounced Auto-Save</div>
           <div class="flow-step-desc">Waits 500ms after dragging stops before writing file to disk (prevents lagging during 60 FPS drag).</div>
-          <div class="code-block">
-setTimeout(() =&gt; {
- saveToKmzFile();
-}, 500);
+          <div class="flow-diagram-snippet">
+            <span class="comp">Disk Save</span>
+            <span>persistence (500ms)</span>
           </div>
         </div>
       </div>
 
-      <!-- Mini Concluding Footer Box -->
-      <div class="mini-insight-box fragment">
-        <strong>Note:</strong>
-        <span>Because commands &amp; math are isolated, both Desktop and AR views share identical save logic and spatial math without code duplication.</span>
+      <!-- Large Concluding Key Takeaway Banner -->
+      <div class="large-takeaway-banner fragment">
+        <strong>Key Takeaway:</strong>
+        <span>Because commands &amp; math are isolated, both Desktop and AR views share 100% identical save logic and spatial math without code duplication.</span>
       </div>
     </section>
 
@@ -1007,21 +834,15 @@ setTimeout(() =&gt; {
     <section class="slide" id="slide-7">
       <div class="slide-section-num">4. THE RESULTS &amp; LIVE DEMO</div>
       <h2 class="slide-title">Desktop Editor Live Preview</h2>
-      <p class="slide-subtitle">Live interactive preview of the desktop editor suite.</p>
       
       <div class="grid-2" style="align-items: center;">
         <div class="glass-card highlight fragment">
           <div class="card-title">Desktop Editor Features</div>
           <ul class="bullet-list">
-            <li class="bullet-item">
-              <strong>Interactive 3D Map:</strong> OrbitControls for navigating around KML features.
-            </li>
-            <li class="bullet-item">
-              <strong>Sidebar &amp; Inspector:</strong> Feature tree view and property editing panel.
-            </li>
-            <li class="bullet-item">
-              <strong>Undo / Redo:</strong> History stack supported via <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>.
-            </li>
+            <li class="bullet-item"><strong>Interactive 3D Map:</strong> OrbitControls for navigating around KML features.</li>
+            <li class="bullet-item"><strong>Sidebar &amp; Inspector:</strong> Feature tree view and property editing panel.</li>
+            <li class="bullet-item"><strong>Undo / Redo:</strong> History stack supported via <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>.</li>
+            <li class="bullet-item"><strong>Google Earth Compatible:</strong> Reopens saved KMZ files with modified coordinates intact.</li>
           </ul>
         </div>
 
@@ -1036,122 +857,124 @@ setTimeout(() =&gt; {
       </div>
     </section>
 
-    <!-- SLIDE 7.1: SECTION 4 - DEMO MOBILE AR VIEW -->
-    <section class="slide" id="slide-7">
-      <div class="slide-section-num">4. THE RESULTS &amp; LIVE DEMO</div>
-      <h2 class="slide-title">Mobile XR Editor Preview</h2>
+    <!-- SLIDE 8: SECTION 4 - MOBILE AR VIDEO DEMO -->
+    <section class="slide" id="slide-8">
+      <div class="slide-section-num">4. THE RESULTS &amp; MOBILE AR DEMO</div>
+      <h2 class="slide-title">Mobile AR Field Demo (Video)</h2>
+      
+      <div class="grid-2" style="align-items: center;">
+        <div class="glass-card highlight fragment">
+          <div class="card-title">Mobile AR Features</div>
+          <ul class="bullet-list">
+            <li class="bullet-item"><strong>Live Camera Pass-Through:</strong> Overlays 3D KML features onto real-world camera video feed.</li>
+            <li class="bullet-item"><strong>🛰️ Real GPS vs. ⚙️ Mock GPS:</strong> Switch between real field GPS and eye-level desk testing.</li>
+            <li class="bullet-item"><strong>Grab-to-Move POV Editing:</strong> Drag markers on screen in real time to alter their GPS position.</li>
+            <li class="bullet-item"><strong>Orientation Sensors:</strong> Uses smartphone Gyroscope &amp; Compass to sync 3D camera rotation.</li>
+          </ul>
+        </div>
 
-        <span>To be added</span>
-        <!-- EMBEDDED video -->
-        <div class="demo-frame-container fragment">
-          <div class="demo-frame-header">
-            <span class="live-tag">Mobile web XR</span>
+        <!-- MOBILE AR VIDEO CONTAINER -->
+        <div class="video-frame-container fragment">
+          <div class="video-frame-header">
+            <span>VIDEO DEMO: Mobile AR Field App</span>
+            <span class="live-tag" style="color: #a5b4fc;">ar-demo-video.mp4</span>
           </div>
+          <video controls preload="metadata" style="width: 100%; height: 560px; object-fit: contain; background: #000;">
+            <source src="ar-demo-video.mp4" type="video/mp4">
+            Your browser does not support HTML5 video playback.
+          </video>
         </div>
       </div>
     </section>
 
-    <!-- SLIDE 8: SECTION 5 - PROBLEMS ENCOUNTERED -->
-    <section class="slide" id="slide-8">
+    <!-- SLIDE 9: SECTION 5 - PROBLEMS ENCOUNTERED -->
+    <section class="slide" id="slide-9">
       <div class="slide-section-num">5. PROBLEMS ENCOUNTERED</div>
       <h2 class="slide-title">Lab Challenges &amp; Honest Learnings</h2>
-      <p class="slide-subtitle">Obstacles we faced during development under heavy workload.</p>
       
       <div class="grid-2">
         <div class="glass-card problem-card fragment">
           <div class="card-title" style="color: #fb7185;">Code Comprehension under High Workload &amp; AI Code</div>
-          <p class="card-text">
-            <strong>Challenge:</strong> Developing complex modules rapidly with heavy AI assistance made it difficult to gain deep, complete understanding of every underlying code layer under tight time constraints.
-          </p>
+          <ul class="bullet-list">
+            <li class="bullet-item">Rapid development with heavy AI code generation created high code volume.</li>
+            <li class="bullet-item">Under tight time constraints, gaining deep understanding of every underlying layer was difficult.</li>
+          </ul>
         </div>
 
         <div class="glass-card problem-card fragment">
           <div class="card-title" style="color: #fb7185;">AR Marker Positioning Issues</div>
-          <p class="card-text">
-            <strong>Challenge:</strong> Positioning markers accurately in AR proved problematic. Framework positioning functions were not utilized correctly by our viewer layer, overcomplicating position calculations.<br><br>
-            <strong>Status:</strong> Unresolved due to time constraints; fixing this properly would require refactoring the viewer layer from scratch.
-          </p>
+          <ul class="bullet-list">
+            <li class="bullet-item">Positioning markers accurately in mobile AR proved problematic.</li>
+            <li class="bullet-item">Framework positioning functions were not utilized correctly by our viewer layer.</li>
+            <li class="bullet-item">Resolving this would require refactoring the viewer layer from scratch (unresolved due to time).</li>
+          </ul>
         </div>
       </div>
     </section>
 
-    <!-- SLIDE 9: SECTION 6 - WHAT WORKED WELL -->
-    <section class="slide" id="slide-9">
+    <!-- SLIDE 10: SECTION 6 - WHAT WORKED WELL -->
+    <section class="slide" id="slide-10">
       <div class="slide-section-num">6. WHAT WORKED WELL</div>
       <h2 class="slide-title">Lab Successes</h2>
-      <p class="slide-subtitle">What went well during development.</p>
       
       <div class="grid-2">
         <div class="glass-card success-card fragment">
           <div class="card-title" style="color: #34d399;">Fast Modular Prototyping</div>
-          <p class="card-text">
-            Individual components (parser, math bridge, renderers, store) were created quickly and modularly, establishing a clear separation of concerns across the system.
-          </p>
+          <ul class="bullet-list">
+            <li class="bullet-item">Individual components (parser, math bridge, renderers, store) were created quickly.</li>
+            <li class="bullet-item">Strict modular separation established a clean system architecture.</li>
+          </ul>
         </div>
 
         <div class="glass-card success-card fragment">
           <div class="card-title" style="color: #34d399;">Lossless KML Round-Trip Editing</div>
-          <p class="card-text">
-            The lossless editing mechanism works reliably: modifying coordinates in our app updates only the target values, leaving all other XML tags and styling intact when reopened in external tools.
-          </p>
+          <ul class="bullet-list">
+            <li class="bullet-item">Lossless coordinate editing works reliably across saved files.</li>
+            <li class="bullet-item">Modifying coordinates in our app updates only target values, keeping all XML styles intact in Google Earth.</li>
+          </ul>
         </div>
       </div>
     </section>
 
-    <!-- SLIDE 10: SECTION 7 - SUMMARY & QUESTIONS -->
-    <section class="slide hero-slide" id="slide-10">
-      <div class="slide-section-num">7. SUMMARY &amp; QUESTIONS</div>
-      <h2 class="hero-title" style="font-size: 2.6rem;">Recap &amp; Discussion</h2>
-
-      <div class="recap-grid">
-        <div class="recap-card fragment">
-          <span class="recap-icon">🎯</span>
-          <div class="recap-title">Motivation</div>
-          <div class="recap-text">Bridging desktop KML/KMZ files with mobile AR — edit anywhere, stay compatible.</div>
+    <!-- SLIDE 11: RECAP SLIDE (Placeholder for 3-4 Screenshots) -->
+    <section class="slide" id="slide-11">
+      <div class="slide-section-num">7. RECAP &amp; OVERVIEW</div>
+      <h2 class="slide-title">Recap: Key Takeaways</h2>
+      
+      <div class="grid-4 fragment">
+        <div class="screenshot-card">
+          <span class="title">Recap Visual 1</span>
+          <span>Desktop 3D Editor Viewport</span>
         </div>
-
-        <div class="recap-card fragment">
-          <span class="recap-icon">🧩</span>
-          <div class="recap-title">Architecture</div>
-          <div class="recap-text">9 modular components: parsing, geo-math, rendering, state &amp; persistence.</div>
+        <div class="screenshot-card">
+          <span class="title">Recap Visual 2</span>
+          <span>Mobile AR Camera View &amp; GPS</span>
         </div>
-
-        <div class="recap-card fragment">
-          <span class="recap-icon">🔒</span>
-          <div class="recap-title">Lossless Editing</div>
-          <div class="recap-text">Substring-level XML edits — only coordinates change, everything else stays intact.</div>
+        <div class="screenshot-card">
+          <span class="title">Recap Visual 3</span>
+          <span>Architecture Data Flow &amp; Commands</span>
         </div>
-
-        <div class="recap-card fragment">
-          <span class="recap-icon">🖥️</span>
-          <div class="recap-title">Live Demos</div>
-          <div class="recap-text">3D renderers &amp; desktop editor shown running with real KML data.</div>
-        </div>
-
-        <div class="recap-card fragment">
-          <span class="recap-icon">⚠️</span>
-          <div class="recap-title">Challenges</div>
-          <div class="recap-text">AR marker positioning &amp; deep code review under time pressure with AI-assisted dev.</div>
-        </div>
-
-        <div class="recap-card fragment">
-          <span class="recap-icon">✅</span>
-          <div class="recap-title">Result</div>
-          <div class="recap-text">Working, modular AR/desktop KML editor with reliable round-trip fidelity.</div>
+        <div class="screenshot-card">
+          <span class="title">Recap Visual 4</span>
+          <span>Lossless Google Earth Roundtrip</span>
         </div>
       </div>
+    </section>
 
-      <div class="glass-card highlight fragment" style="max-width: 650px; text-align: center; margin: 0 auto;">
-        <div class="card-title" style="justify-content: center; font-size: 1.5rem; color: #a5b4fc;">
+    <!-- SLIDE 12: SECTION 7 - SUMMARY & QUESTIONS -->
+    <section class="slide hero-slide" id="slide-12">
+      <h1 class="hero-title">Thank You</h1>
+      <div class="glass-card highlight fragment" style="max-width: 700px; text-align: center; margin: 20px auto;">
+        <div class="card-title" style="justify-content: center; font-size: 1.8rem; color: #a5b4fc;">
           Questions &amp; Discussion
         </div>
-        <p class="card-text" style="font-size: 1.15rem; color: #e2e8f0; margin-top: 8px;">
+        <p class="card-text" style="font-size: 1.25rem; color: #e2e8f0; margin-top: 10px;">
           5-Minute Q&amp;A Session
         </p>
       </div>
 
-      <div class="fragment" style="margin-top: 20px;">
-        <button class="btn-icon" style="padding: 10px 24px; font-size: 0.95rem;" onclick="goToSlide(0)">
+      <div class="fragment" style="margin-top: 30px;">
+        <button class="btn-icon" style="padding: 12px 28px; font-size: 1rem;" onclick="goToSlide(0)">
           Restart Deck
         </button>
       </div>
@@ -1162,7 +985,7 @@ setTimeout(() =&gt; {
   <!-- Bottom Control Bar -->
   <footer>
     <div class="slide-counter">
-      Slide <span id="currentSlideNum">1</span> of <span id="totalSlideNum">10</span>
+      Slide <span id="currentSlideNum">1</span> of <span id="totalSlideNum">12</span>
     </div>
     
     <div class="nav-buttons">
