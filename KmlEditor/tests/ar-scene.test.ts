@@ -245,9 +245,9 @@ describe('Component 8: AR Scene (ar-scene) — Glue & Gesture Unit Tests', () =>
             const sceneManager = new ArSceneManager(factory);
             sceneManager.attachToFrameworkScene();
 
-            // Geographic feature coordinates belong in the framework scene root.
-            const scene = getScene();
-            expect(scene?.children).toContain(sceneManager.featureGroup);
+            // Geographic feature coordinates belong in arWorldGroup (or scene fallback).
+            const targetParent = getArWorldGroup() ?? getScene();
+            expect(targetParent?.children).toContain(sceneManager.featureGroup);
 
             sceneManager.dispose();
         });

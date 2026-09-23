@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
+    getArWorldGroup,
     getCamera,
     getScene,
     registerFrameUpdate,
 } from 'gps-plus-slam-app-framework/ar';
+import { createGpsAnchor, type GpsAnchor } from 'gps-plus-slam-app-framework/visualization';
 import { IFeatureView } from '../contracts/document-model';
 import { IGeoBridge } from '../contracts/geo-bridge';
 import { IAssetProvider } from '../contracts/kmz-container';
@@ -18,7 +20,7 @@ const DEFAULT_VISIBILITY_RADIUS_METERS = 50;
 /**
  * KmlSceneHelper — owns only the KML-specific scene objects:
  * - FeatureSceneRegistry (KML features → THREE.Object3D)
- * - featureGroup (child of the GPS-world scene from getScene())
+ * - featureGroup (child of arWorldGroup / GPS-world scene)
  * - GPS accuracy ring helper mesh
  * - Desktop OrbitControls (non-AR mode only)
  *
@@ -26,11 +28,12 @@ const DEFAULT_VISIBILITY_RADIUS_METERS = 50;
  * Those are created by initAR() and retrieved via getScene() / getCamera().
  */
 export class ArSceneManager {
-    /** The group that holds all KML feature objects. Added to the GPS-world scene after initAR(). */
+    /** The group that holds all KML feature objects. Added to arWorldGroup after initAR(). */
     public readonly featureGroup: THREE.Group;
     private readonly overlayGroup: THREE.Group;
     private readonly accuracyRing: THREE.Mesh;
     private readonly registry: FeatureSceneRegistry;
+    private readonly featureAnchors = new Map<FeatureId, GpsAnchor>();
 
     /** OrbitControls for desktop/replay mode. Only active when no XR session is presenting. */
     public controls: OrbitControls | null = null;
@@ -70,17 +73,20 @@ export class ArSceneManager {
     }
 
     /**
-     * Attach featureGroup to the framework's GPS-world scene and start the per-frame tick.
+     * Attach featureGroup to the framework's arWorldGroup (or scene fallback) and start the per-frame tick.
      * Call this after initAR() succeeds.
      *
      * @param rendererDomElement - Canvas element for OrbitControls (desktop/replay mode).
      */
     public attachToFrameworkScene(rendererDomElement?: HTMLElement): void {
+        const arWorldGroup = getArWorldGroup();
         const scene = getScene();
-        if (scene && this.featureGroup.parent !== scene) {
+        const targetParent = arWorldGroup ?? scene;
+
+        if (targetParent && this.featureGroup.parent !== targetParent) {
             // Basis transformation: GeoBridge (+X=East, -Z=North) -> GPS-world NUE (+X=North, +Z=East)
             this.featureGroup.rotation.y = -Math.PI / 2;
-            scene.add(this.featureGroup);
+            targetParent.add(this.featureGroup);
         }
 
         // Register a per-frame tick for OrbitControls update (desktop mode) & dynamic proximity culling.
@@ -225,6 +231,10 @@ export class ArSceneManager {
 
     public dispose(): void {
         this.detachFromFrameworkScene();
+        for (const anchor of this.featureAnchors.values()) {
+            anchor.dispose();
+        }
+        this.featureAnchors.clear();
         this.registry.dispose();
         this.accuracyRing.geometry.dispose();
         (this.accuracyRing.material as THREE.Material).dispose();
