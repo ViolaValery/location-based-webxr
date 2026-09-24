@@ -558,9 +558,6 @@
     <section class="slide hero-slide active" id="slide-1">
       <h1 class="hero-title">Location-Based WebXR<br>KML / KMZ Editor</h1>
       <div class="fragment" style="margin-top: 30px;">
-        <button class="btn-icon" style="padding: 14px 36px; font-size: 1.1rem; background: var(--primary); border-color: var(--primary);" onclick="nextStep()">
-          Start Presentation
-        </button>
       </div>
     </section>
 
@@ -949,20 +946,21 @@
           <div class="card-title">Mobile AR Features</div>
           <ul class="bullet-list">
             <li class="bullet-item"><strong>Live Camera Pass-Through:</strong> Overlays 3D KML features onto real-world camera video feed.</li>
-            <li class="bullet-item"><strong>🛰️ Real GPS vs. ⚙️ Mock GPS:</strong> Switch between real field GPS and eye-level desk testing.</li>
+            <li class="bullet-item"><strong>Anchoring point</strong> Calculations are less error prone - using offset </li>
+            <li class="bullet-item"><strong>Real GPS vs. Mock GPS:</strong> mobile XR with real GPS or desktop with mock GPS - markers are positioned around a point.</li>
+            <li class="bullet-item"><strong>Orientation Sensors:</strong> Uses smartphone Gyroscope &amp; syncing 3D objects positions</li>
             <li class="bullet-item"><strong>Grab-to-Move POV Editing:</strong> Drag markers on screen in real time to alter their GPS position.</li>
-            <li class="bullet-item"><strong>Orientation Sensors:</strong> Uses smartphone Gyroscope &amp; Compass to sync 3D camera rotation.</li>
           </ul>
         </div>
 
         <!-- MOBILE AR VIDEO CONTAINER -->
         <div class="video-frame-container fragment">
           <div class="video-frame-header">
-            <span>VIDEO DEMO: Mobile AR Field App</span>
+            <span>VIDEO DEMO: Mobile XR</span>
             <span class="live-tag" style="color: #a5b4fc;">ar-demo-video.mp4</span>
           </div>
           <video controls preload="metadata" style="width: 100%; height: 560px; object-fit: contain; background: #000;">
-            <source src="ar-demo-video.mp4" type="video/mp4">
+            <source src="presentation/ar-demo-video.mp4" type="video/mp4">
             Your browser does not support HTML5 video playback.
           </video>
         </div>
@@ -1021,7 +1019,7 @@
     <!-- SLIDE 11: RECAP SLIDE (Placeholder for 3-4 Screenshots) -->
     <section class="slide" id="slide-11">
       <div class="slide-section-num">7. RECAP &amp; OVERVIEW</div>
-      <h2 class="slide-title">Recap: Key Takeaways</h2>
+      <h2 class="slide-title">Recap</h2>
       
       <div class="grid-4 fragment">
         <!-- 1. Rendered Vector Architecture Schema -->
