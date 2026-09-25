@@ -558,52 +558,62 @@
     <section class="slide hero-slide active" id="slide-1">
       <h1 class="hero-title">Location-Based WebXR<br>KML / KMZ Editor</h1>
       <div class="fragment" style="margin-top: 30px;">
-        <button class="btn-icon" style="padding: 14px 36px; font-size: 1.1rem; background: var(--primary); border-color: var(--primary);" onclick="nextStep()">
-          Start Presentation
-        </button>
       </div>
     </section>
 
     <!-- SLIDE 2: SECTION 1 - INTRODUCTION & MOTIVATION -->
-    <section class="slide" id="slide-2">
-      <div class="slide-section-num">1. INTRODUCTION &amp; MOTIVATION</div>
-      <h2 class="slide-title">Why We Built This System</h2>
-      
-      <!-- Top Bullet Points -->
-      <div class="grid-2 fragment" style="margin-bottom: 28px;">
-        <div class="glass-card highlight">
-          <div class="card-title">The Goal</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">Load, view, and edit geographic KML/KMZ files directly in the browser.</li>
-            <li class="bullet-item">Inspect and edit markers anchored at real GPS positions on smartphones.</li>
-          </ul>
-        </div>
+<section class="slide" id="slide-2" style="padding: 40px 48px;">
+  <div class="slide-section-num">1. INTRODUCTION &amp; MOTIVATION</div>
+  <h2 class="slide-title">Why We Built This System</h2>
 
-        <div class="glass-card highlight">
-          <div class="card-title">Our Solution</div>
-          <ul class="bullet-list">
-            <li class="bullet-item">Dual-mode application: 3D Desktop Map Editor + Mobile Field AR View.</li>
-            <li class="bullet-item">Unified architecture ensuring edits persist identically across desktop and mobile.</li>
-          </ul>
+  <!-- 3-column layout: text | 2 stacked landscape images | tall portrait image -->
+  <div class="fragment" style="display: grid; grid-template-columns: 1fr 1.1fr 1fr; gap: 24px; align-items: stretch; margin-top: 24px;">
+
+    <!-- LEFT COLUMN: Combined Text Box -->
+    <div class="glass-card highlight" style="display: flex; flex-direction: column; gap: 20px; padding: 24px;">
+      <div>
+        <div class="card-title">The Goal</div>
+        <ul class="bullet-list">
+          <li class="bullet-item">Load, view, and edit geographic KML/KMZ files directly in the browser.</li>
+          <li class="bullet-item">Inspect and edit markers anchored at real GPS positions on smartphones.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="card-title">Our Solution</div>
+        <ul class="bullet-list">
+          <li class="bullet-item">Dual-mode application: 3D Desktop Map Editor + Mobile Field AR View.</li>
+          <li class="bullet-item">Unified architecture ensuring edits persist identically across desktop and mobile.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- MIDDLE COLUMN: 2 Stacked Landscape Screenshots -->
+    <div style="display: flex; flex-direction: column; gap: 24px; height: 100%;">
+      <div class="glass-card" style="padding: 12px; flex: 1; text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
+        <div style="width: 100%; flex: 1; border-radius: 8px; background: rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; overflow: hidden;">
+          <img src="slide-google-earth.jpg" alt="Google Earth Source Map" style="max-width: 100%; max-height: 100%; object-fit: contain;">
         </div>
+        <div style="font-weight: 700; color: #a5b4fc; font-size: 1.05rem; margin-top: 8px;">1. Google Earth Source Map</div>
       </div>
 
-      <!-- 3 Real Screenshots for System UI -->
-      <div class="grid-3 fragment">
-        <div class="glass-card" style="padding: 12px; height: 340px; text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
-          <img src="slide-google-earth.jpg" alt="Google Earth Source Map" style="width: 100%; height: 265px; object-fit: cover; border-radius: 8px;">
-          <div style="font-weight: 700; color: #a5b4fc; font-size: 1.05rem; margin-top: 8px;">1. Google Earth Source Map</div>
+      <div class="glass-card" style="padding: 12px; flex: 1; text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
+        <div style="width: 100%; flex: 1; border-radius: 8px; background: rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; overflow: hidden;">
+          <img src="slide-desktop-editor.png" alt="Desktop 3D Editor" style="max-width: 100%; max-height: 100%; object-fit: contain;">
         </div>
-        <div class="glass-card" style="padding: 12px; height: 340px; text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
-          <img src="slide-desktop-editor.png" alt="Desktop 3D Editor" style="width: 100%; height: 265px; object-fit: cover; border-radius: 8px;">
-          <div style="font-weight: 700; color: #a5b4fc; font-size: 1.05rem; margin-top: 8px;">2. 3D Desktop Editor</div>
-        </div>
-        <div class="glass-card" style="padding: 12px; height: 340px; text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
-          <img src="slide-mobile-ar.png" alt="Mobile Field AR App" style="width: 100%; height: 265px; object-fit: cover; border-radius: 8px;">
-          <div style="font-weight: 700; color: #a5b4fc; font-size: 1.05rem; margin-top: 8px;">3. Mobile Field AR App</div>
-        </div>
+        <div style="font-weight: 700; color: #a5b4fc; font-size: 1.05rem; margin-top: 8px;">2. 3D Desktop Editor</div>
       </div>
-    </section>
+    </div>
+
+    <!-- RIGHT COLUMN: Tall Portrait Screenshot -->
+    <div class="glass-card" style="padding: 12px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; height: 100%;">
+      <div style="width: 100%; flex: 1; border-radius: 8px; background: rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; overflow: hidden;">
+        <img src="slide-mobile-ar.png" alt="Mobile Field AR App" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+      </div>
+      <div style="font-weight: 700; color: #a5b4fc; font-size: 1.05rem; margin-top: 8px;">3. Mobile Field AR App</div>
+    </div>
+
+  </div>
+</section>
 
     <!-- SLIDE 3: SECTION 2 - SYSTEM ARCHITECTURE (PERFECT VECTOR SVG DIAGRAM) -->
     <section class="slide" id="slide-3">
@@ -781,20 +791,21 @@
           <div class="card-title">Mobile AR Features</div>
           <ul class="bullet-list">
             <li class="bullet-item"><strong>Live Camera Pass-Through:</strong> Overlays 3D KML features onto real-world camera video feed.</li>
-            <li class="bullet-item"><strong>🛰️ Real GPS vs. ⚙️ Mock GPS:</strong> Switch between real field GPS and eye-level desk testing.</li>
+            <li class="bullet-item"><strong>Anchoring point</strong> Calculations are less error prone - using offset </li>
+            <li class="bullet-item"><strong>Real GPS vs. Mock GPS:</strong> mobile XR with real GPS or desktop with mock GPS - markers are positioned around a point.</li>
+            <li class="bullet-item"><strong>Orientation Sensors:</strong> Uses smartphone Gyroscope &amp; syncing 3D objects positions</li>
             <li class="bullet-item"><strong>Grab-to-Move POV Editing:</strong> Drag markers on screen in real time to alter their GPS position.</li>
-            <li class="bullet-item"><strong>Orientation Sensors:</strong> Uses smartphone Gyroscope &amp; Compass to sync 3D camera rotation.</li>
           </ul>
         </div>
 
         <!-- MOBILE AR VIDEO CONTAINER -->
         <div class="video-frame-container fragment">
           <div class="video-frame-header">
-            <span>VIDEO DEMO: Mobile AR Field App</span>
+            <span>VIDEO DEMO: Mobile XR</span>
             <span class="live-tag" style="color: #a5b4fc;">ar-demo-video.mp4</span>
           </div>
           <video controls preload="metadata" style="width: 100%; height: 560px; object-fit: contain; background: #000;">
-            <source src="ar-demo-video.mp4" type="video/mp4">
+            <source src="presentation/ar-demo-video.mp4" type="video/mp4">
             Your browser does not support HTML5 video playback.
           </video>
         </div>
@@ -853,7 +864,7 @@
     <!-- SLIDE 11: RECAP SLIDE (Placeholder for 3-4 Screenshots) -->
     <section class="slide" id="slide-11">
       <div class="slide-section-num">7. RECAP &amp; OVERVIEW</div>
-      <h2 class="slide-title">Recap: Key Takeaways</h2>
+      <h2 class="slide-title">Recap</h2>
       
       <div class="grid-4 fragment">
         <!-- 1. Rendered Architecture Schema Image -->
