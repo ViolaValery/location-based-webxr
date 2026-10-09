@@ -17,7 +17,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { TextWriter } from "@zip.js/zip.js";
 import { tourManifestEntryOf } from "gps-plus-slam-app-framework/ar/tour-archive";
-import { parseTourManifest } from "gps-plus-slam-app-framework/ar/tour-manifest";
+import {
+  parseTourManifest,
+  type TourObject,
+} from "gps-plus-slam-app-framework/ar/tour-manifest";
 import { Quaternion, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import {
@@ -33,7 +36,18 @@ import {
   selectOdometryPositions,
 } from "gps-plus-slam-app-framework/state";
 import { createTourViewerStore } from "./tour-viewer-session.js";
-import { storedGeo } from "./visit-settle.js";
+import {
+  alignmentTurnDeg,
+  codePositionSentence,
+} from "./code-position-rule.js";
+import { planCodePosition } from "./code-position-settle.js";
+import {
+  planVisitSettle,
+  storedGeo,
+  storedSizeM,
+  type CodeSighting,
+  visitEndChoice,
+} from "./visit-settle.js";
 import { createWalkedDistanceTracker } from "./walked-distance-tracker.js";
 
 const ZIP = process.env.TOUR_RECORDING;
@@ -580,6 +594,185 @@ describe.skipIf(TOUR_ZIP === undefined)("a Tour Viewer tour zip", () => {
     },
   );
 });
+
+// Why this test exists (field test 3, the owner's question): the rule was
+// tested at the recording's numbers, not on its Finish. This replays that
+// Finish's settle from the recording through the production planners -
+// the stored code, the end alignment, the latest sighting and the zero the
+// settled log carries, and each object's last AR pose - twice: as it ran
+// (the code kept, no pick quality: the old path), which must reproduce the
+// tour zip, and as today's rules decide it.
+//
+// What the replay cannot know (the picks are not logged): each object's
+// own pick and the earlier sightings. The visit's GPS spread never reached
+// the 40 m at which a pick matures, so every pick fell back to the end
+// alignment, and the one logged sighting stands for all of them; the "as
+// it ran" check measures what that costs.
+describe.skipIf(ZIP === undefined || TOUR_ZIP === undefined)(
+  "a field recording's Finish, replayed with today's rules",
+  () => {
+    it("reproduces the zip as it ran, then settles the code and the pins by today's rules", async () => {
+      // The geodesy is licence-gated; building a store activates it, as
+      // the page does at boot.
+      createTourViewerStore();
+      const zip = await readTourZip(String(TOUR_ZIP));
+      const actions = (
+        await loadActionsFromZip(new Uint8Array(readFileSync(String(ZIP))))
+      ).map((e) => e.action);
+      const settled = actions
+        .filter((a) => a.type === "tourAuthoring/settled")
+        .at(-1)?.payload as
+        | {
+            arVisitIndex: number;
+            atMs: number;
+            visitAlignment: number[];
+            sighting: CodeSighting | null;
+            referenceLevel: { id: string; json: string } | null;
+            zero: { lat: number; lon: number };
+            codePosition?: {
+              candidate: { extentM: number | null; accuracyM: number | null };
+            };
+          }
+        | undefined;
+      expect(settled?.referenceLevel, "the Finish's stored code").toBeTruthy();
+      expect(settled?.sighting, "the Finish's latest sighting").toBeTruthy();
+      const s = settled!;
+      const level = s.referenceLevel!;
+      const sighting = s.sighting!;
+      // Each object's last pose in AR.
+      const lastPose = new Map<
+        string,
+        { object: TourObject; local: [number, number, number]; atMs: number }
+      >();
+      for (const a of actions) {
+        const p = a.payload as {
+          object?: TourObject;
+          after?: TourObject;
+          reticleOdomNue?: [number, number, number] | null;
+          atMs?: number;
+        };
+        const object =
+          a.type === "tourAuthoring/objectPlaced"
+            ? p.object
+            : a.type === "tourAuthoring/objectMoved"
+              ? p.after
+              : undefined;
+        if (object === undefined || !p.reticleOdomNue) continue;
+        lastPose.set(object.id, {
+          object,
+          local: p.reticleOdomNue,
+          atMs: p.atMs ?? 0,
+        });
+      }
+      const placed = zip.manifest.objects.flatMap((o) => {
+        const pose = lastPose.get(o.id);
+        return pose === undefined
+          ? []
+          : [
+              {
+                object: pose.object,
+                placement: {
+                  visit: s.arVisitIndex,
+                  local: {
+                    position: pose.local,
+                    rotation: [0, 0, 0, 1] as [number, number, number, number],
+                  },
+                },
+              },
+            ];
+      });
+      expect(placed).toHaveLength(zip.manifest.objects.length);
+      const picks = {
+        objects: new Map(
+          [...lastPose].map(([id, p]) => [
+            id,
+            { atMs: p.atMs, alignment: null },
+          ]),
+        ),
+        measurement: null,
+        sightings: [{ atMs: s.atMs, alignment: null, sighting }],
+      };
+      const candidate = s.codePosition!.candidate;
+      const base = {
+        visit: s.arVisitIndex,
+        placed,
+        alignment: s.visitAlignment,
+        zero: s.zero,
+        mintedLevel: level,
+        sighting,
+        alignmentInfo: {
+          hasMatrix: true,
+          sampleCount: 100,
+          gpsAccuracyM: candidate.accuracyM ?? 5,
+        },
+        gpsAccuracyM: candidate.accuracyM,
+        nowIso: "2026-10-09T12:20:00.000Z",
+      };
+      const storedCode = storedGeo(level.json)!;
+      const lines: string[] = [];
+      const label = (o: TourObject) => ("label" in o ? String(o.label) : o.id);
+      const metres = (a: { lat: number; lon: number }, b: typeof a) => {
+        const d = enOf(a, b);
+        return Math.hypot(d.e, d.n);
+      };
+
+      // As it ran: the code kept, every object corrected through it.
+      const asRan = planVisitSettle({ ...base, measurement: null, picks })!;
+      for (const o of asRan.objects) {
+        const inZip = zip.manifest.objects.find((z) => z.id === o.object.id)!;
+        lines.push(
+          `as it ran: ${label(o.object)} ${o.basis}, ${fromCode(storedCode, o.object.geo)}; ${metres(inZip.geo, o.object.geo).toFixed(2)} m from the zip`,
+        );
+        expect(metres(inZip.geo, o.object.geo), label(o.object)).toBeLessThan(
+          1,
+        );
+      }
+
+      // Today's rules.
+      const position = planCodePosition({
+        visit: s.arVisitIndex,
+        mintedLevel: level,
+        measurement: null,
+        sighting,
+        picks,
+        alignment: s.visitAlignment,
+        zero: s.zero,
+        endQuality: candidate,
+        sizeM: storedSizeM(level.json) ?? 0.16,
+      });
+      expect(position, "a decision for the stored code").not.toBeNull();
+      lines.push(
+        `today: code ${JSON.stringify(position!.decision)}, offset ${position!.offsetM.toFixed(2)} m`,
+      );
+      const todayInput = {
+        ...base,
+        measurement: position!.measurement,
+        picks: { ...picks, measurement: position!.pick },
+      };
+      const today = planVisitSettle(todayInput)!;
+      const newCode =
+        today.level === null ? storedCode : storedGeo(today.level.json)!;
+      lines.push(
+        `today: code heading ${String(storedCode.headingDeg?.toFixed(1))} -> ${String(newCode.headingDeg?.toFixed(1))}, moved ${metres(storedCode, newCode).toFixed(2)} m`,
+      );
+      // The result map draws the visit's path through the end choice.
+      const end = visitEndChoice(todayInput);
+      lines.push(
+        `today: the map's path ${String(end?.basis)}, turned ${end === null ? "?" : alignmentTurnDeg(end.alignment, s.visitAlignment).toFixed(1)} deg from the visit's GPS`,
+      );
+      for (const o of today.objects) {
+        const left = lastPose.get(o.object.id)!.object.geo;
+        lines.push(
+          `today: ${label(o.object)} ${o.basis}, ${fromCode(storedCode, o.object.geo)} (old code), ${fromCode(newCode, o.object.geo)} (new code); ${metres(left, o.object.geo).toFixed(2)} m from where it was left in AR`,
+        );
+      }
+      lines.push(
+        `today's result line: ${codePositionSentence([{ decision: position!.decision, applied: today.level !== null }])}`,
+      );
+      process.stdout.write(`${lines.map((l) => `TS ${l}`).join("\n")}\n`);
+    });
+  },
+);
 
 /** The manifest entry's text reader, wherever in the zip it sits. */
 async function loadEntriesFromSubdirOrRoot(
