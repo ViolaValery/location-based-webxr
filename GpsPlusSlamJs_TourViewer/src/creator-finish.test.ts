@@ -264,6 +264,8 @@ async function wireFinishable(options: {
   manifestExtras?: Partial<TourManifest>;
   /** No code in hand (a desk edit, code book plan M4d). */
   noCodeInHand?: boolean;
+  /** Told every step the finish opens. */
+  onOpenStep?: (step: string) => void;
 }) {
   const blob = await hostedArchive(options.hosted, options.hostedContent);
   const dom = fakeDom();
@@ -320,7 +322,10 @@ async function wireFinishable(options: {
       getScene: () => null,
       ...options.seamsExtras,
     } as never,
-    wizard: { openStep: () => undefined, revealStep: () => undefined } as never,
+    wizard: {
+      openStep: (step: string) => options.onOpenStep?.(step),
+      revealStep: () => undefined,
+    } as never,
     dom: dom as unknown as CreatorSetupDom,
     openDraftStore: () => Promise.resolve(undefined),
   });
@@ -1207,6 +1212,22 @@ describe("the save cannot be forgotten (UI round 1, U2)", () => {
     expect(dom.downloadButton.textContent).toBe(FINISH_LABELS.saveAgain);
   });
 
+  // Why (polish round M2, B9): the owner asked for a completion page of
+  // its own - the saved status and the host's replace steps - instead of
+  // the result appearing at the bottom of the AR step.
+  it("lands on step 6, the completion step, once the session has ended", async () => {
+    const opened: string[] = [];
+    const { dom, ctx } = await wireFinishable({
+      hosted: [],
+      placed: [pin("new-one")],
+      onOpenStep: (step) => opened.push(step),
+    });
+    dom.finishButton.click();
+    await settle(ctx);
+    expect(opened).toEqual(["done"]);
+    expect(dom.finishBlock.hidden).toBe(false);
+  });
+
   // Why (async-UI rule; D-F4b): a save that did not go through says so,
   // keeps the leave question, and the one button saves again the same way.
   it("says when the save did not go through, keeps asking, and saves again from the button", async () => {
@@ -1469,7 +1490,7 @@ describe("the save cannot be forgotten (UI round 1, U2)", () => {
 
 describe("after the Finish, the save leads (UI round 1, U2 milestone review #2, #5)", () => {
   // Why: the page used to scroll to the top of step 4 and lead with
-  // "Start AR setup" and Finish again; and a "keep the walk" ticked after a
+  // "Start creating" and Finish again; and a "keep the walk" ticked after a
   // Finish could not change the file waiting to be saved.
   it("brings what the save did into view, and on a phone hides Finish once AR has ended", async () => {
     const { dom, ctx, setup, arStatus } = await wireFinishable({

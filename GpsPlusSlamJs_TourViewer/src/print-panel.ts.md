@@ -33,9 +33,16 @@ since M6.
     - `sizeInput` is SHARED with author mode's mint (one input, two
       consumers): the size a code is printed at is the size it is minted
       with.
-  - `PrintPanel.presentTour(url)` - take the open tour's link, swap the
-    field for that link as TEXT, open the panel and render the code;
-    `archive-open.ts` calls it on every open
+  - `PrintPanel.presentTour(url, { verified? })` - take the open tour's
+    link, swap the field for that link as TEXT, open the panel and render
+    the code; `archive-open.ts` calls it on every open. `verified: false`
+    (polish round M2, A16) is step 2's hand-off of a link whose file is not
+    there yet or that could not be checked offline: the link reads
+    "<url> - not verified yet" until a check confirms it.
+  - The optional `checkLink` dep (`link-check.ts`'s `checkLink`, bound in
+    `main.ts`) runs before the PDF while the link is unverified. The PDF
+    is built either way; `recheckNote` goes in front of its info line, and
+    a link that now opens drops its "not verified yet".
   - `printCountFromInput(raw)` - how many posters the PDF carries:
     `{ count, coerced, clamped }`. Delegates to the code number's own
     coercion rather than repeating it, and caps at `MAX_PRINTED_CODES`
@@ -64,8 +71,9 @@ sideM)` - what the file is called and what is printed under each code.
     - When it is false the check says NOTHING. A half-scanned range can
       only produce a false warning, and telling a creator to undo a change
       they never made is worse than silence.
-  - `printUrlDisplay(tourUrl)` - the pure rule behind that swap:
-    `{ askVisible, shownVisible, shownText }`. Exactly one of the two is
+  - `printUrlDisplay(tourUrl, { verified? })` - the pure rule behind that
+    swap: `{ askVisible, shownVisible, shownText }`; `verified: false`
+    appends " - not verified yet" to the shown text. Exactly one of the two is
     ever live, which is what stops them disagreeing about which link the
     printed code carries.
     (both modes; the `?qr=` boot too).
@@ -140,4 +148,6 @@ print.presentTour("https://www.dropbox.com/.../tour.zip?dl=0");
 code at a declared true size" (both async-UI states, the true-size info
 line, the page-fit warning, the failure path) and "opening a tour opens the
 print panel prefilled with the tour's link"; `launch-and-errors.spec.js` -
-the `?qr=` boot prefills it.
+the `?qr=` boot prefills it. `print-panel.test.ts` - `printUrlDisplay`,
+including the unverified spelling; `setup-flow.spec.js` - an unuploaded
+link reaching the panel unverified.

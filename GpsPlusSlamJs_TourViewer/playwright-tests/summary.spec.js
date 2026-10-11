@@ -134,7 +134,7 @@ test("after Finish the page shows each code with its facing line and verdict, an
   ).toHaveCount(1);
   expect(leafletRequests(urls).length).toBeGreaterThan(0);
 
-  // Back to authoring is Start AR setup again.
+  // Back to authoring is Start creating again.
   const before = await page.evaluate(
     () => /** @type {any} */ (window).__tourViewerTest.initARCalls.length,
   );

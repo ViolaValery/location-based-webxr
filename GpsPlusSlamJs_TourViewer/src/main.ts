@@ -25,7 +25,10 @@ import {
   packFilesAsZip,
 } from "gps-plus-slam-app-framework/storage";
 
-import { openDraftNamespace } from "gps-plus-slam-app-framework/storage";
+import {
+  openDraftNamespace,
+  openRemoteArchive,
+} from "gps-plus-slam-app-framework/storage";
 import { sanitizedPageUrl } from "gps-plus-slam-app-framework/storage/session-metadata-record";
 import { getBuildInfo } from "gps-plus-slam-app-framework/utils/build-info";
 
@@ -37,6 +40,8 @@ import { createObjectListView } from "./object-list.js";
 import type { ScanOpen } from "./scan-open.js";
 import { viewerModeFromSearch } from "./mode.js";
 import { describeOpenError } from "./open-errors.js";
+import { wireHostPicker } from "./host-picker.js";
+import { checkLink } from "./link-check.js";
 import { wirePrintPanel } from "./print-panel.js";
 import {
   AUTHORING_CONTEXT_TAG,
@@ -124,6 +129,9 @@ const arStore = createTourViewerStore(recording);
 const arController = createEnableGpsArController(seams.controllerDeps);
 const ctx = createTourViewerSession();
 ctx.debug = debug;
+// The gallery is a creator's debugging aid (polish round M2): shown only
+// with ?debug=1, and never to a visitor, whose tour appears in AR.
+element("gallery").hidden = !(mode === "creator" && debug);
 element<HTMLPreElement>("ar-debug").hidden = !ctx.debug;
 element("recording-block").hidden = !recordingControls;
 const hooks = createUnwiredHooks();
@@ -164,6 +172,15 @@ const print = wirePrintPanel({
   // Through the seam like every other download, so the e2e fake captures
   // the bytes instead of the browser writing a file.
   downloadPdf: (blob, filename) => seams.downloadPdf(blob, filename),
+  // The re-check before the PDF of a link step 2 could not confirm
+  // (polish round M2): the same transport an open uses, probed and let go.
+  checkLink: (url) =>
+    checkLink(url, (link, options) =>
+      openRemoteArchive(link, {
+        ...options,
+        corsProxyBaseUrl: DRIVE_PROXY_BASE_URL,
+      }),
+    ),
   // The open tour's measured codes, so the panel can say when printing
   // this one would strand them. Read at print time rather than captured:
   // the levels arrive asynchronously after an open, and a tour can be
@@ -185,9 +202,11 @@ const wizard = wireWizard({
   dom: {
     steps: {
       host: element<HTMLDetailsElement>("step-host"),
+      link: element<HTMLDetailsElement>("step-link"),
       print: printPanel,
       hang: element<HTMLDetailsElement>("step-hang"),
       measure: measureStep,
+      done: element<HTMLDetailsElement>("step-done"),
     },
     hangDone: element<HTMLButtonElement>("hang-done"),
     starterButton: element<HTMLButtonElement>("starter-zip"),
@@ -217,11 +236,35 @@ const wizard = wireWizard({
 });
 // The link a creator last opened, prefilled so a reload is one tap from
 // the remembered step (M6 review #2); never over a link already typed.
+// Labelled as the last tour (polish round M2, A3), so a prefilled field
+// does not read as a link this visit gave.
 {
   const linkInput = element<HTMLInputElement>("link");
   const last = wizard.rememberedTourUrl();
-  if (mode === "creator" && last !== null && linkInput.value === "")
+  if (mode === "creator" && last !== null && linkInput.value === "") {
     linkInput.value = last;
+    const status = element("link-status");
+    status.textContent = `Your last tour's link - tap "Check link" to continue with it, or paste another.`;
+    status.hidden = false;
+  }
+}
+// Step 1's host tiles (polish round M2, A6/A7): the choice is stored with
+// the wizard's other state, and Continue moves on to the link.
+if (mode === "creator") {
+  wireHostPicker<HTMLButtonElement | HTMLLIElement>({
+    dom: {
+      tiles: element("host-tiles"),
+      steps: element("host-steps"),
+      starter: element("starter-zip"),
+      continueButton: element("host-continue"),
+    },
+    store: stepStore,
+    createElement: (tag) => document.createElement(tag),
+    onContinue: () => {
+      wizard.openStep("link");
+      element<HTMLInputElement>("link").focus();
+    },
+  });
 }
 hooks.presentTourForPrint = (url, origin) => {
   print.presentTour(url);
@@ -236,6 +279,13 @@ hooks.presentTourForPrint = (url, origin) => {
 // A tour opened from a file (tour kit plan K0) has no link: the print step
 // keeps asking for one, and only a creator's wizard moves on - the same
 // steps a link would reach, without remembering a link to prefill.
+// A link step 2 could not confirm but that may still work (polish round
+// M2, A16): printed as given, marked unverified, so it is entered once.
+hooks.presentUnverifiedLink = (url) => {
+  print.presentTour(url, { verified: false });
+  wizard.presentTour(url);
+};
+
 hooks.presentLocalTour = (origin) => {
   print.presentNoTour();
   if (mode !== "creator") return;
@@ -265,7 +315,7 @@ let scanOpen: ScanOpen | null = null;
 // The summary after Finish (authoring plan 2026-09-28-0953 M3b). Its map is
 // a DYNAMIC import - the only way the page reaches Leaflet - so a visitor's
 // page never downloads it (summary-map-lazy.test.ts). Its way back into AR
-// is the page's own Start AR setup, tapped for the creator.
+// is the page's own Start creating, tapped for the creator.
 const summary = createSummaryPanel({
   dom: {
     root: element("summary"),
@@ -581,6 +631,7 @@ const archive = wireArchiveOpen({
     statsHeadline: element("stats-headline"),
     statsDetail: element("stats-detail"),
     errorBox,
+    linkStatus: element("link-status"),
     gallery: element("gallery"),
     storagePanel: element("storage-panel"),
     clearCacheButton: element("clear-cache"),

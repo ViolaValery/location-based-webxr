@@ -296,7 +296,7 @@ describe("arButtonView", () => {
     ["checking", "visitor", "Checking AR support…", true],
     ["unsupported", "visitor", "AR not supported on this device", true],
     ["ready", "visitor", "Start the tour", false],
-    ["ready", "creator", "Start AR setup", false],
+    ["ready", "creator", "Start creating", false],
     ["starting", "visitor", "Starting…", true],
     // The way out of AR (UI round 1, U2, review F2): it used to sit there
     // disabled as "Tour running" / "Setting up in AR".
@@ -325,7 +325,7 @@ describe("arButtonView", () => {
     ).toEqual({ label: "Getting your location…", disabled: true });
     // A creator never has a pending gate; the flag is ignored for them.
     expect(arButtonView({ status: "ready" }, "creator", pending).label).toBe(
-      "Start AR setup",
+      "Start creating",
     );
   });
 

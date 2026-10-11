@@ -479,12 +479,12 @@ export function wireCreatorFinish(deps: {
           // it now would put the closed tour's button on the next page.
           if (ctx.session !== current) return;
         }
-        // The download used to be step 5. It is the END of step 4 (F10):
-        // the creator finished in AR, the session is closing, and the save
-        // happens in the step they are already in. The reveal happens
-        // AFTER the disable above, so the block cannot appear over a
-        // session that is still compositing.
-        deps.wizard.openStep("measure");
+        // The completion step of its own (polish round M2, B9): the
+        // saved status and the host's replace steps, where the creator
+        // lands once the session has ended. The reveal happens AFTER the
+        // disable above, so the block cannot appear over a session that is
+        // still compositing.
+        deps.wizard.openStep("done");
         dom.finishBlock.hidden = false;
         // The summary of every visit (M3b), on the page with the save.
         deps.settle.showSummary();

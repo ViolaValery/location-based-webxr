@@ -1,0 +1,140 @@
+// @ts-check
+import { expect, test } from "@playwright/test";
+
+/**
+ * The six-step setup flow (polish round M2): where the tour lives, the
+ * link given once and checked by itself, and a page that uses the screen.
+ *
+ * Why these tests matter: the owner found step 1 confusing (a test link
+ * and a starter zip at once, with no reason given) and was asked for the
+ * link twice. The host choice is the context every later step reads, so
+ * it must survive a reload; the link check must run without a button; the
+ * transport demo (gallery, transfer numbers) is a debugging aid, not a
+ * step; and on a landscape phone the steps used half the screen.
+ */
+
+const ARCHIVE = "http://127.0.0.1:5197/ranges-ok/tour.zip";
+const HOST_KEY = "tour-viewer.wizard.host";
+
+test.describe("a first visit", () => {
+  // No stored host: the suite's default (playwright.config.js) is cleared.
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("starts at the host tiles, and a chosen host carries on to the link", async ({
+    page,
+  }) => {
+    await page.goto("/?nocache=1");
+    await expect(page.getByTestId("step-host")).toHaveAttribute("open", "");
+    const tiles = page.getByTestId("host-tiles").getByRole("radio");
+    await expect(tiles).toHaveText([
+      "Google Drive",
+      "Dropbox",
+      "OneDrive",
+      "GitHub",
+      "Your own server",
+    ]);
+    // Nothing chosen yet: no steps, no starter zip, no Continue.
+    await expect(page.getByTestId("host-steps")).toBeHidden();
+    await expect(page.getByTestId("starter-zip")).toBeHidden();
+    await expect(page.getByTestId("host-continue")).toBeHidden();
+
+    await tiles.filter({ hasText: "Dropbox" }).click();
+    await expect(tiles.filter({ hasText: "Dropbox" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(page.getByTestId("host-steps")).toContainText("Dropbox");
+    await expect(page.getByTestId("starter-zip")).toBeVisible();
+
+    // An own server's link can come before its file: no starter zip, and
+    // the server's two needs are named.
+    await tiles.filter({ hasText: "Your own server" }).click();
+    await expect(page.getByTestId("starter-zip")).toBeHidden();
+    await expect(page.getByTestId("host-steps")).toContainText(
+      "Access-Control-Allow-Origin",
+    );
+
+    await page.getByTestId("host-continue").click();
+    await expect(page.getByTestId("step-link")).toHaveAttribute("open", "");
+    await expect(page.getByTestId("link-input")).toBeFocused();
+
+    // The choice survives a reload: the page opens at the link.
+    await page.reload();
+    await expect(page.getByTestId("step-link")).toHaveAttribute("open", "");
+    expect(
+      await page.evaluate((key) => localStorage.getItem(key), HOST_KEY),
+    ).toBe("own");
+  });
+});
+
+test("the link is checked by itself when the field is left, with no button", async ({
+  page,
+}) => {
+  await page.goto("/?nocache=1");
+  await page.getByTestId("link-input").fill(ARCHIVE);
+  await page.getByTestId("link-input").press("Tab");
+  await expect(page.getByTestId("link-status")).toHaveText(
+    "Tour found - the link works.",
+    { timeout: 15000 },
+  );
+  await expect(page.getByTestId("print-panel")).toHaveAttribute("open", "");
+});
+
+test("a link with no file behind it yet still reaches the print step, marked unverified", async ({
+  page,
+}) => {
+  // An own server's link can come before its file (A16): the creator
+  // gives it once and prints; the check before the PDF settles it.
+  const NOT_YET = "http://127.0.0.1:5197/ranges-ok/not-uploaded-yet.zip";
+  await page.goto("/?nocache=1");
+  await page.getByTestId("link-input").fill(NOT_YET);
+  await page.getByTestId("open-button").click();
+  await expect(page.getByTestId("link-status")).toContainText(
+    "Not verified yet",
+    { timeout: 15000 },
+  );
+  await expect(page.getByTestId("print-panel")).toHaveAttribute("open", "");
+  await expect(page.getByTestId("print-url-shown")).toHaveText(
+    `${NOT_YET} - not verified yet`,
+  );
+  await expect(page.getByTestId("print-canvas")).toBeVisible();
+});
+
+test("the gallery and the transfer numbers show only with ?debug=1", async ({
+  page,
+}) => {
+  for (const [query, shown] of /** @type {const} */ ([
+    ["/?nocache=1", false],
+    ["/?nocache=1&debug=1", true],
+  ])) {
+    await page.goto(query);
+    await page.getByTestId("link-input").fill(ARCHIVE);
+    await page.getByTestId("open-button").click();
+    // Filled either way (the count works on hidden nodes): only the
+    // showing depends on the flag.
+    await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
+      timeout: 15000,
+    });
+    await expect(page.getByTestId("stats")).not.toHaveText("");
+    for (const id of ["gallery", "stats"]) {
+      if (shown) await expect(page.getByTestId(id)).toBeVisible();
+      else await expect(page.getByTestId(id)).toBeHidden();
+    }
+  }
+});
+
+test.describe("a landscape phone", () => {
+  test.use({ viewport: { width: 915, height: 412 } });
+
+  test("uses the width, without scrolling sideways", async ({ page }) => {
+    // A14: the steps were capped at 26rem (416 px), half of this screen.
+    await page.goto("/?nocache=1");
+    const body = page.getByTestId("step-link").locator(".step-copy").first();
+    const width = await body.evaluate((el) => el.getBoundingClientRect().width);
+    expect(width).toBeGreaterThan(600);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+});

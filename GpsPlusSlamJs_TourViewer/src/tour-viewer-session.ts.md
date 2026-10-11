@@ -102,7 +102,9 @@ lives here.
   cross-module calls (`renderArStatus`, `renderArEntry`, `renderAuthorReadout`,
   `tryPlaceTour`, `startAuthorPipeline`, `startViewerPipeline`,
   `presentTourForPrint`, `presentLocalTour` (a tour opened from a file:
-  no link to print, tour kit plan K0), `beginAuthorVisit` / `endAuthorVisit` - the
+  no link to print, tour kit plan K0), `presentUnverifiedLink` (step 2's
+  link whose file is not there yet, or that could not be checked offline:
+  printed as given, marked unverified - polish round M2, A16), `beginAuthorVisit` / `endAuthorVisit` - the
   creator's AR visit start and its settle, M2c), no-ops until their owner
   module is wired.
   (`QrController` and `QrDebugView` are module-private: reached through

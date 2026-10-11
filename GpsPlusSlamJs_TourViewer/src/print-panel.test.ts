@@ -92,6 +92,21 @@ describe("printUrlDisplay (second testing session, F7)", () => {
     });
   });
 
+  it("marks a link step 2 could not confirm as not verified yet (polish round M2)", () => {
+    // Why: an own server's link can come before its file, and the owner
+    // asked for the link to be given once - so it reaches this step
+    // unconfirmed, and that must stay visible until the check before the
+    // PDF settles it.
+    expect(printUrlDisplay("https://h/t.zip", { verified: false })).toEqual({
+      askVisible: false,
+      shownVisible: true,
+      shownText: "https://h/t.zip - not verified yet",
+    });
+    expect(
+      printUrlDisplay("https://h/t.zip", { verified: true }).shownText,
+    ).toBe("https://h/t.zip");
+  });
+
   it("never shows both spellings at once, and never neither (property)", () => {
     // The invariant that stops the two from disagreeing about which link
     // the printed code carries - and the other half, that the creator is

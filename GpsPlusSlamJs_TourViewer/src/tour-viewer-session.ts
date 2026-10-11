@@ -136,6 +136,10 @@ export interface TourViewerHooks {
    *  print, so the print step keeps asking for one, and the wizard moves on
    *  as for a link (`origin` as above) without remembering a link. */
   presentLocalTour(origin?: "host-step" | "measure-step"): void;
+  /** Step 2's link could not be confirmed but may still work - its file is
+   *  not uploaded yet, or the device is offline (polish round M2, A16): the
+   *  print step takes it, marked unverified, and the wizard moves on. */
+  presentUnverifiedLink(url: string): void;
   /** A tour closed: the finish step's page-side state is stale. */
   resetFinishStep(): void;
   /** A creator's AR visit is running (its world group exists): show the
@@ -196,6 +200,7 @@ export function createUnwiredHooks(): TourViewerHooks {
     startViewerPipeline: () => false,
     presentTourForPrint: () => undefined,
     presentLocalTour: () => undefined,
+    presentUnverifiedLink: () => undefined,
     resetFinishStep: () => undefined,
     beginAuthorVisit: () => undefined,
     endAuthorVisit: () => undefined,

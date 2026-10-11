@@ -67,7 +67,7 @@
       .step-body {
         display: grid;
         gap: var(--space-2);
-        max-width: 26rem;
+        max-width: 48rem;
       }
       .step-body label {
         display: grid;
@@ -85,6 +85,36 @@
       }
       .step-copy {
         margin-block-start: var(--space-1);
+      }
+      /* Step 1's host tiles (polish round M2, A6/A7): a grid that uses the
+         width, the chosen one pressed in and in the accent - the atoms'
+         language for an engaged control, no border. */
+      .host-tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+        gap: var(--space-2);
+        margin: var(--space-3) 0 0;
+        max-width: 48rem;
+      }
+      .host-tile[aria-checked="true"] {
+        box-shadow: var(--shadow-pressed);
+        color: var(--accent);
+      }
+      /* A button that reads as a link (polish round M2, A5): the device
+         open is the fallback, so it stops looking like a main action. */
+      .link-button {
+        appearance: none;
+        background: none;
+        border: 0;
+        padding: 0;
+        font: inherit;
+        color: inherit;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      /* Step 6 says what it is for until the Finish fills it. */
+      #finish-block:not([hidden]) + .done-pending {
+        display: none;
       }
       #stats {
         margin: var(--space-4) 0;
@@ -155,7 +185,7 @@
       #recording-block {
         display: grid;
         gap: var(--space-2);
-        max-width: 26rem;
+        max-width: 48rem;
       }
       #setup-panel,
       #draft-offer,
@@ -393,7 +423,7 @@
       #scene-panel {
         display: grid;
         gap: var(--space-2);
-        max-width: 26rem;
+        max-width: 48rem;
         margin: var(--space-2) 0;
       }
       #scene-panel h3,
@@ -553,9 +583,10 @@
            creator by visitor-screen.ts: a visitor must never see the setup
            flash before the script runs (M2 review #5). -->
       <p class="creator-only hint--dim" hidden>
-        Set up a tour that people open by scanning a printed code: host a zip,
-        print the code, hang it, then measure it in AR and place content. Four
-        steps, one at a time.
+        Make a tour people open by scanning a printed code - in six steps:
+        choose where the tour file lives, paste its link, print the code, hang
+        it, create the tour in AR on your phone, and put the saved file in
+        place.
       </p>
     </header>
     <main>
@@ -582,6 +613,10 @@
       </section>
       <ol id="wizard" class="creator-only" data-testid="wizard" hidden>
         <li>
+          <!-- Step 1: where the tour lives (polish round M2, A6/A7). The
+               host tiles are the context every later step uses
+               (tour-host.ts); the starter zip shows only for a host that
+               needs a file before it gives a link. -->
           <details id="step-host" class="step" data-testid="step-host">
             <summary>
               <svg class="step-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -594,77 +629,122 @@
                   stroke-linejoin="round"
                 />
               </svg>
-              <h2>1 · Host your tour</h2>
+              <h2>1 · Where will your tour live?</h2>
             </summary>
-            <ol class="substeps">
-              <li>
-                <p class="step-copy hint--dim">
-                  Get a tour zip: a recording from the Recorder app, or an empty
-                  one to start from.
-                </p>
-                <div class="step-body">
-                  <button
-                    type="button"
-                    id="starter-zip"
-                    class="btn btn--prose"
-                    data-testid="starter-zip"
-                  >
-                    Optional: download an empty starter zip
-                  </button>
-                </div>
-              </li>
-              <li>
-                <p class="step-copy hint--dim">
-                  Upload it to Google Drive, Dropbox, GitHub or OneDrive - into
-                  a folder of its own (e.g. "My tour"), so you can find it again
-                  - and copy its share link. The printed code will point at this
-                  link, so keep the file where it is.
-                </p>
-              </li>
-              <li>
-                <p class="step-copy hint--dim">
-                  Paste the link here and test it. A link that opens here is a
-                  link the printed code can carry.
-                </p>
-                <form id="open-form">
-                  <input
-                    id="link"
-                    name="link"
-                    class="input"
-                    type="text"
-                    placeholder="https://… link to the .zip"
-                    autocomplete="off"
-                    data-testid="link-input"
-                  />
-                  <button
-                    type="submit"
-                    class="btn"
-                    id="open"
-                    data-testid="open-button"
-                  >
-                    Test link
-                  </button>
-                </form>
-                <!-- "Open a file" (tour kit plan K0): a zip on this device,
-                     for a host that does not let browsers read its files.
-                     The picker is #file-input, outside the wizard, which
-                     the visitor's advice button uses too. -->
-                <p class="step-copy hint--dim">
-                  Or open a tour zip from this device. A file has no link, so
-                  its code can be printed only once the zip is hosted.
-                </p>
-                <div class="step-body">
-                  <button
-                    type="button"
-                    id="open-file"
-                    class="btn btn--prose"
-                    data-testid="open-file-button"
-                  >
-                    Open a file
-                  </button>
-                </div>
-              </li>
-            </ol>
+            <p class="step-copy hint--dim">
+              A tour is one zip file in your own storage: it stays yours, and
+              once opened it plays in the browser - no app, and no good signal
+              needed on site. Pick where you keep it.
+            </p>
+            <div
+              id="host-tiles"
+              class="host-tiles"
+              role="radiogroup"
+              aria-label="Where your tour lives"
+              data-testid="host-tiles"
+            ></div>
+            <ol
+              id="host-steps"
+              class="substeps"
+              data-testid="host-steps"
+              hidden
+            ></ol>
+            <div class="step-body">
+              <button
+                type="button"
+                id="starter-zip"
+                class="btn btn--prose"
+                data-testid="starter-zip"
+                hidden
+              >
+                Download the empty starter tour
+              </button>
+              <button
+                type="button"
+                id="host-continue"
+                class="btn"
+                data-testid="host-continue"
+                hidden
+              >
+                Continue
+              </button>
+            </div>
+            <!-- "Open a file" (tour kit plan K0): a zip on this device,
+                 for a host that does not let browsers read its files.
+                 The picker is #file-input, outside the wizard, which
+                 the visitor's advice button uses too. A small link since
+                 polish round M2 (A5): the hosts above are the main way. -->
+            <p class="step-copy hint--dim">
+              Already have a tour zip on this device?
+              <button
+                type="button"
+                id="open-file"
+                class="link-button"
+                data-testid="open-file-button"
+              >
+                Open it from this device
+              </button>
+            </p>
+          </details>
+        </li>
+        <li>
+          <!-- Step 2: the link, given once (polish round M2, A13/A16). It is
+               checked by itself on paste; the print step carries it, also
+               while it is not reachable yet (an own server's link can come
+               before its file). -->
+          <details id="step-link" class="step" data-testid="step-link">
+            <summary>
+              <svg class="step-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <h2>2 · Paste your tour's link</h2>
+            </summary>
+            <p class="step-copy hint--dim">
+              Paste the share link to your tour zip. It is checked by itself;
+              the printed code will carry exactly this link, so keep the file
+              where it is.
+            </p>
+            <form id="open-form">
+              <input
+                id="link"
+                name="link"
+                class="input"
+                type="text"
+                placeholder="https://… link to the .zip"
+                autocomplete="off"
+                data-testid="link-input"
+              />
+              <button
+                type="submit"
+                class="btn"
+                id="open"
+                data-testid="open-button"
+              >
+                Check link
+              </button>
+            </form>
+            <p
+              id="link-status"
+              class="step-copy hint--dim"
+              data-testid="link-status"
+              role="status"
+              aria-live="polite"
+              hidden
+            ></p>
+            <p class="step-copy hint--dim">
+              A shortened link makes the printed code coarser and easier to scan
+              from afar. Not every shortener works: some, bit.ly among them,
+              open for you but stop the tour loading for visitors, so opening
+              the short link yourself proves nothing. Paste the short link here
+              and wait for the tour to be found before you print.
+            </p>
           </details>
         </li>
         <li>
@@ -684,10 +764,10 @@
                   stroke-linejoin="round"
                 />
               </svg>
-              <h2>2 · Print the code</h2>
+              <h2>3 · Print the code</h2>
             </summary>
             <p class="step-copy hint--dim">
-              The code carries the link from step 1 - you are not asked for it
+              The code carries the link from step 2 - you are not asked for it
               again. Print it at 100% scale (no fit-to-page), and enter the
               printed side length so the AR setup can measure it.
             </p>
@@ -803,20 +883,8 @@
               <div id="print-url-out" data-testid="print-url-out"></div>
               <p class="step-copy hint--dim">
                 That is the address the code encodes: this page, carrying your
-                tour link inside it. A long tour link means more squares in the
-                code and smaller ones, which is harder for a phone to read. If
-                the code will hang somewhere people scan it from a distance, put
-                the tour link through a URL shortener, paste the short link in
-                step 1, and test it there - the trade is one extra redirect for
-                bigger, easier squares.
-              </p>
-              <p class="step-copy hint--dim">
-                Not every shortener works here. Some of them, bit.ly among them,
-                let the link open when you tap it yourself but stop the tour
-                loading for your visitors - so opening the short link in your
-                own browser proves nothing. Step 1 is the test that counts:
-                paste the short link there, wait for the tour to open, and only
-                then print.
+                tour link inside it. A shorter tour link means fewer, bigger
+                squares (see step 2).
               </p>
               <a
                 id="visitor-link"
@@ -849,7 +917,7 @@
                   fill="currentColor"
                 />
               </svg>
-              <h2>3 · Hang the code</h2>
+              <h2>4 · Hang the code</h2>
             </summary>
             <p class="step-copy hint--dim">
               Fix the printed code where the tour starts: flat on a wall or a
@@ -938,15 +1006,14 @@
               stroke-linecap="round"
             />
           </svg>
-          <h2>4 · Measure the code and place content</h2>
+          <h2>5 · Create the tour</h2>
         </summary>
         <p class="step-copy hint--dim creator-only" hidden>
-          Stand at the hung code and start the AR setup - the code carries the
-          tour's link, so the tour opens on this device the moment the camera
-          reads it. Hold the phone on the code until it is measured, then place
-          text pins and photos where the tour should show them. Finish inside AR
-          when you are done - the rebuilt zip is then saved to this phone by
-          itself, with the steps to put it in place of the hosted one.
+          Now the tour itself: stand at the hung code, start creating, and walk
+          the route, placing text pins and photos where they belong. The phone
+          measures the code as you begin and lines the tour up with GPS as you
+          walk. When you are done, the tour file is saved to this phone, and the
+          last step shows how to put it in place.
         </p>
         <!-- The troubleshooting recording (authoring recording plan
              2026-09-28-0953, M1a). OPT-IN and page-side: the switch arms it
@@ -1304,13 +1371,33 @@
             Delete it
           </button>
         </div>
-        <!-- The end of step 4, on the page rather than in the overlay (F10;
-             steps 5 and 6 used to be separate setup steps, which they never
-             were - they describe what happens when this step finishes). The
-             save is deliberately OUTSIDE #ar-root: the Finish saves the zip
-             by itself once the session has ended (field test 2, F4), and the
-             button saves it again; over the camera it would promise a save
-             inside AR. -->
+      </details>
+      <!-- Step 6: done (polish round M2, B9). The Finish's result used to
+           land inside step 5; it is its own completion step now, opened
+           by the Finish once the session has ended. The save is
+           deliberately OUTSIDE #ar-root: the Finish saves the zip by itself
+           once the session has ended (field test 2, F4), and the button
+           saves it again; over the camera it would promise a save inside
+           AR. Editing objects is step 5's, not this page's. -->
+      <details
+        id="step-done"
+        class="step creator-only"
+        data-testid="step-done"
+        hidden
+      >
+        <summary>
+          <svg class="step-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M5 12.5l4.5 4.5L19 7.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <h2>6 · Done: put the tour in place</h2>
+        </summary>
         <div id="finish-block" data-testid="finish-block" hidden>
           <div
             id="finish-status"
@@ -1357,7 +1444,7 @@
               class="btn btn--prose"
               data-testid="summary-start-ar"
             >
-              Start AR setup
+              Start creating
             </button>
           </section>
           <div id="replace-help" data-testid="replace-help" hidden>
@@ -1366,11 +1453,11 @@
               data-testid="replace-help-generic"
               class="step-copy hint--dim"
             >
-              Last thing: upload this zip over the one from step 1, so the link
-              - and with it the printed code - stays the same. Dropbox: upload
-              the file with the same name into the same folder. GitHub: commit
-              it over the same path. OneDrive: upload with the same name and
-              choose "Replace".
+              Last thing: upload this zip over the one at your link (step 2), so
+              the link - and with it the printed code - stays the same. Dropbox:
+              upload the file with the same name into the same folder. GitHub:
+              commit it over the same path. OneDrive: upload with the same name
+              and choose "Replace".
             </p>
             <!-- A Drive tour's steps (Drive replace plan §2): written by
                  creator-setup (driveReplaceSteps), one numbered line each,
@@ -1384,6 +1471,10 @@
             ></p>
           </div>
         </div>
+        <p class="step-copy hint--dim done-pending" data-testid="done-pending">
+          This step opens by itself when you finish in step 5: your saved tour
+          file, and how to put it in place of the one at your link.
+        </p>
       </details>
       <!-- Storage (flows plan M2, DEC-F1): a transport-demo control, below
            the steps rather than inside one (a collapsed step would hide it),
@@ -1415,9 +1506,10 @@
         <div id="stats-headline" class="prose"></div>
         <div id="stats-detail" class="prose"></div>
       </div>
-      <!-- The gallery is the creator's proof that the tour opened; a visitor's
-           tour appears in AR, not as thumbnails (M2 review #2). -->
-      <ul id="gallery" class="creator-only" data-testid="gallery" hidden></ul>
+      <!-- The gallery is a creator's debugging aid since polish round M2,
+           shown only with ?debug=1 (main.ts); a visitor's tour appears in
+           AR, not as thumbnails (M2 review #2). -->
+      <ul id="gallery" data-testid="gallery" hidden></ul>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

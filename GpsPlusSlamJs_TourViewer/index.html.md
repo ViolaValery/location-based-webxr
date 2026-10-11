@@ -11,14 +11,22 @@ screen. Everything marked `.creator-only` is hidden for a visitor
   with an `<h2>` inside its summary (valid markup; how a screen reader
   exposes it through the disclosure is a field-test item) and an inline
   SVG icon; the reached step and the last opened link are remembered per
-  device (M6). **FOUR steps since the flow rework** (second testing
-  session, F10 - it was six):
-  1. **Host** (`#step-host`): three numbered sub-steps - get a zip (the
-     optional starter-zip button), upload it, then paste and **test** the
-     link (`#open-form`, whose button reads "Test link", F6) - or open a
-     tour zip from the device (`#open-file`, "Open a file", tour kit plan
-     K0; a file has no link, so its code is printed once the zip is
-     hosted). The picker itself (`#file-input`) and the line naming a
+  device (M6). **SIX steps since polish round M2** (the flow rework of
+  F10 had made it four; step 6 restores a completion step of its own). The
+  steps use up to `48rem` of the width (A14; they were capped at 26rem,
+  half a landscape phone), and a short overview sits in the header:
+  1. **Where the tour lives** (`#step-host`): the host tiles
+     (`#host-tiles`, a radiogroup filled by `host-picker.ts`), the chosen
+     host's steps (`#host-steps`), the starter zip (`#starter-zip`, only
+     for a host that needs a file before it gives a link), Continue
+     (`#host-continue`), and a small link to open a tour zip from the
+     device (`#open-file`, "Open it from this device", tour kit plan K0;
+     a file has no link, so its code is printed once the zip is hosted).
+  2. **The link** (`#step-link`): `#open-form` with the button "Check
+     link" - the check also runs by itself on paste and when the field is
+     left - and `#link-status`, the line saying what the check found
+     (`link-check.ts`). The shortener advice and its bit.ly warning live
+     here, where the check that counts runs. The picker itself (`#file-input`) and the line naming a
      file-opened tour (`#file-status`) and the open tour's signature lines
      (`#tour-trust`, tour kit plan K1: who signed it or that nobody did,
      trust warnings, linked tours; `white-space: pre-line`) sit under
@@ -26,7 +34,7 @@ screen. Everything marked `.creator-only` is hidden for a visitor
      wizard, so a visitor reaches them too - with `#file-advice`, the
      "Open the downloaded file" button shown under a "host blocks
      browsers" error.
-  2. **Print** (`#print-panel`): the printed code, on the page and as a
+  3. **Print** (`#print-panel`): the printed code, on the page and as a
      PDF of N numbered posters (`#print-count`, `#print-paper`,
      `#print-pdf`) - the print dialog's "fit to page" silently rescales,
      and a rescaled code measures the world wrong. The link is SHOWN
@@ -34,17 +42,18 @@ screen. Everything marked `.creator-only` is hidden for a visitor
      code renders without a button press; `#print-url-ask` returns only
      when nothing is open, which is what keeps printing before hosting
      possible (F7 + flows plan DEC-F2).
-  3. **Hang** (`#step-hang`): the "It hangs - continue" button.
-  4. **Measure and place** (`#step-measure`): a `<details>` like its
-     siblings since F4, wrapping `#ar-root`. It also carries what used to
-     be steps 5 and 6 - `#finish-block` (the rebuilt zip's status and
-     download) and `#replace-help` inside it - because those describe the
-     END of this step rather than steps of their own (F10). And
-     `#draft-offer` - unsaved work this
+  4. **Hang** (`#step-hang`): the "It hangs - continue" button.
+  5. **Create the tour** (`#step-measure`): a `<details>` like its
+     siblings since F4, wrapping `#ar-root`; its button reads "Start
+     creating". And `#draft-offer` - unsaved work this
      device still holds for this tour, offered with three answers rather
      than applied (F13). The paste form F12 added here (`#tour-missing`) is gone: the
      printed code carries the tour's link, so reading it in AR opens the
      tour (scan-to-open plan §2).
+  6. **Done** (`#step-done`): `#finish-block` (the rebuilt zip's status,
+     the save, the summary and `#replace-help`), opened by the Finish
+     (polish round M2, B9). Until then `.done-pending` says what the step
+     is for; page CSS hides it once the block shows.
 - The visitor screen (`#visitor-screen`): the consent copy above the AR
   section; the Start button is `#enter-ar`.
 - Below the steps, creator-only: the Storage section (`#storage-panel`,
@@ -68,7 +77,9 @@ Behaviour lives in the wiring modules composed by `src/main.ts` (see
 
 ## Public API
 
-The `data-testid` contract the e2e suite drives: `wizard`, `step-host`,
+The `data-testid` contract the e2e suite drives: `wizard`, `step-host`
+(owns `host-tiles`, `host-steps`, `host-continue`), `step-link` (owns
+`link-status`),
 `starter-zip`, `link-input`, `open-button`, `open-file-button`,
 `file-input`, `file-status`, `tour-trust`, `file-advice`, `open-file-advice`,
 `storage-panel`,
@@ -79,8 +90,8 @@ The `data-testid` contract the e2e suite drives: `wizard`, `step-host`,
 new tab, polish round A17), `make-your-own` (on the visitor screen: the
 setup page in a new tab, polish round A8), `step-hang`, `hang-done`, `step-measure` (owns
 `draft-offer`,
-`draft-offer-text`, `draft-restore`, `draft-dismiss`, `draft-discard`,
-`finish-block`,
+`draft-offer-text`, `draft-restore`, `draft-dismiss`, `draft-discard`),
+`step-done` (owns `done-pending`, `finish-block`,
 `finish-status`, `finish-download`, `summary` (the summary after Finish,
 authoring plan 2026-09-28-0953 M3b: owns `summary-codes`, `summary-map`,
 `summary-map-status`, `summary-start-ar`; written by `summary-panel.ts`,

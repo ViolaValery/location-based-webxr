@@ -43,7 +43,7 @@ test("opening shows the in-progress state, then restores it (success path)", asy
 
   await expect(page.getByTestId("open-button")).toHaveText("Opening…");
   await expect(page.getByTestId("open-button")).toBeDisabled();
-  await expect(page.getByTestId("open-button")).toHaveText("Test link", {
+  await expect(page.getByTestId("open-button")).toHaveText("Check link", {
     timeout: 20000,
   });
   await expect(page.getByTestId("open-button")).toBeEnabled();
@@ -59,7 +59,7 @@ test("a missing archive reports a clear error and restores the button (failure p
   await expect(page.getByTestId("error")).toContainText("does not exist", {
     timeout: 15000,
   });
-  await expect(page.getByTestId("open-button")).toHaveText("Test link");
+  await expect(page.getByTestId("open-button")).toHaveText("Check link");
   await expect(page.getByTestId("open-button")).toBeEnabled();
 });
 

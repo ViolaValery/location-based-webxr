@@ -88,7 +88,7 @@ export function arButtonView(
       return {
         label:
           mode === "creator"
-            ? "Start AR setup"
+            ? "Start creating"
             : location.pending
               ? "Allow location"
               : "Start the tour",

@@ -21,6 +21,7 @@ import {
   type PrintablePdfCode,
 } from "gps-plus-slam-app-framework/utils/qr-payload/qr-print-pdf";
 
+import { recheckNote, type LinkCheckResult } from "./link-check.js";
 import type { ViewerMode } from "./mode.js";
 import { codeIndexFromInput, reprintOrphanWarning } from "./qr-author-mode.js";
 import { qrCodeId } from "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id";
@@ -67,7 +68,10 @@ export function printedSideToApply(
  * DEC-F2). The two are never both live, which is what stops them from
  * disagreeing about which link the code carries.
  */
-export function printUrlDisplay(tourUrl: string | null): {
+export function printUrlDisplay(
+  tourUrl: string | null,
+  options: { verified?: boolean } = {},
+): {
   askVisible: boolean;
   shownVisible: boolean;
   shownText: string;
@@ -78,7 +82,14 @@ export function printUrlDisplay(tourUrl: string | null): {
   const url = tourUrl?.trim() ?? "";
   return url === ""
     ? { askVisible: true, shownVisible: false, shownText: "" }
-    : { askVisible: false, shownVisible: true, shownText: url };
+    : {
+        askVisible: false,
+        shownVisible: true,
+        // A link step 2 could not confirm (polish round M2, A16) says so
+        // until the check before the PDF settles it.
+        shownText:
+          options.verified === false ? `${url} - not verified yet` : url,
+      };
 }
 
 /**
@@ -219,7 +230,7 @@ export interface PrintPanel {
   /** The open tour's hosting URL is what a creator prints: take it, show it
    *  in the field's place, open the panel and render the code (DEC-F2).
    *  A property, not a method: it is handed to the hooks object unbound. */
-  presentTour: (url: string) => void;
+  presentTour: (url: string, options?: { verified?: boolean }) => void;
   /** No tour is open any more - a tour closed, or an open failed. The panel
    *  goes back to ASKING for the link, which is what keeps printing before
    *  hosting available for more than one page load (M3 milestone review
@@ -245,12 +256,17 @@ export function wirePrintPanel(deps: {
    *  so a panel wired without it simply never warns rather than warning
    *  wrongly. */
   measuredCodeIds?: () => readonly string[];
+  /** The light link check (`link-check.ts`), run before the PDF while
+   *  the link is unverified. Without it the PDF is built unchecked. */
+  checkLink?: (url: string) => Promise<LinkCheckResult>;
 }): PrintPanel {
   const { dom, mode } = deps;
   const onLaunchUrl = deps.onLaunchUrl ?? (() => undefined);
   const downloadPdf = deps.downloadPdf ?? (() => Promise.resolve(false));
   const measuredCodeIds = deps.measuredCodeIds ?? ((): readonly string[] => []);
   const creator = mode === "creator";
+  /** The link step 2 handed over unconfirmed, until a check confirms it. */
+  let unverifiedUrl: string | null = null;
   /** One render of the code, with the async-UI cycle around it: in-progress
    *  before the awaits, a durable end state after, and a failure that says
    *  so in the panel instead of leaving a stale code on screen. */
@@ -306,13 +322,30 @@ export function wirePrintPanel(deps: {
 
   /** Show one of the two spellings of the tour link (F7). */
   function showLink(tourUrl: string | null): void {
-    const display = printUrlDisplay(tourUrl);
+    const display = printUrlDisplay(tourUrl, {
+      verified: tourUrl === null || tourUrl !== unverifiedUrl,
+    });
     dom.urlAsk.hidden = !display.askVisible;
     dom.urlShown.hidden = !display.shownVisible;
     dom.urlShown.textContent = display.shownText;
   }
 
   dom.generateButton.addEventListener("click", regenerate);
+
+  /** Before the PDF, an unverified link is checked again (polish round
+   *  M2): bit.ly-style links open for the author and not for visitors, and
+   *  an own server's file may have been uploaded since. Resolves to the
+   *  note for the info line, or null when there was nothing to check. */
+  async function recheckUnverified(): Promise<string | null> {
+    const url = unverifiedUrl;
+    if (url === null || deps.checkLink === undefined) return null;
+    const result = await deps.checkLink(url);
+    if (result.ok && unverifiedUrl === url) {
+      unverifiedUrl = null;
+      showLink(url);
+    }
+    return recheckNote(result);
+  }
 
   /** Build and offer the PDF. Async-UI rule: the in-progress state engages
    *  before the first await and the durable outcome lands in the same info
@@ -322,8 +355,12 @@ export function wirePrintPanel(deps: {
     const writeInfo = claimInfo();
     dom.pdfButton.disabled = true;
     dom.pdfButton.textContent = PDF_LABELS.busy;
-    buildPrintPdf(dom, downloadPdf)
-      .then(writeInfo)
+    recheckUnverified()
+      .then((note) =>
+        buildPrintPdf(dom, downloadPdf).then((text) =>
+          writeInfo(note === null ? text : `${note} ${text}`),
+        ),
+      )
       .catch((err: unknown) => {
         writeInfo(err instanceof Error ? err.message : String(err));
       })
@@ -377,6 +414,7 @@ export function wirePrintPanel(deps: {
   return {
     presentNoTour: () => {
       // The code on screen belonged to the tour that just went away.
+      unverifiedUrl = null;
       showLink(null);
       dom.area.hidden = true;
       dom.printButton.hidden = true;
@@ -384,7 +422,8 @@ export function wirePrintPanel(deps: {
       // A render still in flight must not paint over the cleared panel.
       renderGeneration += 1;
     },
-    presentTour: (url) => {
+    presentTour: (url, options) => {
+      unverifiedUrl = options?.verified === false ? url : null;
       // The OPEN TOUR'S link wins, always. It used to be kept only when the
       // field was empty or still held a previous prefill, so as not to
       // clobber text the creator had typed (PR #434 review). Since F7 the

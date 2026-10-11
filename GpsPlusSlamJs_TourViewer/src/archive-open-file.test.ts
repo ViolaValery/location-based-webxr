@@ -97,6 +97,7 @@ function wire() {
     statsHeadline: el(),
     statsDetail: el(),
     errorBox: el(),
+    linkStatus: el(),
     gallery: el(),
     storagePanel: el(),
     clearCacheButton: el(),
@@ -153,7 +154,7 @@ describe("open a file", () => {
 
     finish(fakeSession("local-file:abc"));
     await vi.waitFor(() => expect(dom.openFileButton.disabled).toBe(false));
-    expect(dom.openFileButton.textContent).toBe("Open a file");
+    expect(dom.openFileButton.textContent).toBe("Open it from this device");
     expect(dom.fileStatus.hidden).toBe(false);
     expect(dom.fileStatus.textContent).toContain("tour (1).zip");
     expect(ctx.tourLabel).toBe("tour (1).zip");
@@ -189,7 +190,7 @@ describe("open a file", () => {
       expect(dom.errorBox.textContent).toContain("not a readable tour zip"),
     );
     expect(dom.openFileButton.disabled).toBe(false);
-    expect(dom.openFileButton.textContent).toBe("Open a file");
+    expect(dom.openFileButton.textContent).toBe("Open it from this device");
     expect(dom.openFileAdviceButton.textContent).toBe(
       "Open the downloaded file",
     );
@@ -296,5 +297,69 @@ describe("a late integrity failure (tour kit plan K1, §8 D3)", () => {
     await Promise.resolve();
     expect(ctx.session).not.toBeNull();
     expect(dom.errorBox.textContent).toBe("");
+  });
+});
+
+describe("step 2's link check (polish round M2, A13/A16)", () => {
+  // Why these tests matter: the link is given once and checked by itself.
+  // A link whose file is not there yet still goes on to printing, marked
+  // unverified; a link that can never work for a visitor must not, or the
+  // printed code fails for every one of them.
+  function withUnverifiedHook() {
+    const env = wire();
+    const presentUnverifiedLink = vi.fn();
+    env.hooks.presentUnverifiedLink = presentUnverifiedLink;
+    return { ...env, presentUnverifiedLink };
+  }
+
+  it("a missing file: says 'not verified yet' and hands the link to printing", async () => {
+    mocks.openTourSession.mockRejectedValueOnce(
+      new OpenRemoteArchiveError("x", "missing"),
+    );
+    const { dom, presentUnverifiedLink } = withUnverifiedHook();
+    dom.linkInput.value = "https://own.example/tour.zip";
+    dom.form.fire("submit");
+    expect(dom.linkStatus.hidden).toBe(false);
+    expect(dom.linkStatus.textContent).toBe("Checking the link…");
+    await vi.waitFor(() =>
+      expect(presentUnverifiedLink).toHaveBeenCalledWith(
+        "https://own.example/tour.zip",
+      ),
+    );
+    expect(dom.linkStatus.textContent).toMatch(/not verified yet/i);
+  });
+
+  it("a host that blocks browsers: no hand-off", async () => {
+    mocks.openTourSession.mockRejectedValueOnce(
+      new OpenRemoteArchiveError("x", "cors"),
+    );
+    const { dom, presentUnverifiedLink } = withUnverifiedHook();
+    dom.linkInput.value = "https://blocked.example/tour.zip";
+    dom.form.fire("submit");
+    await vi.waitFor(() =>
+      expect(dom.linkStatus.textContent).toMatch(/visitors/),
+    );
+    expect(presentUnverifiedLink).not.toHaveBeenCalled();
+  });
+
+  it("checks by itself on paste and when the field is left, once per link", async () => {
+    mocks.openTourSession.mockImplementation((url: string) =>
+      Promise.resolve(fakeSession(url)),
+    );
+    const { dom } = wire();
+    dom.linkInput.value = "https://h.example/tour.zip";
+    dom.linkInput.fire("paste");
+    await vi.waitFor(() =>
+      expect(dom.linkStatus.textContent).toBe("Tour found - the link works."),
+    );
+    // The paste's own `change` when the field is left: the same link.
+    dom.linkInput.fire("change");
+    expect(mocks.openTourSession).toHaveBeenCalledTimes(1);
+    // A new link is checked again.
+    dom.linkInput.value = "https://h.example/other.zip";
+    dom.linkInput.fire("change");
+    await vi.waitFor(() =>
+      expect(mocks.openTourSession).toHaveBeenCalledTimes(2),
+    );
   });
 });

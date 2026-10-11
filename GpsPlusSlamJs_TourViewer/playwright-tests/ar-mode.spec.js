@@ -144,10 +144,12 @@ test("the plain page is the creator's setup; a ?qr= launch is the visitor's scre
   // parameter's presence and nothing else.
   await page.goto("/");
   await expect(page.getByTestId("wizard")).toBeVisible();
-  await expect(page.getByTestId("step-host")).toHaveAttribute("open", "");
-  await expect(page.getByTestId("print-url")).toBeHidden(); // step 2 collapsed
+  // The suite's creator has chosen a host (playwright.config.js), so the
+  // page opens at step 2, the link (polish round M2).
+  await expect(page.getByTestId("step-link")).toHaveAttribute("open", "");
+  await expect(page.getByTestId("print-url")).toBeHidden(); // step 3 collapsed
   await expect(page.getByTestId("visitor-screen")).toBeHidden();
-  await expect(page.getByTestId("enter-ar")).toHaveText("Start AR setup");
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating");
 
   await openAsVisitor(page, RANGES_ARCHIVE);
   await expect(page.getByTestId("visitor-screen")).toBeVisible();
@@ -300,7 +302,7 @@ test("creator mode (the plain page) boots the same foundation under its own labe
   page,
 }) => {
   await page.goto("/");
-  await expect(page.getByTestId("enter-ar")).toHaveText("Start AR setup");
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating");
   await enterAr(page);
   await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
   await expect(page.getByTestId("ar-status")).toContainText("Creator mode");
@@ -353,7 +355,7 @@ test("a system session end tears the runtime down, and a re-entry starts a clean
   await page.evaluate(() => {
     /** @type {any} */ (window).__tourViewerTest.endXrSession();
   });
-  await expect(page.getByTestId("enter-ar")).toHaveText("Start AR setup");
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating");
   const afterEnd = await page.evaluate(() => {
     const t = /** @type {any} */ (window).__tourViewerTest;
     return {
@@ -551,7 +553,7 @@ test("the creator measures the code, finishes, and downloads a rebuilt zip that 
     /** @type {any} */ (window).__tourViewerTest.saveOutcome = false;
   });
   await page.getByTestId("setup-finish").click();
-  await expect(page.getByTestId("enter-ar")).toHaveText("Start AR setup", {
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating", {
     timeout: 15000,
   });
   await expect(page.getByTestId("step-measure")).toHaveAttribute("open", "");
@@ -706,7 +708,7 @@ test("the creator measures the code, finishes, and downloads a rebuilt zip that 
     /1 object placed/,
   );
   await page.getByTestId("setup-finish").click();
-  await expect(page.getByTestId("enter-ar")).toHaveText("Start AR setup", {
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating", {
     timeout: 15000,
   });
   await expect(page.getByTestId("finish-status")).toContainText(/saved as/i);
@@ -1797,8 +1799,8 @@ test("opening a tour shows the code and the link it carries, without asking agai
   // F7: shown, not asked for.
   await expect(page.getByTestId("print-url-shown")).toHaveText(ARCHIVE);
   await expect(page.getByTestId("print-url-ask")).toBeHidden();
-  // Step 1 collapsed, step 2 open (wizard.ts): one step at a time.
-  await expect(page.getByTestId("step-host")).not.toHaveAttribute("open", "");
+  // Step 2 collapsed, step 3 open (wizard.ts): one step at a time.
+  await expect(page.getByTestId("step-link")).not.toHaveAttribute("open", "");
   // "Show the code immediately" (F7): no Generate click here.
   await expect(page.getByTestId("print-canvas")).toBeVisible();
   await expect(page.getByTestId("print-button")).toBeVisible();
@@ -1818,7 +1820,7 @@ test("opening a tour shows the code and the link it carries, without asking agai
   // code launched the wrong tour. The displayed link and the encoded
   // payload must move together.
   const SECOND = "http://127.0.0.1:5197/ranges-ok/plain-tour.zip";
-  await page.getByTestId("step-host").locator("summary").click();
+  await page.getByTestId("step-link").locator("summary").click();
   await page.getByTestId("link-input").fill(SECOND);
   await page.getByTestId("open-button").click();
   await expect(page.getByTestId("print-url-shown")).toHaveText(SECOND, {
@@ -1877,7 +1879,7 @@ test("the setup remembers the step the creator reached, per hosted link (M6)", a
   await expect(page.getByTestId("print-panel")).not.toHaveAttribute("open", "");
 
   await page.reload();
-  await expect(page.getByTestId("step-host")).toHaveAttribute("open", "");
+  await expect(page.getByTestId("step-link")).toHaveAttribute("open", "");
   // The last opened link is prefilled (M6 review #2): one tap, not a paste.
   await expect(page.getByTestId("link-input")).toHaveValue(ARCHIVE);
   await page.getByTestId("open-button").click();
@@ -1919,7 +1921,7 @@ test("a refused AR entry explains itself on the page, with no session to explain
   await expect(page.getByTestId("author-size")).toBeVisible();
   // Still no session, so still no AR controls.
   await expect(page.getByTestId("setup-controls")).toBeHidden();
-  await expect(page.getByTestId("enter-ar")).toHaveText("Start AR setup");
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating");
 });
 
 test("step 4 opens the tour its printed code names, and stays on step 4", async ({
@@ -2131,17 +2133,24 @@ test("a failed open puts the page back to having no tour, not to showing the old
   await expect(page.getByTestId("print-url-ask")).toBeHidden();
 
   // A second link that does not resolve: the tour closes and none opens.
-  await page.getByTestId("step-host").locator("summary").click();
+  await page.getByTestId("step-link").locator("summary").click();
   await page
     .getByTestId("link-input")
     .fill("http://127.0.0.1:5197/ranges-ok/nope.zip");
   await page.getByTestId("open-button").click();
   await expect(page.getByTestId("error")).not.toHaveText("");
 
-  // The page asks again rather than asserting a link it does not have.
-  await page.getByTestId("print-panel").locator("summary").click();
-  await expect(page.getByTestId("print-url-ask")).toBeVisible();
-  await expect(page.getByTestId("print-url-shown")).toBeHidden();
+  // A link with no file behind it YET is still the creator's link (polish
+  // round M2, A16: an own server's link can come before its file): the
+  // print step carries it, marked unverified, rather than asking again.
+  await expect(page.getByTestId("link-status")).toContainText(
+    "Not verified yet",
+  );
+  await expect(page.getByTestId("print-panel")).toHaveAttribute("open", "");
+  await expect(page.getByTestId("print-url-shown")).toHaveText(
+    "http://127.0.0.1:5197/ranges-ok/nope.zip - not verified yet",
+  );
+  await expect(page.getByTestId("print-url-ask")).toBeHidden();
 });
 
 test("the PDF button shows it is working, says when nothing was saved, and continues the numbering", async ({
@@ -2333,7 +2342,7 @@ test("Exit AR keeps the work: the pin is still listed after the exit and offered
 
   await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
   await page.getByTestId("enter-ar").click();
-  await expect(page.getByTestId("enter-ar")).toHaveText("Start AR setup");
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating");
   await expect(page.getByTestId("object-list")).toContainText(
     "Kept by the exit",
   );
@@ -2347,6 +2356,12 @@ test("Exit AR keeps the work: the pin is still listed after the exit and offered
   await page.reload();
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
+  // The open has to finish first: it opens the remembered step itself, and
+  // a summary tap that lands after the helper read the step as closed then
+  // closes it again (red three times in a row on CI, PR #580).
+  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
+    timeout: 15000,
+  });
   await openMeasureStep(page);
   await expect(page.getByTestId("draft-offer")).toBeVisible({ timeout: 15000 });
   await expect(page.getByTestId("draft-offer-text")).toContainText("1 thing");
@@ -2794,7 +2809,7 @@ test("the draft offer reveals step 4 rather than hiding inside it", async ({
   // not stored one. The DRAFT survives this: it lives in OPFS, not in the
   // step memory, and that separation is exactly what makes this the real
   // case rather than a contrived one.
-  await expect(page.getByTestId("step-host")).toHaveAttribute("open", "");
+  await expect(page.getByTestId("step-link")).toHaveAttribute("open", "");
   await page.evaluate(() => {
     localStorage.clear();
   });
@@ -2828,8 +2843,9 @@ test("on a device that can share files, the starter button says share and report
   // Downloads - and it needs no AR session to reach.
   await installTourViewerArFakes(page, { shareRoute: true });
   await page.goto("/?nocache=1");
+  await page.getByTestId("step-host").locator("summary").click();
   const starter = page.getByTestId("starter-zip");
-  await expect(starter).toHaveText(/share an empty starter zip/i);
+  await expect(starter).toHaveText(/share the empty starter tour/i);
   await expect(starter).not.toHaveText(/download/i);
   await starter.click();
   await expect(starter).toHaveText(/starter zip shared/i);
@@ -2837,7 +2853,7 @@ test("on a device that can share files, the starter button says share and report
   // download one. That line was wrong when this was written: the revert
   // used the download label unconditionally, so the button re-labelled
   // itself "download" under a sheet it would open (M2 review #2).
-  await expect(starter).toHaveText(/share an empty starter zip/i, {
+  await expect(starter).toHaveText(/share the empty starter tour/i, {
     timeout: 6000,
   });
 });
@@ -2855,6 +2871,7 @@ test("a share that hands nothing over says so, without blaming the creator", asy
   await page.evaluate(() => {
     /** @type {any} */ (window).__tourViewerTest.saveOutcome = false;
   });
+  await page.getByTestId("step-host").locator("summary").click();
   const starter = page.getByTestId("starter-zip");
   await starter.click();
   await expect(starter).toHaveText(/not shared/i);
@@ -2879,7 +2896,7 @@ async function measureAndFinish(page, url) {
   });
   await measureTheCode(page);
   await page.getByTestId("setup-finish").click();
-  await expect(page.getByTestId("enter-ar")).toHaveText("Start AR setup", {
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating", {
     timeout: 15000,
   });
   await expect(page.getByTestId("finish-block")).toBeVisible();
@@ -3013,7 +3030,7 @@ test("an opted-in authoring session is recorded across the finish and saved as i
   await expect(page.getByTestId("finish-block")).toBeVisible({
     timeout: 30000,
   });
-  await expect(page.getByTestId("enter-ar")).toHaveText("Start AR setup");
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating");
   expect(
     await page.evaluate(
       () => /** @type {any} */ (window).__tourViewerTest.stopDepthCalls,

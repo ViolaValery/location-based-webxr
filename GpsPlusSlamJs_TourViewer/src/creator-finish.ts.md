@@ -76,7 +76,8 @@ M4 makes it write every code of the book, not only the one in hand.
   `ctx.tourManifest` **advances to what was just written** and
   `ctx.placedObjects` is cleared, the AR session is ended through the
   controller (the framework's session-end path runs the app teardown) and
-  step 4's finish block is revealed - AFTER the `disable()`, so it cannot
+  the wizard opens step 6, "done" (polish round M2, B9: a completion step
+  of its own), and its finish block is revealed - AFTER the `disable()`, so it cannot
   appear over a session that is still compositing; on failure the reason
   stays in the panel and the button re-enables.
   - **Why the chaining and the advance go together** (PR #435 review):
