@@ -37,11 +37,19 @@ export const PAPER_SIZES_MM = {
 export type PaperSize = keyof typeof PAPER_SIZES_MM;
 
 /**
- * Page margin. Deliberately small but NOT zero: most consumer printers have
- * an unprintable border of about 3-5 mm, and content inside it is silently
- * clipped - which for a QR code means it does not decode at all.
+ * Page margin for INK. Deliberately small but NOT zero: most consumer
+ * printers have an unprintable border of about 3-5 mm, and content inside
+ * it is silently clipped - which for a QR code means it does not decode at
+ * all. The quiet zone is blank paper, so it may reach into this margin
+ * (polish round M0b: an 18 cm code on A4 fits only that way).
  */
 const DEFAULT_MARGIN_MM = 6;
+
+/** The ruler check under the codes: a bar exactly this long. */
+const CHECK_BAR_MM = 100;
+
+/** The band the check bar and its label take above the bottom margin. */
+const CHECK_BAR_BAND_MM = 9;
 
 /**
  * The quiet zone, as a fraction of the symbol side on each edge. IMPORTED
@@ -94,10 +102,15 @@ export interface PrintPdfPlan {
   sideMm: number;
   /** The quiet-zone box's side in mm (symbol + two quiet margins). */
   blockMm: number;
-  /** How many codes share one page (1 or 2). */
+  /** The grid a page holds: columns, rows, and their product. */
+  columns: number;
+  rows: number;
   perPage: number;
   /** One entry per page, each listing that page's placements in order. */
   pages: PdfPlacement[][];
+  /** The 10 cm ruler check on every page: its left end, the bottom of its
+   *  band, its length and the band's height, in mm. */
+  checkBar: { xMm: number; yMm: number; lengthMm: number; bandMm: number };
 }
 
 /**
@@ -130,37 +143,39 @@ export function planPrintPdf(
 
   const sideMm = sideM * 1000;
   const blockMm = sideMm * (1 + 2 * quiet);
-  const usableWidth = paper.width - 2 * margin;
-  const usableHeight = paper.height - 2 * margin;
+  const layout = { paper, margin, quiet, caption, gap };
+  const grid = gridFor(sideMm, layout);
+  if (grid === null) {
+    throw new RangeError(
+      `${formatMm(sideMm)} plus its quiet zone does not fit ` +
+        `${paperName.toUpperCase()}. ` +
+        `Use ${formatMm(ceilingMm(layout))} or less, or a larger sheet.`
+    );
+  }
+  const { columns, rows, edge } = grid;
+  const perPage = columns * rows;
 
-  refuseIfTooBig({
-    sideMm,
-    blockMm,
-    usableWidth,
-    usableHeight,
-    caption,
-    quiet,
-    paperName,
-  });
-
-  // Two per page when two fit stacked, which is only ever true for small
-  // codes - at 16 cm a single block is 18.6 cm and two would need 37.2.
-  const perPage =
-    2 * (blockMm + caption) + gap <= usableHeight && count > 1 ? 2 : 1;
-
+  // The grid is centred across the sheet and top-anchored in the space
+  // above the check bar. PDF's origin is the BOTTOM-left, so the first row
+  // gets the highest y.
+  const rowMm = blockMm + caption;
+  const gridWidth = columns * blockMm + (columns - 1) * gap;
+  const left = (paper.width - gridWidth) / 2;
+  const floorMm = margin + CHECK_BAR_BAND_MM;
   const pages: PdfPlacement[][] = [];
-  const xMm = margin + (usableWidth - blockMm) / 2;
   for (let placed = 0; placed < count; placed += perPage) {
     const onThisPage = Math.min(perPage, count - placed);
-    const stackMm = onThisPage * (blockMm + caption) + (onThisPage - 1) * gap;
-    // Top-anchored within the centred stack, and PDF's origin is the
-    // BOTTOM-left, so the first code gets the highest y.
-    const topMm = margin + (usableHeight - stackMm) / 2 + stackMm;
+    const usedRows = Math.ceil(onThisPage / columns);
+    const stackMm = usedRows * rowMm + (usedRows - 1) * gap;
+    const space = paper.height - edge - floorMm;
+    const topMm = floorMm + (space - stackMm) / 2 + stackMm;
     const placements: PdfPlacement[] = [];
     for (let i = 0; i < onThisPage; i += 1) {
+      const row = Math.floor(i / columns);
+      const col = i % columns;
       placements.push({
-        xMm,
-        yMm: topMm - (i + 1) * (blockMm + caption) - i * gap + caption,
+        xMm: left + col * (blockMm + gap),
+        yMm: topMm - (row + 1) * rowMm - row * gap + caption,
       });
     }
     pages.push(placements);
@@ -170,9 +185,59 @@ export function planPrintPdf(
     paper: { widthMm: paper.width, heightMm: paper.height },
     sideMm,
     blockMm,
+    columns,
+    rows,
     perPage,
     pages,
+    checkBar: {
+      xMm: (paper.width - CHECK_BAR_MM) / 2,
+      yMm: margin,
+      lengthMm: CHECK_BAR_MM,
+      bandMm: CHECK_BAR_BAND_MM,
+    },
   };
+}
+
+interface GridLayout {
+  paper: { width: number; height: number };
+  margin: number;
+  quiet: number;
+  caption: number;
+  gap: number;
+}
+
+/**
+ * The grid a sheet holds for a symbol of `sideMm`, or null when not even
+ * one fits. ONE fit test, used by the planner and by the ceiling, so a
+ * size the refusal suggests is a size the planner accepts.
+ *
+ * The rule: the SYMBOL stays `margin` inside the sheet (ink), the
+ * quiet-zone box only has to be on it (blank paper), and each row's caption
+ * sits under its box, above the check bar's band.
+ */
+function gridFor(
+  sideMm: number,
+  layout: GridLayout
+): { columns: number; rows: number; edge: number } | null {
+  const { paper, margin, quiet, caption, gap } = layout;
+  const quietMm = sideMm * quiet;
+  const blockMm = sideMm + 2 * quietMm;
+  // How close a box may come to the sheet's edge: the margin minus the
+  // quiet zone it carries, never past the edge itself.
+  const edge = Math.max(0, margin - quietMm);
+  const columns = Math.floor((paper.width - 2 * edge + gap) / (blockMm + gap));
+  const space = paper.height - edge - margin - CHECK_BAR_BAND_MM;
+  const rows = Math.floor((space + gap) / (blockMm + caption + gap));
+  if (columns < 1 || rows < 1) return null;
+  return { columns, rows, edge };
+}
+
+/** The largest WHOLE millimetre a sheet holds, by the same fit test. */
+function ceilingMm(layout: GridLayout): number {
+  for (let mm = Math.floor(layout.paper.width); mm > 0; mm -= 1) {
+    if (gridFor(mm, layout) !== null) return mm;
+  }
+  return 0;
 }
 
 /** The options with their defaults filled in - split out so the geometry
@@ -187,39 +252,6 @@ function resolveLayout(options: PrintPdfOptions) {
     caption: options.captionMm ?? DEFAULT_CAPTION_MM,
     gap: options.gapMm ?? DEFAULT_GAP_MM,
   };
-}
-
-/**
- * Throw when the block does not fit, naming the size that would.
- *
- * "Too big" on its own leaves the author guessing, and the answer is one
- * division (page minus margins, over the footprint factor
- * `1 + 2 * QR_QUIET_ZONE_FRACTION`) nobody should do standing at a printer.
- */
-function refuseIfTooBig(box: {
-  sideMm: number;
-  blockMm: number;
-  usableWidth: number;
-  usableHeight: number;
-  caption: number;
-  quiet: number;
-  paperName: string;
-}): void {
-  const fitsWidth = box.blockMm <= box.usableWidth;
-  const fitsHeight = box.blockMm + box.caption <= box.usableHeight;
-  if (fitsWidth && fitsHeight) return;
-  const widthCeiling = box.usableWidth / (1 + 2 * box.quiet);
-  const heightCeiling = (box.usableHeight - box.caption) / (1 + 2 * box.quiet);
-  // Floored to a WHOLE millimetre, then formatted. Flooring to a tenth and
-  // formatting to a tenth of a centimetre rounds twice, and the second
-  // rounding can go up - which produced a suggested size that was itself
-  // refused, the one thing this message must never do.
-  const ceilingMm = Math.floor(Math.min(widthCeiling, heightCeiling));
-  throw new RangeError(
-    `${formatMm(box.sideMm)} plus its quiet zone does not fit ` +
-      `${box.paperName.toUpperCase()}. ` +
-      `Use ${formatMm(ceilingMm)} or less, or a larger sheet.`
-  );
 }
 
 /**
@@ -238,15 +270,17 @@ export function maxPrintablePdfSideM(
     'marginMm' | 'quietFraction' | 'captionMm'
   > = {}
 ): number {
-  const margin = options.marginMm ?? DEFAULT_MARGIN_MM;
-  const quiet = options.quietFraction ?? DEFAULT_QUIET_FRACTION;
-  const caption = options.captionMm ?? DEFAULT_CAPTION_MM;
-  const size = PAPER_SIZES_MM[paper];
-  const width = (size.width - 2 * margin) / (1 + 2 * quiet);
-  const height = (size.height - 2 * margin - caption) / (1 + 2 * quiet);
-  // Floored to a whole millimetre for the same reason the refusal message
-  // is: a ceiling that is itself refused is worse than none.
-  return Math.floor(Math.min(width, height)) / 1000;
+  // The planner's own fit test, so this ceiling is one the planner accepts
+  // (a ceiling that is itself refused is worse than none).
+  return (
+    ceilingMm({
+      paper: PAPER_SIZES_MM[paper],
+      margin: options.marginMm ?? DEFAULT_MARGIN_MM,
+      quiet: options.quietFraction ?? DEFAULT_QUIET_FRACTION,
+      caption: options.captionMm ?? DEFAULT_CAPTION_MM,
+      gap: DEFAULT_GAP_MM,
+    }) / 1000
+  );
 }
 
 /** A code to draw: its module matrix and the line printed under it. */
@@ -327,13 +361,36 @@ function pageContent(
     );
     // The caption sits BELOW the quiet box, never inside it: ink inside the
     // quiet zone is exactly what the quiet zone exists to prevent.
+    // At the SYMBOL's left edge, not the box's: the box may reach into the
+    // margin, the caption is ink and may not.
     parts.push('BT /F1 9 Tf');
     parts.push(
-      `${pt(placement.xMm)} ${pt(placement.yMm - captionMm + 2)} Td (${pdfText(code.caption)}) Tj`
+      `${pt(placement.xMm + quietMm)} ${pt(placement.yMm - captionMm + 2)} Td (${pdfText(code.caption)}) Tj`
     );
     parts.push('ET');
   }
+  parts.push(...checkBar(plan.checkBar));
   return parts.join('\n');
+}
+
+/**
+ * The ruler check (polish round M0b, A10): a black bar exactly 10 cm long
+ * with a tick at each centimetre, and a line saying what to do with it. A
+ * print that measures anything else was scaled on the way to the paper.
+ */
+function checkBar(bar: PrintPdfPlan['checkBar']): string[] {
+  const out = ['0 0 0 rg', rect(bar.xMm, bar.yMm, bar.lengthMm, 1.2)];
+  for (let cm = 0; cm <= bar.lengthMm / 10; cm += 1) {
+    out.push(rect(bar.xMm + cm * 10 - 0.15, bar.yMm, 0.3, 2.6));
+  }
+  out.push('BT /F1 7 Tf');
+  out.push(
+    `${pt(bar.xMm)} ${pt(bar.yMm + 4)} Td (${pdfText(
+      'This bar is 10 cm. If it measures anything else, print again at 100 % (actual size).'
+    )}) Tj`
+  );
+  out.push('ET');
+  return out;
 }
 
 /**
@@ -447,7 +504,12 @@ function assemblePdf(
   const contentObjectNumber = (i: number) => 5 + i * 2;
 
   const objects: string[] = [];
-  objects.push('<< /Type /Catalog /Pages 2 0 R >>');
+  // PrintScaling None asks the viewer's print dialog to start at 100 %
+  // instead of "fit to page" (polish round M0b, A10). A request, not a
+  // guarantee - which is why every page also carries the check bar.
+  objects.push(
+    '<< /Type /Catalog /Pages 2 0 R /ViewerPreferences << /PrintScaling /None >> >>'
+  );
   objects.push(
     `<< /Type /Pages /Count ${String(pageCount)} /Kids [${contents
       .map((_, i) => `${String(pageObjectNumber(i))} 0 R`)

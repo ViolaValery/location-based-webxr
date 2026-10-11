@@ -30,12 +30,14 @@ is the property that matters for something a camera has to measure.
 
 - `planPrintPdf(count, options): PrintPdfPlan` - the geometry, as a pure
   function. Returns the paper, the symbol side in mm, the quiet-zone block
-  in mm, how many codes share a page (1 or 2), and one list of placements
-  per page. Placements are in mm from the page's BOTTOM-left, which is
-  PDF's own origin, so the writer does no flipping.
+  in mm, the grid a page holds (`columns`, `rows`, `perPage`), one list
+  of placements per page, and the check bar (`checkBar`: its left end,
+  the bottom of its band, its 100 mm length, the band's height).
+  Placements are in mm from the page's BOTTOM-left, which is PDF's own
+  origin, so the writer does no flipping.
   - **Throws `RangeError`** when the size does not fit the paper, naming
-    the size that would - floored to a whole millimetre, because rounding
-    that suggestion up once produced a suggestion that was itself refused.
+    the size that would - the largest whole millimetre the SAME fit test
+    accepts, so the suggestion is never itself refused.
   - Throws for a non-whole or non-positive count, and for a non-finite or
     non-positive side.
 - `buildQrPrintPdf(codes, options): Uint8Array` - the file. Each code is
@@ -58,9 +60,25 @@ is the property that matters for something a camera has to measure.
   Two printing paths that disagreed about the quiet zone would turn one
   declared size into two different physical artefacts - which was the state
   of the code until r665, prevented only by nobody having edited one copy.
-- **The margin is 6 mm and deliberately not zero.** Most consumer printers
-  have an unprintable border of 3-5 mm, and content inside it is silently
-  clipped - which for a QR code means it does not decode at all.
+- **The margin is 6 mm, for INK, and deliberately not zero.** Most
+  consumer printers have an unprintable border of 3-5 mm, and content
+  inside it is silently clipped - which for a QR code means it does not
+  decode at all. The symbol, its caption (at the symbol's left edge) and the
+  check bar stay inside it; the white quiet-zone box only has to be on the
+  sheet, because it is blank paper (polish round M0b, the owner's "as large
+  as possible, as little margin as possible"). That is what fits an 18 cm
+  code on A4 (208.8 mm with its quiet zone, on a 210 mm sheet); the A4
+  ceiling is 18.1 cm.
+- **One fit test** (`gridFor`) decides the grid, the refusal and
+  `maxPrintablePdfSideM`, so the three cannot disagree.
+- **A grid per page** (A11): as many columns as fit across, as many rows
+  as fit above the check bar, centred across and top-anchored; the last
+  page holds the rest.
+- **Every page carries a 10 cm check bar** (a bar with a tick per
+  centimetre and a line saying to print again at 100 % if it measures
+  anything else), and the catalog asks the viewer not to scale
+  (`/ViewerPreferences << /PrintScaling /None >>`) - a request a print
+  dialog may ignore, which is why the bar is there (A10).
 - **Rows are drawn as merged horizontal RUNS.** A version-25 symbol is
   117x117, i.e. up to 13 689 separate rectangles per code; merging each
   row's consecutive dark modules typically cuts that several-fold.
@@ -76,8 +94,7 @@ is the property that matters for something a camera has to measure.
 - **Captions are stripped to printable ASCII** and the three PDF-string
   characters are escaped. The base-14 fonts are single-byte WinAnsi, and a
   stray multi-byte character would render as mojibake rather than fail.
-- Two codes share a page only when two fit stacked, which at 16 cm they
-  never do (a single block is 18.6 cm).
+- At 16 cm a page holds one code; at 8 cm four; at 5 cm a dozen or more.
 
 ## Examples
 
@@ -94,9 +111,10 @@ const pdf = buildQrPrintPdf(
 
 `qr-print-pdf.test.ts`. The two that carry the file:
 
-- **"keeps every code inside the printable area"** (property, over counts,
-  sizes and both papers) - a block that starts inside the margin or ends
-  past it is a code that comes back clipped.
+- **"keeps all ink inside the margin and every quiet zone on the paper"**
+  (property, over counts, sizes up to 19 cm and both papers) - ink inside
+  the unprintable border comes back clipped; the property also holds the
+  captions above the check bar and keeps any two codes apart.
 - **"reproduces a real QR matrix module for module"** (property) - the
   drawn content stream is re-sampled back onto the module grid and compared
   to the source matrix. Everything the drawing can get wrong (a transpose,
@@ -108,4 +126,6 @@ const pdf = buildQrPrintPdf(
 Plus: the xref offsets re-derived from the produced bytes, the MediaBox and
 page count, a counted rectangle total (against "parses and is empty"), the
 run merging, caption escaping, the matrix orientation, and the refusal
-paths - including that the size the refusal SUGGESTS is itself accepted.
+paths - including that the size the refusal SUGGESTS is itself accepted. Since M0b also: the grid packing (five 5 cm codes on one page, four 8 cm
+codes), 18 cm on A4 and Letter, the byte-level grid page and odd last page,
+the check bar on every page and the no-scaling flag.
