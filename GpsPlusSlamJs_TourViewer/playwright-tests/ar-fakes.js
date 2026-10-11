@@ -511,7 +511,8 @@ export async function openFixtureTour(page) {
   });
   const step = page.getByTestId("step-measure");
   if (!(await step.evaluate((el) => /** @type {any} */ (el).open))) {
-    await step.locator("summary").click();
+    // The card shows one step; step 5's station dot opens it (M2b).
+    await page.getByTestId("station-measure").click();
   }
 }
 

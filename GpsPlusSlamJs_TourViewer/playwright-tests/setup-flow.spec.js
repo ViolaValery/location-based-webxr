@@ -158,7 +158,7 @@ test.describe("the L5 look (polish round M2b)", () => {
     await expect(openSteps).toHaveCount(1);
     await expect(page.getByTestId("setup-of")).toHaveText("Step 2 of 6");
 
-    await page.getByTestId("map-station-hang").click();
+    await page.getByTestId("map-station-hang").locator("circle").click();
     await expect(page.getByTestId("step-hang")).toHaveAttribute("open", "");
     await expect(page.getByTestId("step-link")).toBeHidden();
     await expect(openSteps).toHaveCount(1);

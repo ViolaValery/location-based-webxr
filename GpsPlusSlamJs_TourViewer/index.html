@@ -767,6 +767,8 @@
         dominant-baseline: central;
         pointer-events: none;
       }
+      /* The label is part of the station's tap target: a finger on the
+         word must open the step as surely as one on the dot. */
       .setup-station-label {
         font: italic 600 8.4px var(--map-serif);
         fill: var(--ink);
@@ -774,7 +776,6 @@
         stroke: var(--paper);
         stroke-width: 3px;
         stroke-linejoin: round;
-        pointer-events: none;
       }
       .setup-station[data-state="current"] .setup-station-label {
         fill: var(--map-route);

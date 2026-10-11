@@ -3064,7 +3064,10 @@ test("an opted-in authoring session is recorded across the finish and saved as i
   ).toEqual([]);
   expect(tour.entries["session.json"]).toBe('{"kind":"e2e-tour"}');
 
-  // Save the recording: its own zip, under its own name.
+  // Save the recording: its own zip, under its own name. It lives in step
+  // 5; the Finish lands on step 6 since polish round M2 (B9), so the
+  // creator goes back to step 5 for it.
+  await page.getByTestId("station-measure").click();
   await expect(page.getByTestId("recording-save")).toBeEnabled();
   await page.getByTestId("recording-save").click();
   await expect(page.getByTestId("recording-status")).toHaveText(
