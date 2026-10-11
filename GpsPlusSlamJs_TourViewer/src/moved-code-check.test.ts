@@ -594,6 +594,30 @@ describe(
       expect(h.checks.snapshot()).toEqual([]);
     });
 
+    // Why (the M0a review #1): a veto outlived its check - an AR re-entry or
+    // a frame change ends every check, and an ignored code's locks never pin
+    // a new one - so it stuck again. A probation check (pinned on an ignored
+    // code's lock, starting vetoed at the spread the veto was read on) can
+    // only lift the veto, never read a new one.
+    it("a probation check never vetoes, and lifts the veto on a wide consistent walk", () => {
+      const h = withRestorations();
+      h.checks.pin({
+        text: "text-lvl",
+        levelId: "lvl",
+        level: level(),
+        qrPoseWorld: codeSeen([0, 0]),
+        atMs: T0,
+        zero: ZERO,
+        vetoSpreadM: 2.8,
+      });
+      h.feed(circle(0, 400, [20, 10], 15));
+      expect(h.vetoes).toEqual([]);
+      expect(h.restored).toHaveLength(1);
+      expect(h.restored[0]!.spreadM).toBeGreaterThanOrEqual(
+        RESTORE_SPREAD_FACTOR * 2.8,
+      );
+    });
+
     it("keeps a code that really moved vetoed, however long the visitor walks", () => {
       const h = withRestorations();
       h.checks.pin({

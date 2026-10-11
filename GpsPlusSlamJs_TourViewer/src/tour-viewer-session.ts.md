@@ -114,9 +114,11 @@ lives here.
   with `levelByText` at a tour close).
 - `movedCodeChecks` - the AR entry's checks (`moved-code-check.ts`);
   dropped by `endQrPipeline`, cleared by `endTourCodeVotes`.
-- `ignoredCodes` - level id to text of every code judged moved: ignored
-  for the rest of the page session for this tour, across AR entries;
-  cleared only by `endTourCodeVotes` (a tour switch).
+- `ignoredCodes` - level id to text (and the spread the veto was read on)
+  of every code judged moved: ignored for this tour, across AR entries;
+  cleared by `endTourCodeVotes` (a tour switch) and, per code, when the
+  moved-code check lifts the veto on wider evidence (polish round C5,
+  `viewer-placement.ts` `restoreMovedCode`).
 - `viewerIgnoredText` - the ignored code the status line names in this AR
   entry; cleared at AR exit and at a tour switch, and by another code's voted lock
   (M5c review M1).

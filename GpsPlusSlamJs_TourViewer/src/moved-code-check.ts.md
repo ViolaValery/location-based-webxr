@@ -34,7 +34,11 @@ a verdict (the veto). No compass reading is taken (owner, 2026-10-02).
   ends (polish round C5, owner decision Q-C5). A code that really moved
   never reads consistent and stays vetoed.
 - `frameChanged(storedCount)` - the odometry frame changed: every check
-  ends, and later pins fold only the history from `storedCount` on.
+  ends - a vetoed code's too - and later pins fold only the history from
+  `storedCount` on. A vetoed code is re-judged afterwards through a
+  probation check: `pin({ ..., vetoSpreadM })` starts a check already
+  vetoed at that spread, which can only lift the veto (the M0a review #1;
+  `viewer-placement.ts` pins one on an ignored code's lock).
 - `clear()` - end every check (a tour switch).
 - `snapshot()` - the live checks (`MovedCodeCheckView`), for the `?debug=1`
   readout, the station guide and tests.

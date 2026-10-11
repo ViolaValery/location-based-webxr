@@ -625,6 +625,33 @@ describe(
       expect(v.votesStored()).toBeGreaterThan(before);
     });
 
+    // Why (the M0a review #1): an AR exit and re-entry ended the vetoed
+    // code's check, and nothing pinned a new one - the veto stuck for the
+    // rest of the tour again. The ignored code's next lock pins a probation
+    // check in the new entry, which lifts the veto on wider evidence.
+    it("re-judges a veto across an AR re-entry: the ignored code's lock starts a probation check", () => {
+      const v = scannedAndWalked();
+      v.walk(1, 75);
+      expect(v.ctx.ignoredCodes.has(LEVEL_ID)).toBe(true);
+      endQrPipeline(v.ctx);
+      v.enter();
+      v.lock(T0 + 76_000);
+      for (let s = 77; s <= 460; s += 1) {
+        const a = (2 * Math.PI * s) / 60;
+        v.fixAt(
+          s,
+          PHYSICAL[0] + 25 * Math.cos(a),
+          PHYSICAL[1] + 25 * Math.sin(a),
+          {},
+          [0, -MOVE_EAST_M],
+        );
+      }
+      expect(v.ctx.ignoredCodes.has(LEVEL_ID)).toBe(false);
+      expect(
+        v.logged.filter((a) => a.type === "tourViewing/codeRestored"),
+      ).toHaveLength(1);
+    });
+
     it("never vetoes a code that hangs where it was saved", () => {
       captured.stablePose = null;
       const v = viewer();

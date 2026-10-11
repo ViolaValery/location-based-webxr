@@ -140,8 +140,11 @@ recording. Its own module since the flows plan M6.
   calls back: the id leaves `ignoredCodes`, `viewerIgnoredText` clears if
   it names the code, the viewing log records `codeRestored`; the next lock
   votes and pins a new check. The veto's retracted votes are not restored.
-  An AR exit or a tour switch still ends the checks: a code vetoed then
-  stays ignored for the page session.
+  An AR exit, a frame change, or a veto read after a frame change ends the
+  vetoed code's check; the ignored code's next lock then pins a probation
+  check (`probationPin`: on the lock's detection pose, starting vetoed at
+  the spread kept in `ignoredCodes`), so the veto is re-judged in every
+  entry and frame (the M0a review #1). A tour switch forgets the veto.
 - **Two codes** (M5c review M1): the gate records which code passed it
   (`ctx.scanGateCodeText`); a veto flips it to `ignored` only for that
   code. Another code's voted lock clears `viewerIgnoredText` (the line no

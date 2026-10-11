@@ -34,6 +34,7 @@ import { loadSessionMetadata } from "gps-plus-slam-app-framework/storage/zip-rea
 import {
   selectGpsPositions,
   selectOdometryPositions,
+  selectZeroReference,
 } from "gps-plus-slam-app-framework/state";
 import { createTourViewerStore } from "./tour-viewer-session.js";
 import {
@@ -48,6 +49,11 @@ import {
   type CodeSighting,
   visitEndChoice,
 } from "./visit-settle.js";
+import { CODE_MOVE_RULE } from "./code-displacement.js";
+import { createMovedCodeChecks } from "./moved-code-check.js";
+import { CODE_TURN_RULE } from "./moved-code-rule.js";
+import type { QrLevel } from "gps-plus-slam-app-framework/ar/qr/qr-level";
+import type { Pose } from "gps-plus-slam-app-framework/ar/qr/qr-pose";
 import { createWalkedDistanceTracker } from "./walked-distance-tracker.js";
 
 const ZIP = process.env.TOUR_RECORDING;
@@ -622,6 +628,25 @@ describe.skipIf(TOUR_ZIP === undefined)("a Tour Viewer tour zip", () => {
 // the 40 m at which a pick matures, so every pick fell back to the end
 // alignment, and the one logged sighting stands for all of them; the "as
 // it ran" check measures what that costs.
+/** What a replay expects of today's rules, opted into per recording:
+ *  `replace` - the stored code is replaced and every pin keeps its distance
+ *  from it (the 2026-10-09 recording, field test 3). */
+const REPLAY_EXPECT = process.env.TOUR_REPLAY_EXPECT;
+
+/** The replay's outcome under today's rules, for the expectation test. */
+let replayed: {
+  readonly decisionKind: string;
+  readonly reminted: boolean;
+  readonly pins: readonly {
+    readonly label: string;
+    readonly basis: string;
+    /** From the new code (m). */
+    readonly fromNewCodeM: number;
+    /** The zip's pin from the stored code (m). */
+    readonly zipFromStoredCodeM: number;
+  }[];
+} | null = null;
+
 describe.skipIf(ZIP === undefined || TOUR_ZIP === undefined)(
   "a field recording's Finish, replayed with today's rules",
   () => {
@@ -784,7 +809,154 @@ describe.skipIf(ZIP === undefined || TOUR_ZIP === undefined)(
         `today's result line: ${codePositionSentence([{ decision: position!.decision, applied: today.level !== null }])}`,
       );
       process.stdout.write(`${lines.map((l) => `TS ${l}`).join("\n")}\n`);
+      replayed = {
+        decisionKind: position!.decision.kind,
+        reminted: today.level !== null,
+        pins: today.objects.map((o) => ({
+          label: label(o.object),
+          basis: o.basis,
+          fromNewCodeM: metres(newCode, o.object.geo),
+          zipFromStoredCodeM: metres(
+            storedCode,
+            zip.manifest.objects.find((z) => z.id === o.object.id)!.geo,
+          ),
+        })),
+      };
     });
+
+    // Why (field test 3, the milestone review of M0a #4): the replay's
+    // claims about today's rules were printed, not held - a regression back
+    // to keeping the code would have stayed green. With
+    // TOUR_REPLAY_EXPECT=replace (the 2026-10-09 recording) they are held:
+    // the code is replaced, every pin settles through the visit's own
+    // alignment, and the layout around the code is the zip's, turned back.
+    it.skipIf(REPLAY_EXPECT !== "replace")(
+      "holds today's rules to the recording's expectation",
+      () => {
+        expect(replayed, "the replay ran first").not.toBeNull();
+        const r = replayed!;
+        expect(r.decisionKind).toBe("replace");
+        expect(r.reminted).toBe(true);
+        for (const pin of r.pins) {
+          expect(pin.basis, pin.label).toBe("measured-here");
+          expect(
+            Math.abs(pin.fromNewCodeM - pin.zipFromStoredCodeM),
+            pin.label,
+          ).toBeLessThan(0.3);
+        }
+      },
+    );
+  },
+);
+
+// Why this test exists (polish round C5, the M0a milestone review #6): the
+// re-judged veto's factor had never met real data. A viewing recording that
+// was vetoed (2026-10-10) is replayed through the store with the moved-code
+// check running beside it under the rule that vetoed it (no heading-evidence
+// gate) and each restore factor, and under today's rule. It reports when
+// each variant vetoes and lifts; it pins only that the replay ran.
+describe.skipIf(ZIP === undefined)(
+  "a viewing recording's moved-code check, replayed under old and new rules",
+  () => {
+    it("reports when each rule vetoes and lifts", async () => {
+      const store = createTourViewerStore();
+      const actions = (
+        await loadActionsFromZip(new Uint8Array(readFileSync(String(ZIP))))
+      ).map((e) => e.action);
+      expect(actions.length).toBeGreaterThan(0);
+      const oldTurn = { ...CODE_TURN_RULE, sigmaFactor: 0 };
+      const variants = [
+        ...[1.5, 2, 3].map((factor) => ({
+          label: `old turn rule (k 0), restore x${String(factor)}`,
+          rules: { move: CODE_MOVE_RULE, turn: oldTurn },
+          factor,
+        })),
+        {
+          label: "today's rule (k 3), restore x2",
+          rules: undefined,
+          factor: 2,
+        },
+      ].map((v) => {
+        const events: string[] = [];
+        let nowS = 0;
+        const checks = createMovedCodeChecks({
+          rules: v.rules,
+          restoreSpreadFactor: v.factor,
+          onRestored: (r) => {
+            events.push(
+              `lifted at +${nowS.toFixed(0)} s (spread ${r.evidence.spreadM.toFixed(1)} m, vetoed on ${r.evidence.vetoSpreadM.toFixed(1)} m)`,
+            );
+          },
+        });
+        return {
+          ...v,
+          checks,
+          events,
+          setNow: (s: number) => {
+            nowS = s;
+          },
+        };
+      });
+      let pinnedAtMs: number | null = null;
+      for (const a of actions) {
+        store.dispatch(a as never);
+        const p = a.payload as {
+          text?: string;
+          /** The level's `qr` block (`CodeLockedLog`). */
+          level?: QrLevel["qr"] | null;
+          qrPoseWorld?: Pose;
+          atMs?: number;
+          rawGpsPoint?: { timestamp?: number };
+          events?: { rawGpsPoint?: { timestamp?: number } }[];
+        };
+        if (
+          pinnedAtMs === null &&
+          a.type === "tourViewing/codeLocked" &&
+          p.level !== undefined &&
+          p.level !== null &&
+          p.qrPoseWorld !== undefined &&
+          p.text !== undefined &&
+          p.atMs !== undefined
+        ) {
+          pinnedAtMs = p.atMs;
+          const zero = selectZeroReference(store.getState());
+          for (const v of variants) {
+            v.checks.pin({
+              text: p.text,
+              levelId: "replayed",
+              level: { version: 1, qr: p.level },
+              qrPoseWorld: p.qrPoseWorld,
+              atMs: p.atMs,
+              zero,
+            });
+          }
+        }
+        if (pinnedAtMs === null || !a.type.startsWith("gpsData/recordGps"))
+          continue;
+        const stamp =
+          p.rawGpsPoint?.timestamp ?? p.events?.at(-1)?.rawGpsPoint?.timestamp;
+        if (stamp === undefined) continue;
+        const state = store.getState();
+        const history = {
+          gpsPositions: selectGpsPositions(state),
+          odometryPositions: selectOdometryPositions(state),
+          zero: selectZeroReference(state),
+        };
+        for (const v of variants) {
+          v.setNow((stamp - pinnedAtMs) / 1000);
+          for (const verdict of v.checks.update(history, stamp)) {
+            v.events.push(
+              `vetoed at +${verdict.evidence.sinceScanS.toFixed(0)} s by ${verdict.evidence.decidedBy} (yaw ${verdict.evidence.yawDeg.toFixed(1)}, spread ${verdict.evidence.spreadM.toFixed(1)} m, accuracy ${String(verdict.evidence.deviceAccuracyMedianM)})`,
+            );
+          }
+        }
+      }
+      const lines = variants.map(
+        (v) =>
+          `${v.label}: ${v.events.length === 0 ? "no veto" : v.events.join("; ")}`,
+      );
+      process.stdout.write(`${lines.map((l) => `TV ${l}`).join("\n")}\n`);
+    }, 300_000);
   },
 );
 

@@ -75,7 +75,9 @@ The `data-testid` contract the e2e suite drives: `wizard`, `step-host`,
 `clear-cache`, `print-panel` (owns `print-url-ask`, `print-url`,
 `print-url-shown`, `author-size`, `author-c`, `print-generate`,
 `print-info`, `print-canvas`, `print-button`, `print-url-out`,
-`print-count`, `print-paper`, `print-pdf`, `visitor-link`), `step-hang`, `hang-done`, `step-measure` (owns
+`print-count`, `print-paper`, `print-pdf`, `visitor-link` - opens in a
+new tab, polish round A17), `make-your-own` (on the visitor screen: the
+setup page in a new tab, polish round A8), `step-hang`, `hang-done`, `step-measure` (owns
 `draft-offer`,
 `draft-offer-text`, `draft-restore`, `draft-dismiss`, `draft-discard`,
 `finish-block`,

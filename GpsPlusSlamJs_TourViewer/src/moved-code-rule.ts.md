@@ -14,9 +14,10 @@ another way as moved (§7l D3). Pure; the per-fix wiring is
 
 - `CODE_TURN_RULE: CodeTurnRule` - `{ settledYawDeg: 45,
 settledAlignmentSamples: 120, sigmaFactor: 3 }` (frozen).
-- `turnThresholdDeg(estimate, accuracyMedianM, rule?)` (internal) - the yaw a turn
+- `turnThresholdDeg(estimate, accuracyMedianM, rule?)` - the yaw a turn
   must exceed: `turnLimitDeg` (`visit-settle.ts`) of the fit's accuracy
-  (5 m when unknown) and a baseline of twice its RMS spread, times
+  (5 m when unknown) and a baseline of `baselineSpreadFactor` (3) times
+  its RMS spread, times
   `sigmaFactor`, with `settledYawDeg` as the floor (polish round C5).
 - `MOVED_CODE_HORIZON_S` (300) - how long after its pin a code is checked.
 - `MOVED_CODE_FIT_WINDOW_S` (300) - the fit window before the pin: only
@@ -50,7 +51,7 @@ degrees. It runs only when:
 - the yaw exceeds what the fit's own GPS heading can be off by (polish
   round C5, `turnThresholdDeg`): the 2026-10-10 viewer recording vetoed a
   code indoors on a 46-degree reading over 2.15 m of spread at 8.3 m
-  median accuracy, where the heading model's sigma is about 63 degrees,
+  median accuracy, where the heading model's sigma is about 52 degrees,
   and the veto then held for the rest of the session. After an outdoor
   walk (12 m of spread at 4 m) the threshold stays the calibrated 45.
   The cost, stated in the tests: a poster really turned is judged turned

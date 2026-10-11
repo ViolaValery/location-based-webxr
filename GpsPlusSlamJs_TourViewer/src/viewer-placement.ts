@@ -38,6 +38,7 @@ import type { Texture } from "three";
 import type { TourCaptureSpots } from "gps-plus-slam-app-framework/ar/tour-manifest";
 import { bakeCaptureSpots, posesOfCaptureSpots } from "./capture-bake.js";
 import { entriesForVisitor } from "./tour-read-set.js";
+import type { Pose } from "gps-plus-slam-app-framework/ar/qr/qr-pose";
 import type { CaptureWorldPose } from "./capture-geo-join.js";
 import { renderTourObjects } from "./content-placement.js";
 import { placeCapturedImagePlanes, placeImagePlanes } from "./image-planes.js";
@@ -183,6 +184,45 @@ export function createViewerPlacement(deps: {
   /** The text of the latest detection: the code a lock reports on (the
    *  controller reports a frame's detection before its lock). */
   let lastDetectedText: string | null = null;
+  /** That detection's pose (raw WebXR): an ignored code's lock computes no
+   *  fused pose, so its probation check is pinned on this. */
+  let lastDetectedPose: Pose | null = null;
+
+  /**
+   * An ignored code locked (polish round C5, the M0a review #1): an AR exit,
+   * a frame change, or a veto read after a frame change ends the vetoed
+   * code's check, and an ignored code casts no votes, so nothing would pin a
+   * new one and the veto would hold for the tour again. Its lock pins a
+   * probation check in the current entry and frame instead, starting vetoed
+   * at the spread the veto was read on: it can only lift the veto.
+   */
+  function probationPin(text: string): void {
+    const levelId = ctx.levelIdByText.get(text);
+    const ignored =
+      levelId === undefined ? undefined : ctx.ignoredCodes.get(levelId);
+    const level = ctx.levelByText.get(text);
+    const checks = ctx.movedCodeChecks;
+    if (
+      levelId === undefined ||
+      ignored === undefined ||
+      level === undefined ||
+      level === null ||
+      checks === null ||
+      lastDetectedPose === null ||
+      lastDetectedText !== text
+    ) {
+      return;
+    }
+    checks.pin({
+      text,
+      levelId,
+      level,
+      qrPoseWorld: lastDetectedPose,
+      atMs: now(),
+      zero: selectZeroReference(arStore.getState()),
+      vetoSpreadM: ignored.vetoSpreadM,
+    });
+  }
 
   const ignoredLevelIds = (): ReadonlySet<string> =>
     new Set(ctx.ignoredCodes.keys());
@@ -353,6 +393,7 @@ export function createViewerPlacement(deps: {
           if (!live()) return;
           ctx.viewerIgnoredText = text;
           markGateIgnored(text);
+          probationPin(text);
           hooks.renderArStatus();
         },
         // The check pins a code on the pose its first voted lock used.
@@ -385,6 +426,7 @@ export function createViewerPlacement(deps: {
         resolveStablePose: (text) => fusedPose.resolve(text),
         recordDetection: (event) => {
           lastDetectedText = event.text;
+          lastDetectedPose = event.qrPoseWorld;
           ctx.viewerUnknownCode = null; // a level-carrying detection supersedes it
           ctx.viewerUnusableCode = null;
           ctx.latestReprojectionPx = event.reprojectionErrorPx;
@@ -578,7 +620,10 @@ export function createViewerPlacement(deps: {
    */
   function vetoMovedCode(verdict: MovedCodeVerdict): void {
     if (ctx.ignoredCodes.has(verdict.levelId)) return;
-    ctx.ignoredCodes.set(verdict.levelId, { text: verdict.text });
+    ctx.ignoredCodes.set(verdict.levelId, {
+      text: verdict.text,
+      vetoSpreadM: verdict.evidence.spreadM,
+    });
     const keepAlive = ctx.viewerKeepAlive;
     const hold = keepAlive?.phase(now());
     if (

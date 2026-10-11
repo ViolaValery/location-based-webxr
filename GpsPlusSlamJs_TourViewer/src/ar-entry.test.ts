@@ -21,7 +21,9 @@ import type { TourViewerSeams } from "./seams.js";
 import { RECORDING_DEPTH } from "./authoring-recording.js";
 import {
   endSession,
+  recordGpsEvent,
   resetGpsSessionData,
+  setZeroPos,
 } from "gps-plus-slam-app-framework/state";
 
 /** A stand-in element: the fields `wireArEntry` writes, and click handlers. */
@@ -230,6 +232,37 @@ describe("wireArEntry session end", () => {
 describe("wireArEntry QR readout and visitor hint", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  // Why (polish round C4, the M0a review #3): the store's median folds the
+  // code's synthetic votes (5 m each) in, which would make poor indoor GPS
+  // read about 5 m. The block's GPS line counts device fixes only.
+  it("reads the GPS line's accuracy from device fixes only, not the code's votes", () => {
+    const h = harness();
+    const fix = (i: number, accuracy: number, source?: string) =>
+      h.arStore.dispatch(
+        recordGpsEvent({
+          odomPosition: [i, 0, 0],
+          odomRotation: [0, 0, 0, 1],
+          rawGpsPoint: {
+            id: `fix-${String(i)}`,
+            latitude: 47.5 + i * 1e-5,
+            longitude: 8.7,
+            altitude: 400,
+            latLongAccuracy: accuracy,
+            timestamp: 1_790_000_000_000 + i * 1000,
+            ...(source === undefined ? {} : { source }),
+          },
+        } as never),
+      );
+    h.arStore.dispatch(setZeroPos({ lat: 47.5, lon: 8.7 }));
+    for (let i = 0; i < 3; i += 1) fix(i, 8.3);
+    for (let i = 3; i < 9; i += 1) fix(i, 5, "synthetic-qr");
+    h.ctx.debug = true;
+    h.entry.renderArStatus();
+    expect(h.dom.arDebug.textContent).toMatch(
+      /gps: ±8\.3 m median, extent [\d.]+ m over 3 fixes/,
+    );
   });
 
   it("writes the ?debug=1 block only with the flag", () => {

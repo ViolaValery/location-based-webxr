@@ -629,10 +629,10 @@ test("the creator measures the code, finishes, and downloads a rebuilt zip that 
   // (odometry y 1.5 on the seeded alignment's 400 m datum: 401.5) and
   // hypot(1, 3) m from it horizontally, so the pin sits that far from the
   // STORED code (47.5001, 8.7001, 400). Distances, not directions: the
-  // fixture's hand-written stored rotation and the fake's measured one
-  // differ by a yaw, which the correction turns the offset by (the frame
-  // math is pinned in visit-settle.test.ts). Without the correction the pin
-  // would be ~12.5 m from the code, at altitude 400.5.
+  // fixture stores the facing the fakes measure (archive-server.mjs), so the
+  // correction moves the visit without turning it; the frame math of a
+  // turned correction is pinned in visit-settle.test.ts. Without the
+  // correction the pin would be ~12.5 m from the code, at altitude 400.5.
   const metresPerDegLat = 111_195.08; // mean Earth radius, degrees to m
   const metresPerDegLon = metresPerDegLat * Math.cos((47.5001 * Math.PI) / 180);
   expect(pin?.geo.alt).toBeCloseTo(399, 6);
@@ -2331,8 +2331,15 @@ test("Exit AR keeps the work: the pin is still listed after the exit and offered
     /1 object placed/,
   );
 
+  await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
   await page.getByTestId("enter-ar").click();
-  await expect(page.getByTestId("enter-ar")).not.toHaveText("Exit AR");
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start AR setup");
+  await expect(page.getByTestId("object-list")).toContainText(
+    "Kept by the exit",
+  );
+  // Back into AR: the pin is still there.
+  await page.getByTestId("enter-ar").click();
+  await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
   await expect(page.getByTestId("object-list")).toContainText(
     "Kept by the exit",
   );

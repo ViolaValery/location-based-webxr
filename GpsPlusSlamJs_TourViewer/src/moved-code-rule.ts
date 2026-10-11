@@ -51,6 +51,10 @@ export interface CodeTurnRule {
    *  error (polish round C5; `turnLimitDeg` with `settledYawDeg` as its
    *  floor). */
   readonly sigmaFactor: number;
+  /** The heading model's baseline as a multiple of the fit's RMS spread
+   *  (polish round C5): a walk's extent is about two to three and a half
+   *  times its RMS distance from the centroid. */
+  readonly baselineSpreadFactor: number;
 }
 
 /**
@@ -73,20 +77,27 @@ export interface CodeTurnRule {
  *   settled at the median rate. Swept 60 / 120 / 180: the check reads
  *   0-0.3 % at all three; a phone at 1 Hz needs 2 minutes to reach it
  *   (conservative: its codes are then judged by position only).
- * - `sigmaFactor` 3 (polish round C5, swept 0 / 2 / 3 / 4 x T 30 / 45 / 60
- *   on the same 710 outdoor virtual codes, settled at 120, within 120 s):
- *   at T 45 the false alarms go from 1 of 710 (k 0, the rule before C5)
- *   to 0, while 90-degree turns are caught exactly as before (1,022 of
- *   1,420, every covered one); k 4 loses 2 catches, k 2 keeps the false
- *   alarm. The corpus has no indoor virtual codes, so the indoor effect
- *   rests on the 2026-10-10 recording: 2.15 m of spread at 8.3 m makes the
- *   threshold about 188 degrees, and its 46-degree reading no veto. What
- *   reverses it: indoor recordings in which real turns go uncaught.
+ * - `sigmaFactor` 3 and `baselineSpreadFactor` 3 (polish round C5; swept
+ *   k 0 / 2 / 3 / 4 x T 30 / 45 / 60 and, at k 3, the baseline 1.5 / 2 / 3 x
+ *   the RMS spread, against "spread at least q x accuracy" with q 0.5 / 1 /
+ *   2; settled at 120, within 120 s; on 710 outdoor and 42 indoor or mixed
+ *   virtual codes, the saved heading drawn from another outdoor walk):
+ *   - before C5 (k 0, T 45): false alarms 1 of 710 outdoors, 2 of 42 indoors;
+ *   - k 3, baseline 3: 0 of 710 and 0 of 42, while 90-degree turns are
+ *     caught as before outdoors (1,022 of 1,420, every covered one) and 51 of
+ *     52 covered indoors (k 3 at baseline 2: 49 of 52; k 2 keeps the
+ *     outdoor false alarm; k 4 loses catches in both; the q alternative
+ *     never beats it).
+ *   - The indoor sample is small (42 codes, 26 covered). The 2026-10-10
+ *     recording (2.15 m of spread at 8.3 m) gets a threshold of about 156
+ *     degrees, and its 46-degree reading no veto. What reverses it: indoor
+ *     recordings in which real turns go uncaught.
  */
 export const CODE_TURN_RULE: CodeTurnRule = Object.freeze({
   settledYawDeg: 45,
   settledAlignmentSamples: 120,
   sigmaFactor: 3,
+  baselineSpreadFactor: 3,
 });
 
 /** The accuracy assumed (m) when no fix of the fit reported one. */
@@ -95,15 +106,15 @@ const DEFAULT_FIT_ACCURACY_M = 5;
 /**
  * The largest yaw (deg) the fit's own GPS heading error explains: the
  * heading model's sigma (`visitHeadingSigmaDeg` through `turnLimitDeg`)
- * for the fit's accuracy and a baseline of twice its RMS spread (the
- * spread is the fixes' RMS distance from their centroid; a walk's extent is
- * about two to three and a half times that), times `sigmaFactor`, never
- * below `settledYawDeg`. Polish round C5: at 2.15 m of spread and 8.3 m
- * accuracy indoors the sigma is about 63 degrees, so the 46-degree reading
- * that vetoed the code is no evidence; after a 12 m spread at 4 m it is
- * about 10, and the calibrated 45 decides as before.
+ * for the fit's accuracy and a baseline of `baselineSpreadFactor` times
+ * its RMS spread (the spread is the fixes' RMS distance from their
+ * centroid; a straight walk's extent is about 3.5 times that), times
+ * `sigmaFactor`, never below `settledYawDeg`. Polish round C5: at 2.15 m of
+ * spread and 8.3 m accuracy indoors the sigma is about 52 degrees, so the
+ * 46-degree reading that vetoed the code is no evidence; after a 12 m
+ * spread at 4 m it is about 7, and the calibrated 45 decides as before.
  */
-function turnThresholdDeg(
+export function turnThresholdDeg(
   estimate: Pick<DisplacementEstimate, "spreadM">,
   accuracyMedianM: number | null | undefined,
   rule: CodeTurnRule = CODE_TURN_RULE,
@@ -117,7 +128,7 @@ function turnThresholdDeg(
       : DEFAULT_FIT_ACCURACY_M;
   return (
     turnLimitDeg(
-      { extentM: 2 * estimate.spreadM, accuracyM },
+      { extentM: rule.baselineSpreadFactor * estimate.spreadM, accuracyM },
       { floorDeg: rule.settledYawDeg, factor: rule.sigmaFactor },
     ) ?? rule.settledYawDeg
   );

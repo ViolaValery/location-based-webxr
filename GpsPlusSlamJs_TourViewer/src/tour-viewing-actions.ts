@@ -132,7 +132,8 @@ interface KeepAliveLog extends ViewingMoment {
 interface CodeIgnoredLog extends ViewingMoment {
   /** The code the moved-code check judged moved (authoring plan
    *  2026-09-28-0953 §3.6, D20, M5c), and its level id - what the veto is
-   *  kept by for the rest of the tour. */
+   *  kept by until the check lifts it (polish round C5) or the tour
+   *  switches. */
   readonly text: string;
   readonly levelId: string;
   /** The detector's inputs as computed (§7j #15): device-only accuracies,

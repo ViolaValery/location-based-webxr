@@ -54,6 +54,7 @@ import {
   MOVED_CODE_HORIZON_S,
   MOVED_CODE_RULE_VERSION,
   type CodeMoveJudgement,
+  turnThresholdDeg,
 } from "./moved-code-rule.js";
 import { odomNueFromWebXr } from "./visit-anchoring.js";
 import type { VisitLogInput } from "./visit-log.js";
@@ -100,9 +101,12 @@ export interface MovedCodeVerdict {
  * holding for the session). Twice the spread is more than twice the
  * baseline the verdict rested on; a lower factor would let the same
  * stand-still that read the wrong verdict also read the reverse one. Not
- * swept on recordings: what would set it is a corpus of vetoes that later
- * evidence contradicts, and the field has one (2026-10-10). What reverses
- * it: a lifted veto that a still wider walk vetoes again.
+ * swept on recordings. The one field veto (2026-10-10), replayed in the
+ * field test, never lifts under the rule that read it (its yaw stays past
+ * 45 degrees, so no consistent verdict comes) at any factor 1.5 / 2 / 3,
+ * and today's rule does not veto it at all - so the factor has not met
+ * real data yet. What reverses it: a lifted veto that a still wider walk
+ * vetoes again.
  */
 export const RESTORE_SPREAD_FACTOR = 2;
 
@@ -135,6 +139,12 @@ export interface MovedCodeCheckView {
   /** Whether the turn check runs for this code (a settled save). */
   readonly turnChecked: boolean;
   readonly verdict: CodeMoveJudgement["verdict"];
+  /** The yaw a turn must exceed now (`turnThresholdDeg`, polish round C5);
+   *  null without a turn check or an estimate. Always set by `snapshot`. */
+  readonly turnThresholdDeg?: number | null;
+  /** A vetoed code: the spread (m) at which a consistent verdict lifts the
+   *  veto; null while not vetoed. Always set by `snapshot`. */
+  readonly liftsAtSpreadM?: number | null;
 }
 
 /**
@@ -161,6 +171,10 @@ export interface MovedCodeChecks {
     readonly qrPoseWorld: Pose;
     readonly atMs: number;
     readonly zero: LatLong | null;
+    /** A probation check for a code vetoed earlier (polish round C5, the M0a
+     *  review #1): it starts vetoed at this spread, so it can only lift the
+     *  veto, never read a new one. */
+    readonly vetoSpreadM?: number;
   }): void;
   /** Fold the history's new device fixes and judge every live check at
    *  page time `nowMs`; the codes that read `moved` now (each once). A
@@ -200,6 +214,10 @@ interface Check {
   vetoSpreadM: number | null;
 }
 
+/** The middle of a sorted list; null when empty. */
+const medianOf = (sorted: readonly number[]): number | null =>
+  sorted.length === 0 ? null : sorted[sorted.length >> 1]!;
+
 const finiteOrNull = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
 
@@ -218,8 +236,15 @@ export function createMovedCodeChecks(
   options: {
     /** A vetoed code read consistent again on wider evidence (C5). */
     readonly onRestored?: (restored: RestoredCode) => void;
+    /** The rules judged by; absent, the shipped ones. For replays that
+     *  compare rules (the field test), never set by the page. */
+    readonly rules?: Parameters<typeof judgeCodeMove>[1];
+    /** The restore factor; absent, {@link RESTORE_SPREAD_FACTOR}. For
+     *  replays that sweep it (the field test), never set by the page. */
+    readonly restoreSpreadFactor?: number;
   } = {},
 ): MovedCodeChecks {
+  const restoreFactor = options.restoreSpreadFactor ?? RESTORE_SPREAD_FACTOR;
   const checks = new Map<string, Check>();
   /** The first history index of the current odometry frame. */
   let frameStart = 0;
@@ -262,21 +287,17 @@ export function createMovedCodeChecks(
 
   function judge(check: Check) {
     const estimate = displacementEstimate(check.stats, CODE_MOVE_ESTIMATOR);
-    const accuracyMedianM =
-      check.accuracies.length === 0
-        ? null
-        : check.accuracies[check.accuracies.length >> 1]!;
-    const judgement = judgeCodeMove({
-      estimate,
-      settled: check.settled,
-      accuracyMedianM,
-    });
+    const accuracyMedianM = medianOf(check.accuracies);
+    const judgement = judgeCodeMove(
+      { estimate, settled: check.settled, accuracyMedianM },
+      options.rules,
+    );
     check.last = judgement;
     return { estimate, accuracyMedianM, judgement };
   }
 
   return {
-    pin({ text, levelId, level, qrPoseWorld, atMs, zero }) {
+    pin({ text, levelId, level, qrPoseWorld, atMs, zero, vetoSpreadM }) {
       if (checks.has(levelId) || zero === null || !Number.isFinite(atMs)) {
         return;
       }
@@ -307,7 +328,10 @@ export function createMovedCodeChecks(
         accuracies: [],
         folded: frameStart,
         last: null,
-        vetoSpreadM: null,
+        vetoSpreadM:
+          vetoSpreadM !== undefined && Number.isFinite(vetoSpreadM)
+            ? Math.max(0, vetoSpreadM)
+            : null,
       });
     },
     update(history, nowMs) {
@@ -339,7 +363,7 @@ export function createMovedCodeChecks(
           if (
             judgement.verdict === "consistent" &&
             estimate !== null &&
-            estimate.spreadM >= RESTORE_SPREAD_FACTOR * check.vetoSpreadM
+            estimate.spreadM >= restoreFactor * check.vetoSpreadM
           ) {
             checks.delete(check.levelId);
             options.onRestored?.({
@@ -407,6 +431,14 @@ export function createMovedCodeChecks(
           samples: estimate?.samples ?? 0,
           turnChecked: check.settled,
           verdict: check.last?.verdict ?? "undecided",
+          turnThresholdDeg:
+            check.settled && estimate !== null
+              ? turnThresholdDeg(estimate, medianOf(check.accuracies))
+              : null,
+          liftsAtSpreadM:
+            check.vetoSpreadM === null
+              ? null
+              : restoreFactor * check.vetoSpreadM,
         };
       });
     },

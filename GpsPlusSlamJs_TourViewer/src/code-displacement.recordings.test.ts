@@ -2494,6 +2494,12 @@ const SETTLED_YAW_SWEEP_DEG = [30, 45, 60] as const;
 /** The turn check's heading-evidence factor (polish round C5), swept; 0 is
  *  the rule before C5 (the floor alone). */
 const SIGMA_FACTOR_SWEEP = [0, 2, 3, 4] as const;
+/** The heading model baseline as a multiple of the RMS spread, swept at
+ *  the shipped factor (the M0a milestone review #2). */
+const BASELINE_FACTOR_SWEEP = [1.5, 2, 3] as const;
+/** The plan alternative to the sigma gate: a turn counts only once the
+ *  spread reaches q times the median accuracy (q swept). */
+const SPREAD_PER_ACCURACY_SWEEP = [0.5, 1, 2] as const;
 
 /** A trace's estimate at fix `k`, a move and a heading offset added (the
  *  rigid fit: a move adds exactly, a turn reaches the yaw only). */
@@ -2541,6 +2547,19 @@ function firstShipped(
 }
 
 const SHIPPED = { move: CODE_MOVE_RULE, turn: CODE_TURN_RULE } as const;
+
+/** The trace with every fix whose spread is below q times its median
+ *  accuracy masked to no spread: the rule then reads no turn there (its
+ *  2 m evidence gate), which is the spread-vs-accuracy alternative. */
+function gatedBySpread(tr: Trace, q: number): Trace {
+  return {
+    ...tr,
+    spread: tr.spread.map((s, k) => {
+      const acc = tr.acc[k];
+      return acc !== null && acc !== undefined && s < q * acc ? 0 : s;
+    }),
+  };
+}
 /** The turn check alone: a floor no position reaches. */
 const turnOnly = (turn: CodeTurnRule) => ({
   move: { ...CODE_MOVE_RULE, floorM: Number.POSITIVE_INFINITY },
@@ -2624,12 +2643,12 @@ function sweepShippedRule(
     posTable((p) => p.windowed(MOVED_CODE_FIT_WINDOW_S), SHIPPED_HORIZONS_S),
   );
 
-  // The turn check alone on the outdoor virtual codes.
-  const errsOf = new Map(
-    walks
-      .filter((w) => w.place === "outdoor")
-      .map((w) => [w.key, headingErrors(w)] as const),
-  );
+  // The turn check alone on the virtual codes. Every walk's own published
+  // heading errors: a code's draw needs its OWN walk's error (the visitor
+  // side) and another outdoor walk's (the saved side). Built for outdoor
+  // walks only, the indoor+mixed rows of the C5 sweep measured nothing (the
+  // M0a milestone review #2).
+  const errsOf = new Map(walks.map((w) => [w.key, headingErrors(w)] as const));
   const poolWalks = walks.filter(
     (w) =>
       w.place === "outdoor" &&
@@ -2669,23 +2688,47 @@ function sweepShippedRule(
         });
         const variants =
           kind === "settled"
-            ? SETTLED_YAW_SWEEP_DEG.flatMap((T) =>
-                SIGMA_FACTOR_SWEEP.map((k) => ({
-                  label: `turn check T=${String(T)} k=${String(k)}`,
+            ? [
+                ...SETTLED_YAW_SWEEP_DEG.flatMap((T) =>
+                  SIGMA_FACTOR_SWEEP.map((k) => ({
+                    label: `turn check T=${String(T)} k=${String(k)}`,
+                    turn: {
+                      ...CODE_TURN_RULE,
+                      settledYawDeg: T,
+                      settledAlignmentSamples: nSettled,
+                      sigmaFactor: k,
+                    },
+                    settled: true,
+                    spreadPerAccuracy: 0,
+                  })),
+                ),
+                ...BASELINE_FACTOR_SWEEP.map((b) => ({
+                  label: `turn check T=45 k=3 baseline=${String(b)}x spread`,
                   turn: {
                     ...CODE_TURN_RULE,
-                    settledYawDeg: T,
                     settledAlignmentSamples: nSettled,
-                    sigmaFactor: k,
+                    baselineSpreadFactor: b,
                   },
                   settled: true,
+                  spreadPerAccuracy: 0,
                 })),
-              )
+                ...SPREAD_PER_ACCURACY_SWEEP.map((q) => ({
+                  label: `alternative: T=45, spread >= ${String(q)} x accuracy`,
+                  turn: {
+                    ...CODE_TURN_RULE,
+                    settledAlignmentSamples: nSettled,
+                    sigmaFactor: 0,
+                  },
+                  settled: true,
+                  spreadPerAccuracy: q,
+                })),
+              ]
             : [
                 {
                   label: "early save: no turn check (shipped)",
                   turn: CODE_TURN_RULE,
                   settled: false,
+                  spreadPerAccuracy: 0,
                 },
               ];
         const drawn = caseSet
@@ -2696,7 +2739,9 @@ function sweepShippedRule(
           for (const v of variants) {
             const hitAt = (x: (typeof drawn)[number], extra: number) =>
               firstShipped(
-                x.c.rigid,
+                v.spreadPerAccuracy > 0
+                  ? gatedBySpread(x.c.rigid, v.spreadPerAccuracy)
+                  : x.c.rigid,
                 h,
                 v.settled,
                 turnOnly(v.turn),

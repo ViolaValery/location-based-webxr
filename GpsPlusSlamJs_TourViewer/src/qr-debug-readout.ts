@@ -98,7 +98,14 @@ export function debugReadoutLines(input: {
       `moved-code check ${codeLabel(c.text)}: |D| ${c.magnitudeM.toFixed(1)} m, ` +
         `yaw ${c.yawDeg.toFixed(1)}°, ${c.spanS.toFixed(0)} s, ` +
         `spread ${c.spreadM.toFixed(1)} m, ${String(c.samples)} fixes, ` +
-        `turn check ${c.turnChecked ? "on" : "off"}, ${c.verdict}`,
+        `turn check ${c.turnChecked ? "on" : "off"}` +
+        (typeof c.turnThresholdDeg === "number"
+          ? ` (> ${String(Math.round(c.turnThresholdDeg))}°)`
+          : "") +
+        `, ${c.verdict}` +
+        (typeof c.liftsAtSpreadM === "number"
+          ? `, vetoed (lifts at spread ${c.liftsAtSpreadM.toFixed(1)} m)`
+          : ""),
     );
   }
   for (const text of input.ignoredCodes ?? []) {
@@ -122,7 +129,7 @@ function gpsLine(
   }
   const spread = extentM === null || !Number.isFinite(extentM) ? 0 : extentM;
   const sigma = visitHeadingSigmaDeg(accuracyM, spread);
-  return `gps: ±${accuracyM.toFixed(1)} m median, spread ${spread.toFixed(1)} m over ${String(fixes)} fixes, heading ±${String(Math.round(sigma))}°`;
+  return `gps: ±${accuracyM.toFixed(1)} m median, extent ${spread.toFixed(1)} m over ${String(fixes)} fixes, heading ±${String(Math.round(sigma))}°`;
 }
 
 /**

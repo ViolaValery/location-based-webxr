@@ -168,6 +168,37 @@ describe("debugReadoutLines - the moved-code checks (D20, M5c)", () => {
   // ignored is the check's live numbers: the fitted offset and turn, the
   // evidence behind them, whether the turn check runs and the verdict so far,
   // plus which codes are already ignored.
+  // Why (polish round C5, the M0a review #3): the line must show what the
+  // turn check compares against now, and that a code is vetoed and when the
+  // veto lifts - "consistent" next to "ignored (moved)" read as a
+  // contradiction.
+  it("shows the turn threshold and, for a vetoed code, the spread that lifts it", () => {
+    const lines = debugReadoutLines({
+      status: "tracking",
+      unknownCode: null,
+      unusableCode: null,
+      tallies: null,
+      movedCodeChecks: [
+        {
+          text: URL_A,
+          levelId: "a",
+          magnitudeM: 2.4,
+          yawDeg: -45.7,
+          spanS: 168,
+          spreadM: 2.2,
+          samples: 169,
+          turnChecked: true,
+          verdict: "consistent",
+          turnThresholdDeg: 188.4,
+          liftsAtSpreadM: 4.3,
+        },
+      ],
+    });
+    expect(lines).toContain(
+      "moved-code check …abcdefgh&n=1: |D| 2.4 m, yaw -45.7°, 168 s, spread 2.2 m, 169 fixes, turn check on (> 188°), consistent, vetoed (lifts at spread 4.3 m)",
+    );
+  });
+
   it("adds one line per live check and one per ignored code", () => {
     expect(
       debugReadoutLines({
@@ -211,7 +242,7 @@ describe("debugReadoutLines - the moved-code checks (D20, M5c)", () => {
       gps: { accuracyM: 8.3, extentM: 4.3, fixes: 169 },
     });
     expect(lines).toContain(
-      "gps: ±8.3 m median, spread 4.3 m over 169 fixes, heading ±63°",
+      "gps: ±8.3 m median, extent 4.3 m over 169 fixes, heading ±63°",
     );
   });
 

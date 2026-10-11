@@ -384,10 +384,15 @@ export interface TourViewerSession {
    *  2026-09-28-0953 §3.6, D20, M5c): created with the pipeline, cleared at
    *  a tour switch, dropped at AR exit. */
   movedCodeChecks: MovedCodeChecks | null;
-  /** The codes the moved-code check judged moved, by level id: ignored for
-   *  the rest of the page session for THIS tour (§7j #13) - kept across AR
-   *  entries, cleared at a tour switch ({@link endTourCodeVotes}). */
-  ignoredCodes: Map<string, { readonly text: string }>;
+  /** The codes the moved-code check judged moved, by level id, with the
+   *  spread the veto was read on: ignored for THIS tour (§7j #13) - kept
+   *  across AR entries, cleared at a tour switch ({@link endTourCodeVotes})
+   *  and when the check lifts a veto on wider evidence (polish round C5,
+   *  `restoreMovedCode`). */
+  ignoredCodes: Map<
+    string,
+    { readonly text: string; readonly vetoSpreadM: number }
+  >;
   /** The ignored code the status line names in this AR entry (vetoed, or
    *  seen again); null when none. */
   viewerIgnoredText: string | null;

@@ -185,6 +185,7 @@ describe("judgeCodeMove", () => {
       settledYawDeg: 45,
       settledAlignmentSamples: 120,
       sigmaFactor: 3,
+      baselineSpreadFactor: 3,
     });
     expect(MOVED_CODE_HORIZON_S).toBe(300);
     expect(CODE_MOVE_RULE.floorM).toBe(20);
@@ -195,7 +196,7 @@ describe("a turn needs GPS heading evidence (polish round C5)", () => {
   // Why these tests matter (the 2026-10-10 viewer recording): standing at a
   // window indoors, 53 s after the scan, the fit read a 46-degree turn over
   // 2.15 m of GPS spread at 8.3 m median accuracy - a heading that GPS
-  // cannot know (the heading model's sigma is about 63 degrees there) - and
+  // cannot know (the heading model's sigma is about 52 degrees there) - and
   // the 45-degree turn check vetoed the code for the rest of the session.
   // A turn now counts only beyond the larger of the calibrated 45 degrees
   // and `sigmaFactor` times that sigma.
@@ -248,9 +249,18 @@ describe("a turn needs GPS heading evidence (polish round C5)", () => {
   });
 
   it("assumes 5 m when no fix reported an accuracy", () => {
-    expect(judgeCodeMove({ settled: true, estimate: recorded }).verdict).toBe(
-      judgeCodeMove({ settled: true, estimate: recorded, accuracyMedianM: 5 })
-        .verdict,
-    );
+    // A case the assumed accuracy decides: 4 m of spread, a 55-degree yaw.
+    // At 5 m the threshold is about 68 degrees (no turn); at 2 m it is the
+    // 45 floor (a turn).
+    const near = est({ yawDeg: 55, spreadM: 4 });
+    const at = (accuracyMedianM?: number) =>
+      judgeCodeMove({
+        settled: true,
+        estimate: near,
+        ...(accuracyMedianM === undefined ? {} : { accuracyMedianM }),
+      }).verdict;
+    expect(at(2)).toBe("moved");
+    expect(at(5)).toBe("consistent");
+    expect(at()).toBe(at(5));
   });
 });
