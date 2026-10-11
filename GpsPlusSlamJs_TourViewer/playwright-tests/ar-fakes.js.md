@@ -47,7 +47,10 @@ camera, so `installTourViewerArFakes(page)` installs
   production ordering; `locationPermission` / `locationOutcome` /
   `locationRequests` (the visitor screen's gate: what the permission
   query answers, what a location-only tap comes back with, how many taps
-  were made); `copied` (what `copyText` was given: step 6's Drive
+  were made); `pdfViewer` + `pdfTabs` (the option `{ pdfViewer: true }`
+  makes `openPdfTab` return a recording tab - the PDF's inline path, M0b -
+  otherwise it returns null and the PDF is downloaded); `copied` (what
+  `copyText` was given: step 6's Drive
   address); `downloads` + `saveOutcome` (the zips the setup offered
   for download - the fake `shareOrDownloadZip` captures the blob instead
   of saving, and reports `saveOutcome`, false meaning nothing left the

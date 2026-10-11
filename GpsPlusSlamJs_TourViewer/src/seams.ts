@@ -80,6 +80,14 @@ import type {
 } from "./visitor-screen.js";
 
 /** The device functions a Playwright e2e fake may override. */
+/** A browser tab opened for a PDF before it is built (`openPdfTab`). */
+export interface PdfTab {
+  /** Show the built PDF in the tab. */
+  show(blob: Blob): void;
+  /** The build failed: the empty tab goes away. */
+  close(): void;
+}
+
 export interface TourViewerSeams {
   /**
    * Injected into `createEnableGpsArController` — empty in production (the
@@ -164,6 +172,12 @@ export interface TourViewerSeams {
    *  picker offers a PDF filter rather than a zip one, and so the e2e
    *  captures the bytes instead of writing a file. */
   downloadPdf(blob: Blob, filename: string): Promise<boolean>;
+  /** A browser tab for the PDF where the browser shows PDFs itself
+   *  (`navigator.pdfViewerEnabled`), opened NOW - inside the tap, as a
+   *  pop-up blocker requires - and filled once the PDF is built (polish
+   *  round M0b). Null where the browser cannot show a PDF (most phones) or
+   *  blocked the tab: the PDF is then downloaded. */
+  openPdfTab(): PdfTab | null;
   /** Put text on the clipboard (step 6's Drive address, polish round M2);
    *  rejects where the browser refuses. A seam so the e2e reads what was
    *  copied without clipboard permissions. */
@@ -265,6 +279,21 @@ export const realSeams: TourViewerSeams = {
   downloadZip: (blob, filename) => downloadBlob(blob, filename, ZIP_FILE_TYPE),
   canShareZip: () => prefersFileShare(ZIP_FILE_TYPE),
   downloadPdf: (blob, filename) => downloadBlob(blob, filename, PDF_FILE_TYPE),
+  openPdfTab: () => {
+    if (navigator.pdfViewerEnabled !== true) return null;
+    const tab = window.open("", "_blank");
+    if (tab === null) return null;
+    return {
+      show: (blob) => {
+        // The URL outlives this call on purpose: the tab is still reading
+        // it. One per PDF built, released with the page.
+        tab.location.href = URL.createObjectURL(blob);
+      },
+      close: () => {
+        tab.close();
+      },
+    };
+  },
   copyText: (text) => navigator.clipboard.writeText(text),
   startHitTestReticle: (arWorldGroup, onSelect) =>
     startHitTestReticle(

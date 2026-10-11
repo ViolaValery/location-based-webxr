@@ -171,6 +171,7 @@ const print = wirePrintPanel({
   // Through the seam like every other download, so the e2e fake captures
   // the bytes instead of the browser writing a file.
   downloadPdf: (blob, filename) => seams.downloadPdf(blob, filename),
+  openPdfTab: () => seams.openPdfTab(),
   // The re-check before the PDF of a link step 2 could not confirm
   // (polish round M2): the same transport an open uses, probed and let go.
   checkLink: (url) =>

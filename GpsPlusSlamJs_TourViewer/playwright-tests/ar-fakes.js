@@ -15,7 +15,9 @@ import { E2E_QR_ARCHIVE, E2E_QR_TEXT } from "./qr-fixture.mjs";
 
 /**
  * @param {import('@playwright/test').Page} page
- * @param {{ shareRoute?: boolean, printSizeM?: number, saveOutcome?: boolean }} [options]
+ * @param {{ shareRoute?: boolean, printSizeM?: number, saveOutcome?: boolean, pdfViewer?: boolean }} [options]
+ *   `pdfViewer`: the browser shows PDFs itself, so the print PDF opens in a
+ *   tab (recorded in `pdfTabs`) instead of being downloaded (M0b).
  *   `printSizeM`: what the print-size estimate reports (QR size consensus
  *   plan S3a) - one new independent window per call, so the creator's offer
  *   appears after three detections; absent = the estimate refuses.
@@ -30,8 +32,9 @@ export async function installTourViewerArFakes(page, options = {}) {
   // The first save's outcome: the Finish saves by itself (field test 2,
   // F4), so a spec that needs it to fail says so before the page loads.
   const saveOutcome = options.saveOutcome ?? true;
+  const pdfViewer = options.pdfViewer === true;
   await page.addInitScript(
-    ({ shareRoute, printSizeM, saveOutcome }) => {
+    ({ shareRoute, printSizeM, saveOutcome, pdfViewer }) => {
       const test = {
         /** @type {{ hasCameraFrame: boolean, isolationOptions: unknown }[]} */
         initARCalls: [],
@@ -115,6 +118,10 @@ export async function installTourViewerArFakes(page, options = {}) {
         shareRoute,
         /** What step 6's Drive address button copied (polish round M2). */
         copied: /** @type {string[]} */ ([]),
+        /** Whether the browser shows PDFs itself (polish round M0b); the
+         *  tabs the PDF was shown in, or closed when its build failed. */
+        pdfViewer,
+        pdfTabs: /** @type {{ shown?: Blob, closed?: boolean }[]} */ ([]),
         /** Hold downloadPdf open so a test can observe the busy state. */
         holdPdfSave: false,
         releasePdfSave: () => undefined,
@@ -405,6 +412,17 @@ export async function installTourViewerArFakes(page, options = {}) {
             test.releasePdfSave = () => resolve(test.saveOutcome);
           });
         },
+        openPdfTab: () =>
+          test.pdfViewer
+            ? {
+                show: (blob) => {
+                  test.pdfTabs.push({ shown: blob });
+                },
+                close: () => {
+                  test.pdfTabs.push({ closed: true });
+                },
+              }
+            : null,
         copyText: (text) => {
           test.copied.push(text);
           return Promise.resolve();
@@ -492,7 +510,7 @@ export async function installTourViewerArFakes(page, options = {}) {
         },
       };
     },
-    { shareRoute, printSizeM, saveOutcome },
+    { shareRoute, printSizeM, saveOutcome, pdfViewer },
   );
 }
 

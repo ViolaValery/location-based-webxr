@@ -70,8 +70,10 @@ test("the page boots without console errors", async ({ page }) => {
     if (message.type() === "error") errors.push(message.text());
   });
   await page.goto("/");
+  // The creator's page opens on the intro since polish round M2b (the
+  // "Tour Viewer" header is the visitor's).
   await expect(
-    page.getByRole("heading", { name: "Tour Viewer" }),
+    page.getByRole("heading", { name: /Put stories/ }),
   ).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -98,11 +100,33 @@ test("the page boots without console errors", async ({ page }) => {
  * is the output, and only the output can catch a composite that fails to
  * follow.
  */
-test.describe("the setup page follows the device's colour scheme", () => {
+/** The visitor's page: it follows the device's scheme. The creator's setup
+ *  page wears the L5 paper look on every device since polish round M2b
+ *  (D-P1), pinned by "keeps the paper look" in each half. */
+const VISITOR_PAGE = `/?nocache=1&qr=${encodeURIComponent(RANGES_URL)}`;
+
+/** The creator page's paper, resolved on the root (polish round M2b). */
+async function creatorPaper(page) {
+  await page.goto("/?nocache=1");
+  return page.evaluate(() =>
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--paper")
+      .trim()
+      .toLowerCase(),
+  );
+}
+
+test.describe("the visitor page follows the device's colour scheme", () => {
   test.use({ colorScheme: "light" });
 
+  test("the creator's setup page keeps the paper look on a light device", async ({
+    page,
+  }) => {
+    expect(await creatorPaper(page)).toBe("#f4eedf");
+  });
+
   test("a light device gets the light ground", async ({ page }) => {
-    await page.goto("/?nocache=1");
+    await page.goto(VISITOR_PAGE);
     const body = page.locator("body.page");
     await expect(body).toHaveCount(1);
     // The token, resolved on the element that declares it.
@@ -174,8 +198,19 @@ test.describe("the setup page follows the device's colour scheme", () => {
     await page.goto("/?nocache=1");
     // The attribute production itself sets when a session starts, so this
     // drives the real state rather than a test-only class (ar-entry.ts).
+    // HELD at "true": the page re-writes the flag on its own status render
+    // (ar-entry.ts), and since polish round M2b the flag decides the
+    // palette, so a render that flipped it back would test the resting
+    // page instead of the session.
     await page.locator("body.page").evaluate((el) => {
-      el.dataset["arActive"] = "true";
+      const hold = () => {
+        if (el.dataset["arActive"] !== "true") el.dataset["arActive"] = "true";
+      };
+      hold();
+      new MutationObserver(hold).observe(el, {
+        attributes: true,
+        attributeFilter: ["data-ar-active"],
+      });
     });
     const status = page.locator("#ar-status");
     await expect(status).toHaveCount(1);
@@ -192,8 +227,14 @@ test.describe("the setup page follows the device's colour scheme", () => {
 test.describe("a dark device keeps the default ground", () => {
   test.use({ colorScheme: "dark" });
 
+  test("the creator's setup page keeps the paper look on a dark device", async ({
+    page,
+  }) => {
+    expect(await creatorPaper(page)).toBe("#f4eedf");
+  });
+
   test("nothing about the dark page moves", async ({ page }) => {
-    await page.goto("/?nocache=1");
+    await page.goto(VISITOR_PAGE);
     const body = page.locator("body.page");
     await expect
       .poll(() =>
@@ -231,8 +272,19 @@ test.describe("a dark device keeps the default ground", () => {
     page,
   }) => {
     await page.goto("/?nocache=1");
+    // HELD at "true": the page re-writes the flag on its own status render
+    // (ar-entry.ts), and since polish round M2b the flag decides the
+    // palette, so a render that flipped it back would test the resting
+    // page instead of the session.
     await page.locator("body.page").evaluate((el) => {
-      el.dataset["arActive"] = "true";
+      const hold = () => {
+        if (el.dataset["arActive"] !== "true") el.dataset["arActive"] = "true";
+      };
+      hold();
+      new MutationObserver(hold).observe(el, {
+        attributes: true,
+        attributeFilter: ["data-ar-active"],
+      });
     });
     const status = page.locator("#ar-status");
     await expect(status).toHaveCount(1);

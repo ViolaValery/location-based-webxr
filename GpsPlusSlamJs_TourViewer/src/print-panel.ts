@@ -24,6 +24,7 @@ import {
 
 import { recheckNote, type LinkCheckResult } from "./link-check.js";
 import type { ViewerMode } from "./mode.js";
+import type { PdfTab } from "./seams.js";
 import { codeIndexFromInput, reprintOrphanWarning } from "./qr-author-mode.js";
 import { qrCodeId } from "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id";
 import { readSideM } from "./printed-side.js";
@@ -253,6 +254,9 @@ export function wirePrintPanel(deps: {
    *  dismissed. Injected so the e2e fake captures it like the zip
    *  downloads. */
   downloadPdf?: (blob: Blob, filename: string) => Promise<boolean>;
+  /** A tab to show the PDF in, opened inside the tap (`seams.openPdfTab`);
+   *  absent or null: the PDF is downloaded. */
+  openPdfTab?: () => PdfTab | null;
   /** The code ids the OPEN tour already holds measurements for. Used only
    *  to warn that printing this code would orphan them. Defaults to none,
    *  so a panel wired without it simply never warns rather than warning
@@ -356,15 +360,19 @@ export function wirePrintPanel(deps: {
    *  place. */
   dom.pdfButton.addEventListener("click", () => {
     const writeInfo = claimInfo();
+    // BEFORE any await (polish round M0b): a tab opened later is not part
+    // of the tap any more, and a pop-up blocker refuses it.
+    const tab = deps.openPdfTab?.() ?? null;
     dom.pdfButton.disabled = true;
     dom.pdfButton.textContent = PDF_LABELS.busy;
     recheckUnverified()
       .then((note) =>
-        buildPrintPdf(dom, downloadPdf).then((text) =>
+        buildPrintPdf(dom, downloadPdf, tab).then((text) =>
           writeInfo(note === null ? text : `${note} ${text}`),
         ),
       )
       .catch((err: unknown) => {
+        tab?.close();
         writeInfo(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {
@@ -534,6 +542,12 @@ async function renderTiles(
       margin: 2,
       scale: 3,
     });
+    // The QR library writes an inline pixel size onto the canvas, and an
+    // inline size beats the page's CSS: the canvas then sets the width of
+    // its column, and on a phone step 3 grew past the card and was clipped
+    // (the owner's r819 screenshot). The stylesheet sizes it to its tile.
+    canvas.style.removeProperty("width");
+    canvas.style.removeProperty("height");
     // The first tile keeps the old canvas's test id: the e2e decodes it.
     canvas.dataset["testid"] = i === 0 ? "print-canvas" : "print-tile-canvas";
     const tile = document.createElement("figure");
@@ -596,6 +610,7 @@ async function renderTiles(
 async function buildPrintPdf(
   dom: PrintPanelDom,
   downloadPdf: (blob: Blob, filename: string) => Promise<boolean>,
+  tab: PdfTab | null,
 ): Promise<string> {
   const sideM = readSideM(dom.sizeInput);
   const url = dom.urlInput.value.trim();
@@ -624,21 +639,32 @@ async function buildPrintPdf(
   const bytes = buildQrPrintPdf(codes, { sideM, paper });
   const blob = new Blob([bytes], { type: "application/pdf" });
   const filename = printPdfFilename(startIndex, count, sideM);
+  const range =
+    count === 1
+      ? `code ${String(startIndex)}`
+      : `codes ${String(startIndex)} to ${String(startIndex + count - 1)}`;
+  if (tab !== null) {
+    // Shown where the browser shows PDFs; its own Save keeps the file.
+    tab.show(blob);
+    return `Opened ${filename} in a new tab - ${range} at ${printedSideCss(sideM)}. Print it at 100 % (actual size) and check the 10 cm bar with a ruler.${notesFor(coerced, clamped)}`;
+  }
   const saved = await downloadPdf(blob, filename);
-  const notes =
+  const notes = notesFor(coerced, clamped);
+  return saved
+    ? `Saved ${filename} - ${range} at ${printedSideCss(sideM)}. Print it at 100% scale (no fit-to-page).${notes}`
+    : `The PDF was not saved.${notes}`;
+}
+
+/** What a print run's input needed fixing, said after its outcome. */
+function notesFor(coerced: boolean, clamped: boolean): string {
+  return (
     (coerced
       ? " The number of posters was not a whole number of 1 or more, so one was built."
       : "") +
     (clamped
       ? ` At most ${String(MAX_PRINTED_CODES)} posters fit in one file.`
-      : "");
-  const range =
-    count === 1
-      ? `code ${String(startIndex)}`
-      : `codes ${String(startIndex)} to ${String(startIndex + count - 1)}`;
-  return saved
-    ? `Saved ${filename} - ${range} at ${printedSideCss(sideM)}. Print it at 100% scale (no fit-to-page).${notes}`
-    : `The PDF was not saved.${notes}`;
+      : "")
+  );
 }
 
 /** The paper the author chose; anything unrecognised is A4. */

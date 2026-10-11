@@ -1,6 +1,8 @@
 // @ts-check
 import { expect, test } from "@playwright/test";
 
+import { installTourViewerArFakes } from "./ar-fakes.js";
+
 /**
  * The six-step setup flow (polish round M2): where the tour lives, the
  * link given once and checked by itself, and a page that uses the screen.
@@ -211,5 +213,77 @@ test.describe("the L5 look (polish round M2b)", () => {
           .toLowerCase(),
       ),
     ).not.toBe("#f4eedf");
+  });
+});
+
+test.describe("the print PDF (polish round M0b)", () => {
+  // Why: where the browser shows PDFs itself, the owner wants the PDF to
+  // open there rather than land in a downloads folder; the tab must be
+  // opened inside the tap (a pop-up blocker refuses one opened after an
+  // await) and filled once the PDF is built.
+  test("opens in a tab where the browser shows PDFs", async ({ page }) => {
+    await installTourViewerArFakes(page, { pdfViewer: true });
+    await page.goto("/?nocache=1");
+    await page.getByTestId("station-print").click();
+    await page
+      .getByTestId("print-url")
+      .fill("https://www.dropbox.com/scl/fi/abc/tour.zip?rlkey=k&dl=0");
+    await page.getByTestId("print-url").press("Tab");
+    await expect(page.getByTestId("print-tile")).toHaveCount(3);
+    await page.getByTestId("print-pdf").click();
+    await expect(page.getByTestId("print-info")).toContainText("Opened", {
+      timeout: 15000,
+    });
+    const tabs = await page.evaluate(async () => {
+      const shown = /** @type {any} */ (window).__tourViewerTest.pdfTabs;
+      return Promise.all(
+        shown.map(async (/** @type {any} */ t) =>
+          t.shown === undefined ? "closed" : (await t.shown.text()).slice(0, 5),
+        ),
+      );
+    });
+    expect(tabs).toEqual(["%PDF-"]);
+    // Nothing was downloaded on this path.
+    expect(
+      await page.evaluate(
+        () => /** @type {any} */ (window).__tourViewerTest.downloads.length,
+      ),
+    ).toBe(0);
+  });
+});
+
+test.describe("step 3 on a phone (the owner's r819 screenshot)", () => {
+  test.use({ viewport: { width: 412, height: 915 } });
+
+  // Why: the QR library sizes its canvas inline; on the owner's phone that
+  // made step 3 wider than the card, so the fields and buttons ran past its
+  // edge and were cut off. Nothing in the print step may reach past the
+  // card, with a long Drive link and three tiles drawn.
+  test("keeps every field, button and tile inside the card", async ({
+    page,
+  }) => {
+    await page.goto("/?nocache=1");
+    await page.getByTestId("station-print").click();
+    await page
+      .getByTestId("print-url")
+      .fill(
+        "https://drive.google.com/file/d/1A4mU8eV16aaIvy6Msd76RC3_cbbftRk/view?usp=drivesdk",
+      );
+    await page.getByTestId("print-url").press("Tab");
+    await expect(page.getByTestId("print-tile")).toHaveCount(3, {
+      timeout: 15000,
+    });
+    const past = await page.evaluate(() => {
+      const card = document.getElementById("setup-card");
+      if (card === null) return ["no card"];
+      const right = card.getBoundingClientRect().right;
+      return [...document.querySelectorAll("#print-panel *")]
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.right > right + 0.5;
+        })
+        .map((el) => `${el.tagName.toLowerCase()}.${el.className}`);
+    });
+    expect(past).toEqual([]);
   });
 });

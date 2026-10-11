@@ -24,7 +24,12 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
 
 ## Public API
 
-- `wirePrintPanel({ dom, mode, onLaunchUrl?, downloadPdf?, measuredCodeIds?, checkLink? }): PrintPanel`
+- `wirePrintPanel({ dom, mode, onLaunchUrl?, downloadPdf?, openPdfTab?, measuredCodeIds?, checkLink? }): PrintPanel`
+  - `openPdfTab` (`seams.openPdfTab`) - where the browser shows PDFs
+    itself, a tab opened inside the tap, BEFORE any await (a pop-up blocker
+    refuses one opened later), filled with the built PDF; the info line
+    then says "Opened ...". Null or absent: the PDF is downloaded
+    (`downloadPdf`). A failed build closes the empty tab.
   - `PrintPanelDom { panel; urlInput; urlAsk; urlShown; sizeInput; codeInput; info; tiles; urlOut; countInput; paperSelect; pdfButton }`
     - `sizeInput` is SHARED with author mode's mint (one field, two
       consumers): the size a code is printed at is the size it is minted
@@ -65,6 +70,16 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
 
 ## Invariants & assumptions
 
+- **A tile canvas is sized by the stylesheet, not by the QR library.** The
+  library writes an inline pixel width onto the canvas; inline beats CSS, so
+  the canvas set its column's width and step 3 grew past the card on a
+  phone (the owner's r819 screenshot). The inline size is removed after
+  drawing; `setup-flow.spec.js` checks nothing in step 3 reaches past the
+  card at 412 px.
+- **Nothing a render rewrites sits above the PDF button.** The info line
+  and the tiles come after it: a count typed and the button then tapped
+  redraws both, and when they sat above the button they pushed it down
+  under the finger (found by the PDF e2e, M0b).
 - **Every input redraws** (`change`: the size, the code number, the count,
   the paper, the typed link); nothing is drawn while there is no link.
   Async-UI rule: the info line says "Drawing the codes…" until the tiles

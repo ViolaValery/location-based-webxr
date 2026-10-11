@@ -1990,15 +1990,6 @@
                       value="1"
                     />
                   </label>
-                  <div id="print-info" data-testid="print-info"></div>
-                  <!-- One preview tile per poster (polish round M0b), drawn
-                   by print-panel.ts whenever an input changes. -->
-                  <div
-                    id="print-tiles"
-                    class="print-tiles"
-                    data-testid="print-tiles"
-                    hidden
-                  ></div>
                   <!-- PDF only since polish round M0b (A10): the browser's
                    print dialog owns the paper and a "fit to page" toggle
                    that silently rescales, and a rescaled code is one whose
@@ -2037,7 +2028,22 @@
                   >
                     Download PDF to print
                   </button>
+                  <!-- Under the PDF button, like the tiles below: a render
+                   rewrites this line, and a line above the button that
+                   changed length moved the button under the finger. -->
+                  <div id="print-info" data-testid="print-info"></div>
                   <div id="print-url-out" data-testid="print-url-out"></div>
+                  <!-- One preview tile per poster (polish round M0b), drawn
+                   by print-panel.ts whenever an input changes. BELOW the PDF
+                   button on purpose: a count typed and then the button
+                   tapped redraws the tiles, and tiles above the button
+                   pushed it down under the finger. -->
+                  <div
+                    id="print-tiles"
+                    class="print-tiles"
+                    data-testid="print-tiles"
+                    hidden
+                  ></div>
                   <p class="step-copy hint--dim">
                     That is the address the code encodes: this page, carrying
                     your tour link inside it. A shorter tour link means fewer,

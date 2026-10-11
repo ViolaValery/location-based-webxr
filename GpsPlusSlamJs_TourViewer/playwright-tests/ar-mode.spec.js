@@ -845,8 +845,9 @@ test("a first measurement of a code the tour does not store is minted into the r
   const levelNames = names.filter((n) => n.startsWith("qr/"));
   expect(levelNames).toEqual([`qr/${await qrCodeId(E2E_QR_TEXT)}.json`]);
   const level = parseQrLevel(JSON.parse(rebuilt.entries[levelNames[0]]));
-  // 0.16 - the page-fitting default (PR #364 review; see the print spec).
-  expect(level.qr.physicalSizeM).toBeCloseTo(0.16, 9);
+  // 0.18 - the default since polish round M0b, the largest whole
+  // centimetre the print PDF fits on A4 and Letter.
+  expect(level.qr.physicalSizeM).toBeCloseTo(0.18, 9);
   expect(level.qr.geo?.lat).toEqual(expect.any(Number));
   expect(level.qr.geo?.rotation).toHaveLength(4);
   // The quality block records the alignment the stored geo CAME FROM
@@ -2058,7 +2059,7 @@ test("the print step builds a real PDF of numbered codes", async ({ page }) => {
     const d = /** @type {any} */ (window).__tourViewerTest.downloads;
     return d[d.length - 1].filename;
   });
-  expect(saved).toBe("tour-codes-1-to-3-16cm.pdf");
+  expect(saved).toBe("tour-codes-1-to-3-18cm.pdf");
 
   const pdf = await page.evaluate(async () => {
     const d = /** @type {any} */ (window).__tourViewerTest.downloads;
@@ -2070,7 +2071,7 @@ test("the print step builds a real PDF of numbered codes", async ({ page }) => {
   expect(text).toContain("/Count 3");
   expect(text).toContain("/MediaBox [0 0 595.28 841.89]");
   for (const n of [1, 2, 3]) {
-    expect(text).toContain(`(Code ${String(n)} - 16cm - print at 100%)`);
+    expect(text).toContain(`(Code ${String(n)} - 18cm - print at 100%)`);
   }
   // Every page actually carries ink.
   expect((text.match(/ re f/g) ?? []).length).toBeGreaterThan(100);
@@ -2214,15 +2215,15 @@ test("the PDF button shows it is working, says when nothing was saved, and conti
     const d = /** @type {any} */ (window).__tourViewerTest.downloads;
     return d[d.length - 1].filename;
   });
-  expect(saved).toBe("tour-codes-4-to-5-16cm.pdf");
+  expect(saved).toBe("tour-codes-4-to-5-18cm.pdf");
   const text = await page.evaluate(async () => {
     const d = /** @type {any} */ (window).__tourViewerTest.downloads;
     return new TextDecoder("latin1").decode(
       new Uint8Array(await d[d.length - 1].blob.arrayBuffer()),
     );
   });
-  expect(text).toContain("(Code 4 - 16cm - print at 100%)");
-  expect(text).toContain("(Code 5 - 16cm - print at 100%)");
+  expect(text).toContain("(Code 4 - 18cm - print at 100%)");
+  expect(text).toContain("(Code 5 - 18cm - print at 100%)");
   expect(text).not.toContain("(Code 1 - ");
 });
 

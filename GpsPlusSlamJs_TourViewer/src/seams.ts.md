@@ -19,7 +19,7 @@ enableArWorldGroupAlignment; startCameraFrameCapture;
 stopCameraFrameCapture; startDepthCapture; stopDepthCapture; createQrFrontEnd; solveQrPose; estimateQrPrintSize;
 getIntrinsics; createQrDebugView; getScene; getArPose;
 queryGeolocationPermission;
-requestLocationOnce; shareOrDownloadZip; downloadZip; canShareZip; downloadPdf; copyText;
+requestLocationOnce; shareOrDownloadZip; downloadZip; canShareZip; downloadPdf; openPdfTab; copyText;
 startHitTestReticle; pickObjectInView; encodeFrameJpeg;
 createLabel; schedule; createWayfindingHud; loadGlbModel;
 createAudioElement }`
@@ -63,6 +63,11 @@ createAudioElement }`
     screen's location gate (guided-setup plan DEC-N2): the Permissions API
     state, and one `getCurrentPosition` on its own tap resolving
     "granted" | "denied" (error code 1) | "unavailable" (any other failure).
+    `openPdfTab()` opens a tab for the print PDF where
+    `navigator.pdfViewerEnabled` is true - inside the tap, as a pop-up
+    blocker requires - and returns `{ show(blob), close() }`, or null (no
+    PDF viewer, or the tab was blocked): the PDF is then downloaded
+    (polish round M0b).
     `copyText(text)` is `navigator.clipboard.writeText` (step 6's Drive
     address, polish round M2); it rejects where the browser refuses, and
     the e2e fake records the text instead.
