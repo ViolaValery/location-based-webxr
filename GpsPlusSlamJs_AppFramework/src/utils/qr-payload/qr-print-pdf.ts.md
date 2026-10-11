@@ -109,6 +109,13 @@ const pdf = buildQrPrintPdf(
 
 ## Tests
 
+`qr-print-pdf.render.test.ts` renders the file with **pdf.js** (a dev
+dependency of that test only; production ships no PDF library) and
+measures the pixels: the page at its declared A4 size, every module of an
+18 cm symbol at its place (pitch, orientation, nothing cut), the check bar
+10 cm to within a pixel each end, and a grid run's page count. A mutant that
+shortened the bar to 99 mm fails it.
+
 `qr-print-pdf.test.ts`. The two that carry the file:
 
 - **"keeps all ink inside the margin and every quiet zone on the paper"**
