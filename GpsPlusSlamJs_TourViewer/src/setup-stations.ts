@@ -10,7 +10,7 @@
 
 import { WIZARD_STEPS, type WizardStep } from "./wizard.js";
 
-export type StationState = "done" | "current" | "todo";
+type StationState = "done" | "current" | "todo";
 
 /** How far along the map's route each station sits (0 = the poster at the
  *  start, 1 = the end flag), one per step in `WIZARD_STEPS` order. */
