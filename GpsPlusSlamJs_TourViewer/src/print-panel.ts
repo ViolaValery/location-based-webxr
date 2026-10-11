@@ -1,16 +1,17 @@
 /**
- * Print a code (creator step zero, owner-requested 2026-08-26; on the page
- * for everyone since the flows plan M3; its own module since M6). The
- * measured launch URL renders as a QR at the TRUE physical size on paper:
- * print CSS cm units at 100% scale, the canvas carrying the SYMBOL only
- * (margin 0) with the quiet zone as CSS padding — so the printed side equals
- * the size an author later mints with. Author mode reads the size from the
- * same input (one input, two consumers - DEC-F2).
+ * Print the codes (creator step 3). By PDF only since polish round M0b: the
+ * browser's own print dialog owns a "fit to page" that rescales the code,
+ * and a rescaled code measures the world wrong (A10) - the PDF declares its
+ * own page, packs a grid of codes, carries a 10 cm check bar and asks the
+ * viewer not to scale (`qr-print-pdf.ts`). The panel shows one preview
+ * tile per poster, renders whenever an input changes (no "Generate" button,
+ * A13), and continues the open tour's numbering. Author mode reads the size
+ * from the same field (one field, two consumers - DEC-F2; in centimetres,
+ * `printed-side.ts`).
  */
 
 import QRCode from "qrcode";
 import {
-  homePrintWarning,
   planPrintCode,
   printedSideCss,
 } from "gps-plus-slam-app-framework/utils/qr-payload/qr-print-plan";
@@ -26,37 +27,6 @@ import type { ViewerMode } from "./mode.js";
 import { codeIndexFromInput, reprintOrphanWarning } from "./qr-author-mode.js";
 import { qrCodeId } from "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id";
 import { readSideM } from "./printed-side.js";
-
-/**
- * The CSS side length to write into `--print-side` right now, or null to
- * leave the property alone.
- *
- * Split out and exported so the decision is unit-testable without a DOM
- * (this package's units are pure; the wiring is covered by the e2e). It
- * exists because the property used to be written ONLY when a code was
- * generated, so changing the size and pressing Print reprinted at the old
- * size - silently, since nothing about a wrong physical size throws
- * (second testing session, F1).
- *
- * @param rawSize the size input's current value, in metres.
- * @param hasCode whether a generated code is on screen; with none, the
- *   print stylesheet shows nothing and a size would be a claim about a
- *   code that does not exist.
- */
-export function printedSideToApply(
-  rawSize: string,
-  hasCode: boolean,
-): string | null {
-  if (!hasCode) return null;
-  try {
-    // printedSideCss throws a RangeError on non-positive / non-finite; at
-    // print time that must not escape into a click handler, so a size the
-    // printer could not use leaves the previous value in place.
-    return printedSideCss(Number(rawSize));
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Which of the two spellings of the tour link step 2 shows.
@@ -143,6 +113,34 @@ export function highestPrintedCode(codeIndex: number, count: number): number {
 }
 
 /**
+ * The first free code number for a tour (polish round M0b): one more than
+ * the highest number whose code the tour holds, 1 for a tour with none. A
+ * tour files each code under a hash of its printed text (`qrCodeId`), so
+ * the number cannot be read back - each number's id is computed
+ * (`idOfCode`) and looked up, every number up to `limit` (a gap below
+ * the highest is not reused). Two posters with the same printed text are
+ * ONE code to the level lookup, so more posters must continue the
+ * numbering.
+ */
+export async function nextCodeIndex(
+  tourCodeIds: ReadonlySet<string>,
+  idOfCode: (index: number) => Promise<string>,
+  limit: number = MAX_PRINTED_CODES,
+): Promise<number> {
+  let highest = 0;
+  if (tourCodeIds.size === 0) return 1;
+  for (let index = 1; index <= limit; index += 1) {
+    // Sequential on purpose: a hash each, on the main thread.
+    // eslint-disable-next-line no-await-in-loop
+    if (tourCodeIds.has(await idOfCode(index))) highest = index;
+  }
+  return highest + 1;
+}
+
+/** How many preview tiles the panel draws; the PDF carries every poster. */
+const MAX_PREVIEW_TILES = 12;
+
+/**
  * Whether the orphaning scan reaches every poster in a print run.
  *
  * Exported because it is the CLAIM the budget makes, and a claim that
@@ -210,14 +208,13 @@ export interface PrintPanelDom {
   urlAsk: HTMLElement;
   /** The open tour's link as text, in the field's place. */
   urlShown: HTMLElement;
-  /** The printed side length (m) - shared with author mode's mint. */
+  /** The printed side length (cm, `printed-side.ts`) - shared with author
+   *  mode's mint. */
   sizeInput: HTMLInputElement;
   codeInput: HTMLInputElement;
-  generateButton: HTMLButtonElement;
   info: HTMLDivElement;
-  area: HTMLDivElement;
-  canvas: HTMLCanvasElement;
-  printButton: HTMLButtonElement;
+  /** One preview tile per poster (up to `MAX_PREVIEW_TILES`). */
+  tiles: HTMLElement;
   urlOut: HTMLDivElement;
   /** How many numbered posters the PDF carries. */
   countInput: HTMLInputElement;
@@ -237,6 +234,10 @@ export interface PrintPanel {
    *  hosting available for more than one page load (M3 milestone review
    *  #3). */
   presentNoTour: () => void;
+  /** The open tour's codes arrived: the first poster continues their
+   *  numbering (`measuredCodeIds`), unless the creator already typed a
+   *  number for this tour. */
+  presentCodes: () => void;
 }
 
 export function wirePrintPanel(deps: {
@@ -298,26 +299,29 @@ export function wirePrintPanel(deps: {
     };
   }
 
+  /** The creator typed a code number for the open tour: keep it. */
+  let codeTyped = false;
+
   function regenerate(): void {
+    if (dom.urlInput.value.trim() === "") return; // nothing to encode yet
     const generation = ++renderGeneration;
     const writeInfo = claimInfo();
-    dom.generateButton.disabled = true;
-    dom.generateButton.textContent = "Generating…";
-    generatePrintCode(dom, writeInfo, measuredCodeIds)
+    // Async-UI rule: the line says the codes are being drawn until they are.
+    writeInfo("Drawing the codes…");
+    renderTiles(
+      dom,
+      writeInfo,
+      measuredCodeIds,
+      () => generation === renderGeneration,
+    )
       .then((launchUrl) => {
-        if (generation !== renderGeneration) return;
+        if (generation !== renderGeneration || launchUrl === null) return;
         onLaunchUrl(launchUrl);
       })
       .catch((err: unknown) => {
         if (generation !== renderGeneration) return;
         writeInfo(err instanceof Error ? err.message : String(err));
-        dom.area.hidden = true;
-        dom.printButton.hidden = true;
-      })
-      .finally(() => {
-        if (generation !== renderGeneration) return;
-        dom.generateButton.disabled = false;
-        dom.generateButton.textContent = "Generate QR";
+        dom.tiles.hidden = true;
       });
   }
 
@@ -330,8 +334,6 @@ export function wirePrintPanel(deps: {
     dom.urlShown.hidden = !display.shownVisible;
     dom.urlShown.textContent = display.shownText;
   }
-
-  dom.generateButton.addEventListener("click", regenerate);
 
   /** Before the PDF, an unverified link is checked again (polish round
    *  M2): bit.ly-style links open for the author and not for visitors, and
@@ -371,60 +373,55 @@ export function wirePrintPanel(deps: {
       });
   });
 
-  /** Write the size that is in the box, if there is a code to print. */
-  const applyPrintedSide = (): void => {
-    const side = printedSideToApply(dom.sizeInput.value, !dom.area.hidden);
-    if (side !== null) {
-      document.documentElement.style.setProperty("--print-side", side);
-    }
-  };
-
-  dom.printButton.addEventListener("click", () => {
-    // A collapsed <details> renders nothing, and the print CSS shows only
-    // #print-area - printing from a collapsed panel would print a blank page
-    // (flows plan review #13).
-    dom.panel.open = true;
-    applyPrintedSide();
-    window.print();
-  });
-
-  // The browser's own print (menu, Ctrl+P) bypasses the button: open the
-  // panel before the print layout is computed, or a generated code prints
-  // as a blank page (owner decision 2026-09-08, closing interview). Only
-  // when a code exists - otherwise there is nothing to print anyway.
-  window.addEventListener("beforeprint", () => {
-    if (!dom.area.hidden) dom.panel.open = true;
-    // The size has to be current by this moment for the browser's own print
-    // too (menu, Ctrl+P), which never reaches the button's handler.
-    applyPrintedSide();
-  });
-
-  // A changed size or code number makes the code on screen stale: it is
-  // still the old number of squares, and the info line still claims the old
-  // physical size. Re-render rather than leave a lie on screen. `change`,
-  // not `input`: a half-typed "0.2" must not repaint at "0.", and `change`
-  // is what fires on blur and on the spinner (M3 review #8 keeps the
-  // Generate button as well, for the paths no event covers).
-  for (const input of [dom.sizeInput, dom.codeInput]) {
-    input.addEventListener("change", () => {
-      if (dom.area.hidden) return; // nothing generated yet: nothing to restate
-      regenerate();
-    });
+  // Every input re-renders the tiles (no Generate button since M0b, A13).
+  // `change`, not `input`: a half-typed "1" must not repaint at 1 cm, and
+  // `change` is what fires on blur, Enter and the spinner.
+  for (const input of [
+    dom.sizeInput,
+    dom.codeInput,
+    dom.countInput,
+    dom.paperSelect,
+    dom.urlInput,
+  ]) {
+    input.addEventListener("change", regenerate);
   }
+  dom.codeInput.addEventListener("input", () => {
+    codeTyped = true;
+  });
 
   return {
     presentNoTour: () => {
       // The code on screen belonged to the tour that just went away.
       unverifiedUrl = null;
       showLink(null);
-      dom.area.hidden = true;
-      dom.printButton.hidden = true;
+      dom.tiles.hidden = true;
+      dom.tiles.replaceChildren();
       dom.urlOut.textContent = "";
       // A render still in flight must not paint over the cleared panel.
       renderGeneration += 1;
     },
+    presentCodes: () => {
+      const url = dom.urlInput.value.trim();
+      if (codeTyped || !creator || url === "") return;
+      const ids = new Set(measuredCodeIds());
+      nextCodeIndex(ids, async (index) =>
+        qrCodeId((await planPrintCode(url, { codeIndex: index })).url),
+      )
+        .then((next) => {
+          // Nothing typed meanwhile, and still the same tour's link.
+          if (codeTyped || dom.urlInput.value.trim() !== url) return;
+          dom.codeInput.value = String(next);
+          regenerate();
+        })
+        // No Web Crypto (a plain-http preview) or an unplannable link: the
+        // numbering stays where it is, which is what the panel did before.
+        .catch(() => undefined);
+    },
     presentTour: (url, options) => {
       unverifiedUrl = options?.verified === false ? url : null;
+      // A new tour: its own numbering, until its codes say otherwise.
+      codeTyped = false;
+      dom.codeInput.value = "1";
       // The OPEN TOUR'S link wins, always. It used to be kept only when the
       // field was empty or still held a previous prefill, so as not to
       // clobber text the creator had typed (PR #434 review). Since F7 the
@@ -442,8 +439,7 @@ export function wirePrintPanel(deps: {
       if (!creator) return;
       dom.panel.open = true;
       // "Show the code immediately" (F7): the creator asked for the code,
-      // not for a button that makes one. The Generate button stays for the
-      // print-before-hosting path and as the retry after a failure.
+      // not for a button that makes one.
       regenerate();
     },
   };
@@ -506,55 +502,84 @@ async function orphanWarningFor(
   }
 }
 
-async function generatePrintCode(
+/**
+ * Draw one preview tile per poster (up to `MAX_PREVIEW_TILES`) and say
+ * what the PDF will hold. Resolves the first poster's launch URL, or null
+ * when a newer render took over (`current` false) before this one drew.
+ */
+async function renderTiles(
   dom: PrintPanelDom,
   writeInfo: (text: string) => void,
   measuredCodeIds: () => readonly string[],
-): Promise<string> {
-  const sideCss = printedSideCss(readSideM(dom.sizeInput)); // validates
+  current: () => boolean,
+): Promise<string | null> {
+  const sideM = readSideM(dom.sizeInput);
+  const sideCss = printedSideCss(sideM); // validates
   const { codeIndex, coerced } = codeIndexFromInput(dom.codeInput.value);
-  const plan = await planPrintCode(dom.urlInput.value.trim(), { codeIndex });
-  // margin 0: the canvas carries the SYMBOL only — the printed side equals
-  // the size the author types when minting; the quiet zone is CSS padding.
-  await QRCode.toCanvas(dom.canvas, plan.url, {
-    errorCorrectionLevel: "Q",
-    margin: 0,
-    scale: 8,
-  });
-  document.documentElement.style.setProperty("--print-side", sideCss);
-  dom.area.hidden = false;
-  dom.printButton.hidden = false;
-  // The page-fit warning rides IN #print-info, not a separate channel: it
-  // must be read in the same glance as the "100% scale" instruction whose
-  // combination with an oversized symbol clips the code (PR #364 review).
-  const sizeM = readSideM(dom.sizeInput);
-  const warning = homePrintWarning(sizeM);
-  // The warning is about printing THIS PAGE from the browser's dialog,
-  // whose margins are not ours. The PDF below draws its own page and fits
-  // roughly 7 mm more, so a size in that band is warned about here and
-  // printed correctly there - which reads as a contradiction unless the
-  // line says which is which.
-  const pdfCeiling = maxPrintablePdfSideM(paperFrom(dom));
-  const pdfNote =
-    warning !== null && sizeM <= pdfCeiling
-      ? ` The PDF below prints up to ${printedSideCss(pdfCeiling)} and is not affected.`
+  const { count } = printCountFromInput(dom.countInput.value);
+  const url = dom.urlInput.value.trim();
+  const tiles: HTMLElement[] = [];
+  let first: string | null = null;
+  let qrVersion = 0;
+  for (let i = 0; i < Math.min(count, MAX_PREVIEW_TILES); i += 1) {
+    const index = codeIndex + i;
+    // Sequential on purpose: each plan measures QR versions, and a dozen
+    // at once buys nothing on a phone's single thread.
+    // eslint-disable-next-line no-await-in-loop
+    const plan = await planPrintCode(url, { codeIndex: index });
+    const canvas = document.createElement("canvas");
+    // eslint-disable-next-line no-await-in-loop
+    await QRCode.toCanvas(canvas, plan.url, {
+      errorCorrectionLevel: "Q",
+      margin: 2,
+      scale: 3,
+    });
+    // The first tile keeps the old canvas's test id: the e2e decodes it.
+    canvas.dataset["testid"] = i === 0 ? "print-canvas" : "print-tile-canvas";
+    const tile = document.createElement("figure");
+    tile.className = "print-tile";
+    tile.dataset["testid"] = "print-tile";
+    const label = document.createElement("figcaption");
+    label.textContent = `Code ${String(index)}`;
+    tile.append(canvas, label);
+    tiles.push(tile);
+    if (first === null) {
+      first = plan.url;
+      qrVersion = plan.qrVersion;
+    }
+  }
+  if (!current() || first === null) return null;
+  dom.tiles.replaceChildren(...tiles);
+  dom.tiles.hidden = false;
+  const paper = paperFrom(dom);
+  const ceiling = maxPrintablePdfSideM(paper);
+  const tooLarge =
+    sideM > ceiling
+      ? ` Too large for ${paper === "a4" ? "A4" : "Letter"}: up to ${printedSideCss(ceiling)} fits.`
       : "";
-  // The orphaning warning rides the same line for the same reason the
-  // page-fit one does: it is about the artifact the creator is one tap
-  // from producing, and a second channel is a second thing to not read.
+  const more =
+    count > MAX_PREVIEW_TILES
+      ? ` (the first ${String(MAX_PREVIEW_TILES)} shown)`
+      : "";
+  const range =
+    count === 1
+      ? `Code ${String(codeIndex)}`
+      : `Codes ${String(codeIndex)} to ${String(codeIndex + count - 1)}${more}`;
+  // The orphaning warning rides the same line: it is about the artifact
+  // the creator is one tap from producing, and a second channel is a
+  // second thing to not read.
   const orphan = await orphanWarningFor(dom, measuredCodeIds());
   writeInfo(
-    `QR version ${String(plan.qrVersion)}, code ${String(codeIndex)}, ` +
-      `prints at ${sideCss} — use 100% scale (no fit-to-page).` +
+    `${range}, each ${sideCss} (QR version ${String(qrVersion)}). ` +
+      "Download the PDF and print it at 100 % (actual size); each page has a 10 cm bar to check with a ruler." +
       (coerced
-        ? " Note: the code number was not a whole number of 1 or more, so this printed as code 1."
+        ? " Note: the code number was not a whole number of 1 or more, so the codes start at 1."
         : "") +
-      (warning === null ? "" : ` ${warning}`) +
-      pdfNote +
+      tooLarge +
       (orphan === null ? "" : ` ${orphan}`),
   );
-  dom.urlOut.textContent = plan.url;
-  return plan.url;
+  dom.urlOut.textContent = first;
+  return first;
 }
 
 /**

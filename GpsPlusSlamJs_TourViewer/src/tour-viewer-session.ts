@@ -140,6 +140,9 @@ export interface TourViewerHooks {
    *  not uploaded yet, or the device is offline (polish round M2, A16): the
    *  print step takes it, marked unverified, and the wizard moves on. */
   presentUnverifiedLink(url: string): void;
+  /** The open tour's codes arrived: the print step continues their
+   *  numbering (polish round M0b). */
+  presentTourCodes(): void;
   /** A tour closed: the finish step's page-side state is stale. */
   resetFinishStep(): void;
   /** A creator's AR visit is running (its world group exists): show the
@@ -201,6 +204,7 @@ export function createUnwiredHooks(): TourViewerHooks {
     presentTourForPrint: () => undefined,
     presentLocalTour: () => undefined,
     presentUnverifiedLink: () => undefined,
+    presentTourCodes: () => undefined,
     resetFinishStep: () => undefined,
     beginAuthorVisit: () => undefined,
     endAuthorVisit: () => undefined,

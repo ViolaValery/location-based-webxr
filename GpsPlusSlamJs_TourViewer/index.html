@@ -462,87 +462,33 @@
         font-size: var(--size-hint);
         overflow-wrap: anywhere;
       }
-      /* On screen the code previews at a fixed size; on paper it takes the
-         exact physical side length (print CSS cm are exact at 100% scale).
-         The canvas carries the SYMBOL only (margin 0) — the quiet zone is
-         this white padding, so the printed symbol side equals the size the
-         author types when minting. */
-      #print-canvas {
+      /* The preview tiles (polish round M0b): one per poster, the code on
+         white - a literal white, not a token: a quiet zone is a SCANNING
+         requirement and must stay white on any ground. */
+      .print-tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+        gap: var(--space-2);
+      }
+      .print-tile {
+        margin: 0;
+        padding: var(--space-1);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        text-align: center;
+      }
+      #print-tiles .print-tile canvas {
         display: block;
-        width: 12rem;
-        height: 12rem;
+        width: 100%;
+        height: auto;
         image-rendering: pixelated;
       }
-      /* A literal white, not a token: this is the QR's quiet zone, which
-         is a SCANNING requirement and must stay white on any ground the
-         design system ever grows. */
-      #print-quiet {
-        background: #fff;
-        padding: 1rem;
-        width: fit-content;
+      .print-tile figcaption {
+        font-size: 0.7rem;
+        color: #2a2824;
       }
 
-      @media print {
-        /* No page margin. A printed code needs its side length in
-           PRINTABLE width, and the default margin spends roughly 2 cm of
-           A4's 21 cm before the browser has drawn anything - part of the
-           "lots of air" an author sees around a code that claims to be
-           16 cm. It buys about a centimetre of symbol, not four: the rest
-           of the air is the mandatory quiet zone (8% of the side on each
-           edge, `#print-quiet`), and what remains after that is the
-           printer's own unprintable border. So this does NOT make a 20 cm
-           code possible on A4 - see the printed-size follow-up. The paper
-           SIZE is deliberately not set: forcing A4 would be wrong for
-           anyone on Letter, and it is the margin that costs width. The
-           dialog's own "fit to page" can still rescale, which is why the
-           info line asks for 100% scale. */
-        @page {
-          /* stylelint-disable-next-line csstree/validator -- `margin` IS a
-             valid @page descriptor (CSS Paged Media 3); the csstree
-             validator bundled here is old enough not to know it, the same
-             staleness that makes color-mix() unusable in this file. */
-          margin: 0;
-        }
-        /* `body *` hides body's CHILDREN, never body's own background - so
-           a browser printing with background graphics on would lay the
-           sheet's dark ground under the code. Ink, not a scan failure, but
-           a lot of it. */
-        .page {
-          background: #fff;
-        }
-        /* THE PRINTED CODE MUST NOT BE CLIPPED OR MOVED. #print-area is
-           positioned absolutely so the symbol lands at the paper's corner,
-           and that resolves against the nearest POSITIONED ancestor. The
-           shared .step atom is `position: relative; overflow: hidden`, so
-           adopting it silently made step 2 the containing block AND the
-           clip - the code printed offset down the sheet with its bottom cut
-           off. Nothing in CI renders a print layout, so this is held by a
-           markup assertion instead (page-contracts.test.ts) and by printing
-           one code and measuring the paper, on the field-test list. */
-        #print-panel {
-          position: static;
-          overflow: visible;
-        }
-        body * {
-          visibility: hidden;
-        }
-        #print-area,
-        #print-area * {
-          visibility: visible;
-        }
-        #print-area {
-          position: absolute;
-          left: 0;
-          top: 0;
-        }
-        #print-canvas {
-          width: var(--print-side, 16cm);
-          height: var(--print-side, 16cm);
-        }
-        #print-quiet {
-          padding: calc(var(--print-side, 16cm) * 0.08);
-        }
-      }
       #gallery {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
@@ -2044,38 +1990,22 @@
                       value="1"
                     />
                   </label>
-                  <button
-                    type="button"
-                    id="print-generate"
-                    class="btn"
-                    data-testid="print-generate"
-                  >
-                    Generate QR
-                  </button>
                   <div id="print-info" data-testid="print-info"></div>
-                  <div id="print-area" hidden>
-                    <div id="print-quiet">
-                      <canvas
-                        id="print-canvas"
-                        data-testid="print-canvas"
-                      ></canvas>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    id="print-button"
-                    class="btn"
-                    data-testid="print-button"
+                  <!-- One preview tile per poster (polish round M0b), drawn
+                   by print-panel.ts whenever an input changes. -->
+                  <div
+                    id="print-tiles"
+                    class="print-tiles"
+                    data-testid="print-tiles"
                     hidden
-                  >
-                    Print at true size
-                  </button>
-                  <!-- The PDF path (second testing session, §4). The browser's
+                  ></div>
+                  <!-- PDF only since polish round M0b (A10): the browser's
                    print dialog owns the paper and a "fit to page" toggle
                    that silently rescales, and a rescaled code is one whose
                    printed side no longer matches what the AR setup
-                   measures with. A PDF declares its own page, and can
-                   carry several numbered codes at once. -->
+                   measures with. The PDF declares its own page, packs a
+                   grid of numbered codes, carries a 10 cm check bar and
+                   asks the viewer not to scale. -->
                   <label>
                     Posters to print (each gets its own number)
                     <input

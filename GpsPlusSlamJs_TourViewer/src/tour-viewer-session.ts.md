@@ -104,7 +104,9 @@ lives here.
   `presentTourForPrint`, `presentLocalTour` (a tour opened from a file:
   no link to print, tour kit plan K0), `presentUnverifiedLink` (step 2's
   link whose file is not there yet, or that could not be checked offline:
-  printed as given, marked unverified - polish round M2, A16), `beginAuthorVisit` / `endAuthorVisit` - the
+  printed as given, marked unverified - polish round M2, A16),
+  `presentTourCodes` (the open tour's codes arrived: the print step
+  continues their numbering - polish round M0b), `beginAuthorVisit` / `endAuthorVisit` - the
   creator's AR visit start and its settle, M2c), no-ops until their owner
   module is wired.
   (`QrController` and `QrDebugView` are module-private: reached through

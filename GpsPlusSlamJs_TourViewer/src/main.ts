@@ -158,11 +158,8 @@ const print = wirePrintPanel({
     urlShown: element("print-url-shown"),
     sizeInput,
     codeInput: element("author-c"),
-    generateButton: element("print-generate"),
     info: element("print-info"),
-    area: element("print-area"),
-    canvas: element("print-canvas"),
-    printButton: element("print-button"),
+    tiles: element("print-tiles"),
     urlOut: element("print-url-out"),
     countInput: element("print-count"),
     paperSelect: element("print-paper"),
@@ -286,6 +283,12 @@ hooks.presentTourForPrint = (url, origin) => {
 hooks.presentUnverifiedLink = (url) => {
   print.presentTour(url, { verified: false });
   wizard.presentTour(url);
+};
+
+// The open tour's codes arrived: the first poster continues their
+// numbering (polish round M0b).
+hooks.presentTourCodes = () => {
+  print.presentCodes();
 };
 
 hooks.presentLocalTour = (origin) => {

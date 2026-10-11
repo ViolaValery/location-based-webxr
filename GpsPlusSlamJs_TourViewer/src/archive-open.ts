@@ -505,6 +505,7 @@ export function wireArchiveOpen(deps: {
           if (ctx.session !== opened) return;
           ctx.currentLevels = levels;
           ctx.currentLevelTexts = opened.levelTexts();
+          hooks.presentTourCodes();
           hooks.renderAuthorReadout();
           hooks.reconsiderScanGate(levels);
           // The controller caches a level (or the negative-cache

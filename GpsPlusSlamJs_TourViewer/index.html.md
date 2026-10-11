@@ -49,10 +49,13 @@ screen. Everything marked `.creator-only` is hidden for a visitor
      wizard, so a visitor reaches them too - with `#file-advice`, the
      "Open the downloaded file" button shown under a "host blocks
      browsers" error.
-  3. **Print** (`#print-panel`): the printed code, on the page and as a
-     PDF of N numbered posters (`#print-count`, `#print-paper`,
-     `#print-pdf`) - the print dialog's "fit to page" silently rescales,
-     and a rescaled code measures the world wrong. The link is SHOWN
+  3. **Print** (`#print-panel`): by PDF only since polish round M0b - a
+     PDF of N numbered posters (`#print-count`, three by default;
+     `#print-paper`; `#print-pdf`), previewed as one tile per poster
+     (`#print-tiles`); the side length in centimetres (`#author-size`, 18
+     by default). The print dialog's "fit to page" silently rescales, and a
+     rescaled code measures the world wrong, so the page has no print
+     stylesheet and no print button. The link is SHOWN
      (`#print-url-shown`), not asked for, whenever a tour is open, and the
      code renders without a button press; `#print-url-ask` returns only
      when nothing is open, which is what keeps printing before hosting
@@ -103,8 +106,9 @@ drawn `map-station-<step>`), `setup-card` (owns `setup-badge`, `setup-of`,
 `file-input`, `file-status`, `tour-trust`, `file-advice`, `open-file-advice`,
 `storage-panel`,
 `clear-cache`, `print-panel` (owns `print-url-ask`, `print-url`,
-`print-url-shown`, `author-size`, `author-c`, `print-generate`,
-`print-info`, `print-canvas`, `print-button`, `print-url-out`,
+`print-url-shown`, `author-size`, `author-c`, `print-info`,
+`print-tiles` (its tiles `print-tile`, the first canvas `print-canvas`),
+`print-url-out`,
 `print-count`, `print-paper`, `print-pdf`, `visitor-link` - opens in a
 new tab, polish round A17), `make-your-own` (on the visitor screen: the
 setup page in a new tab, polish round A8), `step-hang`, `hang-done`, `step-measure` (owns

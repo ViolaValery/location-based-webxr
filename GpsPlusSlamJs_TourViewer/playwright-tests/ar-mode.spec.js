@@ -1718,72 +1718,66 @@ test("a scanned code with no level reads as unknown instead of flapping", async 
     );
 });
 
-test("the print panel renders a scannable code at a declared true size", async ({
+test("the print panel draws one tile per poster at the declared size, and prints by PDF only", async ({
   page,
 }) => {
-  // Why this matters (owner request 2026-08-26): the printed artifact is
-  // creator step ZERO and expensive to redo. This drives the real measured
-  // URL builder and the real QR renderer in a browser: a code appears, the
-  // info line carries the version + the physical size + the 100%-scale
-  // instruction, and the full launch URL is shown for copying.
-  // Since the flows plan M3 (DEC-F2) the panel is on the page for EVERYONE
-  // - no ?author=1 - and usable BEFORE any tour is open (the "print first,
-  // hang, then author" loop), collapsed until expanded.
+  // Why this matters (owner request 2026-08-26; reshaped by polish round
+  // M0b): the printed artifact is expensive to redo. This drives the real
+  // URL builder and the real QR renderer: typing a link draws a tile per
+  // poster (no Generate button, A13), the info line carries the range, the
+  // size and the 100 % instruction, and the full launch URL is shown. The
+  // panel is usable BEFORE any tour is open (DEC-F2).
   await page.goto("/");
   await expect(page.getByTestId("print-url")).toBeHidden();
   await page.getByTestId("station-print").click();
   await page
     .getByTestId("print-url")
     .fill("https://www.dropbox.com/scl/fi/abc/tour.zip?rlkey=k&dl=0");
-  await page.getByTestId("print-generate").click();
+  await page.getByTestId("print-url").press("Tab");
 
-  await expect(page.getByTestId("print-canvas")).toBeVisible();
+  // Three posters by default (P7), one tile each.
+  await expect(page.getByTestId("print-tile")).toHaveCount(3);
   const drawn = await page.evaluate(() => {
-    const canvas = document.querySelector("canvas#print-canvas");
+    const canvas = document.querySelector('[data-testid="print-canvas"]');
     return canvas instanceof HTMLCanvasElement
       ? { width: canvas.width, blank: canvas.toDataURL().length < 200 }
       : null;
   });
   expect(drawn?.width).toBeGreaterThan(0);
   expect(drawn?.blank).toBe(false);
-  await expect(page.getByTestId("print-info")).toContainText("100% scale");
-  // 16cm: the default PRINTED size must fit an A4/Letter page with the
-  // quiet zone at 100% scale — 20cm did not, and the symbol clipped
-  // (PR #364 review). The default therefore may NOT trigger the page-fit
-  // warning, which is asserted absent here.
-  await expect(page.getByTestId("print-info")).toContainText("16cm");
-  await expect(page.getByTestId("print-info")).not.toContainText("cut off");
-  await expect(page.getByTestId("print-button")).toBeVisible();
+  await expect(page.getByTestId("print-info")).toContainText("Codes 1 to 3");
+  // 18 cm: the default, the largest whole centimetre the PDF fits on A4.
+  await expect(page.getByTestId("print-info")).toContainText("18cm");
+  await expect(page.getByTestId("print-info")).toContainText("100 %");
+  await expect(page.getByTestId("print-info")).not.toContainText("Too large");
   // BARE host (ZD-9): the landing forward carries ?qr= to the viewer, so
   // printed codes never spend payload bits on a path.
   await expect(page.getByTestId("print-url-out")).toContainText(
     "https://gps.csutil.com/?qr=",
   );
+  // PDF only (A10): no print button, no Generate button.
+  await expect(page.getByTestId("print-button")).toHaveCount(0);
+  await expect(page.getByTestId("print-generate")).toHaveCount(0);
 
-  // The browser's own print (menu, Ctrl+P) with the panel collapsed used to
-  // print a blank page: `beforeprint` opens the panel when a code exists
-  // (closing interview 2026-09-08). The event is dispatched by hand because
-  // no spec can observe window.print() itself.
-  await page.evaluate(() => {
-    const details = document.querySelector("details#print-panel");
-    if (details instanceof HTMLDetailsElement) details.open = false;
-    window.dispatchEvent(new Event("beforeprint"));
-  });
-  await expect(page.getByTestId("print-canvas")).toBeVisible();
-
-  // An oversized size warns in the same info line the scale instruction
-  // lives in — a clipped code does not decode, so silence is the bug.
+  // An oversized size says so in the same line, with the size that fits.
   await page.getByTestId("author-size").fill("30");
-  await page.getByTestId("print-generate").click();
-  await expect(page.getByTestId("print-info")).toContainText("cut off");
-  await page.getByTestId("author-size").fill("16");
+  await page.getByTestId("author-size").press("Tab");
+  await expect(page.getByTestId("print-info")).toContainText(
+    "Too large for A4",
+  );
+  await page.getByTestId("author-size").fill("18");
+  await page.getByTestId("author-size").press("Tab");
 
-  // Failure path (async-UI rule): a bad URL surfaces in the panel and the
-  // button restores.
+  // One poster: one tile, named by its number.
+  await page.getByTestId("print-count").fill("1");
+  await page.getByTestId("print-count").press("Tab");
+  await expect(page.getByTestId("print-tile")).toHaveCount(1);
+  await expect(page.getByTestId("print-info")).toContainText("Code 1,");
+
+  // Failure path (async-UI rule): a bad URL surfaces in the panel.
   await page.getByTestId("print-url").fill("not a url");
-  await page.getByTestId("print-generate").click();
+  await page.getByTestId("print-url").press("Tab");
   await expect(page.getByTestId("print-info")).toContainText(/http/i);
-  await expect(page.getByTestId("print-generate")).toBeEnabled();
 });
 
 test("opening a tour shows the code and the link it carries, without asking again", async ({
@@ -1810,7 +1804,7 @@ test("opening a tour shows the code and the link it carries, without asking agai
   await expect(page.getByTestId("step-link")).not.toHaveAttribute("open", "");
   // "Show the code immediately" (F7): no Generate click here.
   await expect(page.getByTestId("print-canvas")).toBeVisible();
-  await expect(page.getByTestId("print-button")).toBeVisible();
+  await expect(page.getByTestId("print-tile")).toHaveCount(3);
   // The tester's way into the visitor path (DEC-N1, plan review #13): the
   // link carries the PRINTED payload once a code exists (M2 review #10).
   const link = page.getByTestId("visitor-link");
