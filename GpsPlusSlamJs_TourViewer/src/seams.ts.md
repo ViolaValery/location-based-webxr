@@ -19,7 +19,7 @@ enableArWorldGroupAlignment; startCameraFrameCapture;
 stopCameraFrameCapture; startDepthCapture; stopDepthCapture; createQrFrontEnd; solveQrPose; estimateQrPrintSize;
 getIntrinsics; createQrDebugView; getScene; getArPose;
 queryGeolocationPermission;
-requestLocationOnce; shareOrDownloadZip; downloadZip; canShareZip; downloadPdf;
+requestLocationOnce; shareOrDownloadZip; downloadZip; canShareZip; downloadPdf; copyText;
 startHitTestReticle; pickObjectInView; encodeFrameJpeg;
 createLabel; schedule; createWayfindingHud; loadGlbModel;
 createAudioElement }`
@@ -63,6 +63,9 @@ createAudioElement }`
     screen's location gate (guided-setup plan DEC-N2): the Permissions API
     state, and one `getCurrentPosition` on its own tap resolving
     "granted" | "denied" (error code 1) | "unavailable" (any other failure).
+    `copyText(text)` is `navigator.clipboard.writeText` (step 6's Drive
+    address, polish round M2); it rejects where the browser refuses, and
+    the e2e fake records the text instead.
     `downloadPdf` is the same picker-or-anchor path with a PDF filter
     instead of a zip one (the printable sheet of numbered codes); it is its
     own seam so the picker offers the right file type and so the e2e

@@ -62,6 +62,25 @@ export function hostSteps(host: TourHost): readonly string[] {
   return HOST_STEPS[host];
 }
 
+/** How the saved zip replaces the hosted one under the same link, so the
+ *  printed code keeps working (step 6). Google Drive: null - its steps
+ *  come from the link itself (`driveReplaceSteps`), which knows the
+ *  file's name. */
+const HOST_REPLACE: Readonly<Record<TourHost, string | null>> = {
+  drive: null,
+  dropbox:
+    "Last thing: upload this zip over the one at your link, so the link - and with it the printed code - stays the same. In Dropbox, upload it into the same folder with the same name so it overwrites the old file - never delete the old one first, which ends the link - then open your link once to check.",
+  onedrive:
+    'Last thing: upload this zip over the one at your link, so the link - and with it the printed code - stays the same. In OneDrive, upload it into the same folder with the same name and choose "Replace".',
+  github:
+    "Last thing: upload this zip over the one at your link, so the link - and with it the printed code - stays the same. On GitHub, commit it over the same path in the same repository.",
+  own: "Last thing: upload this zip over the one at your link, so the link - and with it the printed code - stays the same. Put it on your server at the same place, under the same name.",
+};
+
+export function hostReplaceText(host: TourHost): string | null {
+  return HOST_REPLACE[host];
+}
+
 /** Whether the host needs a file before it gives a link: every cloud host;
  *  an own server's link is known before the file exists. */
 export function needsStarterZip(host: TourHost): boolean {

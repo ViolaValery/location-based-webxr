@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   TOUR_HOSTS,
+  hostReplaceText,
   hostSteps,
   isTourHost,
   needsStarterZip,
@@ -91,5 +92,33 @@ describe("tour hosts", () => {
     expect(readTourHost(throwing)).toBeNull();
     expect(() => writeTourHost(throwing, "drive")).not.toThrow();
     expect(readTourHost(undefined)).toBeNull();
+  });
+});
+
+describe("hostReplaceText (polish round M2, step 6)", () => {
+  // Why: the completion step tells the creator how to put the saved zip in
+  // place of the hosted one so the printed link keeps working. The page
+  // used to list every host in one paragraph; the chosen host is known
+  // now, so it gets its own words. Drive's steps come from the link
+  // itself (they need the file's name), so it has none here.
+  it("names the host's own way to replace the file under the same link", () => {
+    expect(hostReplaceText("dropbox")).toMatch(/Dropbox/);
+    expect(hostReplaceText("dropbox")).toMatch(/same name/);
+    expect(hostReplaceText("onedrive")).toMatch(/"Replace"/);
+    expect(hostReplaceText("github")).toMatch(/same path/);
+    expect(hostReplaceText("own")).toMatch(/server/);
+  });
+
+  it("leaves Drive to the link's own steps", () => {
+    expect(hostReplaceText("drive")).toBeNull();
+  });
+
+  it("speaks of one host only, never the others", () => {
+    for (const { id } of TOUR_HOSTS) {
+      const text = hostReplaceText(id);
+      if (text === null) continue;
+      const others = TOUR_HOSTS.filter((h) => h.id !== id && h.id !== "own");
+      for (const other of others) expect(text).not.toContain(other.label);
+    }
   });
 });

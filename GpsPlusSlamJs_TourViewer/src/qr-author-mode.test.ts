@@ -20,6 +20,7 @@ import {
   reprintOrphanWarning,
   FINISH_LABELS,
   finishSaveStatus,
+  driveFileAddress,
   driveReplaceSteps,
   sizeOfferView,
   adoptedSizeNote,
@@ -693,5 +694,39 @@ describe("authorStatusLine's ready line says what became of the code (UI round 1
     ["seen", "Code seen."],
   ] as const)("%s", (ready, text) => {
     expect(authorStatusLine("A", stable, align, false, ready).text).toBe(text);
+  });
+});
+
+describe("driveFileAddress (polish round M2, step 6)", () => {
+  // Why: the owner's way to replace a Drive tour is to open the file on
+  // the Drive website and upload over it there; the button copies the
+  // file's address for that. The tour is opened through the site's proxy
+  // or Drive's download host, so the address is rebuilt from the file id
+  // every Drive form carries - and anything that is not a Drive file gets
+  // no address rather than a wrong one.
+  it("rebuilds the file's Drive address from every form a Drive link takes", () => {
+    const address = "https://drive.google.com/file/d/AbC_12-3/view";
+    for (const url of [
+      "https://drive.google.com/file/d/AbC_12-3/view?usp=sharing",
+      "https://drive.google.com/open?id=AbC_12-3",
+      "https://drive.usercontent.google.com/download?id=AbC_12-3&export=download&confirm=t",
+      "https://gps.csutil.com/api/drive-proxy?id=AbC_12-3",
+      "https://www.googleapis.com/drive/v3/files/AbC_12-3?alt=media&key=k",
+    ]) {
+      expect(driveFileAddress(url)).toBe(address);
+    }
+  });
+
+  it("gives no address for other hosts, missing ids or unsafe ids", () => {
+    expect(driveFileAddress("https://www.dropbox.com/s/x/tour.zip")).toBeNull();
+    expect(
+      driveFileAddress("https://drive.google.com/drive/my-drive"),
+    ).toBeNull();
+    expect(
+      driveFileAddress("https://gps.csutil.com/api/drive-proxy?id=a%2Fb"),
+    ).toBeNull();
+    expect(driveFileAddress("not a url")).toBeNull();
+    // The share path counts on Drive only, never on a look-alike host.
+    expect(driveFileAddress("https://example.com/file/d/AbC/view")).toBeNull();
   });
 });

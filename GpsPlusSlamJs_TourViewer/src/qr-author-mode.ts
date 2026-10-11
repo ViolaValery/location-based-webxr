@@ -521,6 +521,44 @@ export function driveReplaceSteps(
   };
 }
 
+/** A Drive file id as Drive mints them; anything else is not an id. */
+const DRIVE_ID = /^[\w-]+$/;
+
+/**
+ * The Drive website's address of the file behind a Drive link, or null
+ * (polish round M2, step 6: the button that copies it, so the creator can
+ * open the file on the Drive website and upload over it). Every form a
+ * Drive link takes carries the file id - the share page's path, `?id=`
+ * on the open, download and proxy forms, the API's path - so the address
+ * is rebuilt from it. A relative proxy path resolves against the page.
+ */
+export function driveFileAddress(url: string, base?: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(
+      url,
+      base ?? (typeof location === "undefined" ? undefined : location.href),
+    );
+  } catch {
+    return null;
+  }
+  const fromPath =
+    (parsed.hostname === "drive.google.com"
+      ? /^\/file\/d\/([^/]+)/.exec(parsed.pathname)?.[1]
+      : undefined) ??
+    (parsed.hostname === "www.googleapis.com"
+      ? /^\/drive\/v\d+\/files\/([^/]+)/.exec(parsed.pathname)?.[1]
+      : undefined);
+  const driveHost =
+    parsed.hostname === "drive.google.com" ||
+    parsed.hostname === "drive.usercontent.google.com" ||
+    parsed.pathname.endsWith("/api/drive-proxy");
+  const id =
+    fromPath ?? (driveHost ? parsed.searchParams.get("id") : null) ?? null;
+  if (id === null || !DRIVE_ID.test(id)) return null;
+  return `https://drive.google.com/file/d/${id}/view`;
+}
+
 /** The name Chrome gives a download whose name is already taken. */
 function repeatDownloadName(filename: string): string {
   return `${filename.replace(/\.zip$/i, "")} (1).zip`;

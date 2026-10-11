@@ -113,6 +113,8 @@ export async function installTourViewerArFakes(page, options = {}) {
          *  saved (field test 2, F4); the starter zip and the recording
          *  still share where they can, and label their buttons so. */
         shareRoute,
+        /** What step 6's Drive address button copied (polish round M2). */
+        copied: /** @type {string[]} */ ([]),
         /** Hold downloadPdf open so a test can observe the busy state. */
         holdPdfSave: false,
         releasePdfSave: () => undefined,
@@ -402,6 +404,10 @@ export async function installTourViewerArFakes(page, options = {}) {
           return new Promise((resolve) => {
             test.releasePdfSave = () => resolve(test.saveOutcome);
           });
+        },
+        copyText: (text) => {
+          test.copied.push(text);
+          return Promise.resolve();
         },
         startHitTestReticle: (_group, onSelect) => {
           test.xrSelect = onSelect ?? null;

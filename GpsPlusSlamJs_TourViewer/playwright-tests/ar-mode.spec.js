@@ -556,7 +556,13 @@ test("the creator measures the code, finishes, and downloads a rebuilt zip that 
   await expect(page.getByTestId("enter-ar")).toHaveText("Start creating", {
     timeout: 15000,
   });
-  await expect(page.getByTestId("step-measure")).toHaveAttribute("open", "");
+  // The Finish lands on step 6, the completion step (polish round M2, B9).
+  await expect(page.getByTestId("step-done")).toHaveAttribute("open", "");
+  await expect(page.getByTestId("step-measure")).not.toHaveAttribute(
+    "open",
+    "",
+  );
+  await expect(page.getByTestId("done-pending")).toBeHidden();
   await expect(page.getByTestId("finish-block")).toBeVisible();
   await expect(page.getByTestId("finish-status")).toContainText(/not saved/i);
   // The replace instructions wait for a file to actually exist.
@@ -2951,6 +2957,17 @@ test("a Drive tour saves the zip under the Drive file's name, with the Drive ste
   await expect(steps).toContainText("Replace existing file");
   await expect(steps).toContainText("Desktop site");
   await expect(page.getByTestId("replace-help-generic")).toBeHidden();
+  // The file's Drive address, for the Drive website (polish round M2,
+  // step 6): rebuilt from the id the proxy link carries.
+  const copy = page.getByTestId("replace-drive-copy");
+  await expect(copy).toBeVisible();
+  await copy.click();
+  await expect(copy).toHaveText(/copied/i);
+  expect(
+    await page.evaluate(
+      () => /** @type {any} */ (window).__tourViewerTest.copied,
+    ),
+  ).toEqual(["https://drive.google.com/file/d/e2e-drive/view"]);
 });
 
 test("a Drive tour whose host sends no name asks the creator to check it", async ({

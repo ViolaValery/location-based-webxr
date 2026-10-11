@@ -41,6 +41,7 @@ import type { ScanOpen } from "./scan-open.js";
 import { viewerModeFromSearch } from "./mode.js";
 import { describeOpenError } from "./open-errors.js";
 import { wireHostPicker } from "./host-picker.js";
+import { readTourHost } from "./tour-host.js";
 import { checkLink } from "./link-check.js";
 import { wirePrintPanel } from "./print-panel.js";
 import {
@@ -333,6 +334,8 @@ const summary = createSummaryPanel({
 const setup = wireCreatorSetup({
   ctx,
   mode,
+  // Step 6 names the host chosen in step 1 (polish round M2).
+  host: () => readTourHost(stepStore),
   codeTour: {
     onDetection: (text) => {
       scanOpen?.onDetection(text);
@@ -362,6 +365,7 @@ const setup = wireCreatorSetup({
     downloadButton: element("finish-download"),
     replaceHelpGeneric: element("replace-help-generic"),
     replaceHelpDrive: element("replace-help-drive"),
+    replaceDriveCopy: element("replace-drive-copy"),
     pinButton: element("setup-pin"),
     pinLabel: element("pin-label"),
     pinSave: element("pin-save"),

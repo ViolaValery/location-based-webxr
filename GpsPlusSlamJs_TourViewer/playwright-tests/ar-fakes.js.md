@@ -47,7 +47,8 @@ camera, so `installTourViewerArFakes(page)` installs
   production ordering; `locationPermission` / `locationOutcome` /
   `locationRequests` (the visitor screen's gate: what the permission
   query answers, what a location-only tap comes back with, how many taps
-  were made); `downloads` + `saveOutcome` (the zips the setup offered
+  were made); `copied` (what `copyText` was given: step 6's Drive
+  address); `downloads` + `saveOutcome` (the zips the setup offered
   for download - the fake `shareOrDownloadZip` captures the blob instead
   of saving, and reports `saveOutcome`, false meaning nothing left the
   page; the installer's `{ saveOutcome }` sets the first save's, since the

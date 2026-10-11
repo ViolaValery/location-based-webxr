@@ -164,6 +164,10 @@ export interface TourViewerSeams {
    *  picker offers a PDF filter rather than a zip one, and so the e2e
    *  captures the bytes instead of writing a file. */
   downloadPdf(blob: Blob, filename: string): Promise<boolean>;
+  /** Put text on the clipboard (step 6's Drive address, polish round M2);
+   *  rejects where the browser refuses. A seam so the e2e reads what was
+   *  copied without clipboard permissions. */
+  copyText(text: string): Promise<void>;
   /** The screen-centre hit-test reticle under the world group (its world
    *  position is GPS-world NUE once the group carries the alignment) -
    *  the pin's position (guided-setup plan M4). Needs the session feature
@@ -261,6 +265,7 @@ export const realSeams: TourViewerSeams = {
   downloadZip: (blob, filename) => downloadBlob(blob, filename, ZIP_FILE_TYPE),
   canShareZip: () => prefersFileShare(ZIP_FILE_TYPE),
   downloadPdf: (blob, filename) => downloadBlob(blob, filename, PDF_FILE_TYPE),
+  copyText: (text) => navigator.clipboard.writeText(text),
   startHitTestReticle: (arWorldGroup, onSelect) =>
     startHitTestReticle(
       onSelect === undefined

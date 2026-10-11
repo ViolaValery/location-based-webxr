@@ -43,6 +43,7 @@ import {
 } from "./finish-guard.js";
 
 import { wireCreatorHandoff } from "./creator-handoff.js";
+import type { TourHost } from "./tour-host.js";
 import { wireCreatorCodes, type CreatorCodes } from "./creator-codes.js";
 import { wireCreatorDraft } from "./creator-draft.js";
 import { wireCreatorPreviews } from "./creator-previews.js";
@@ -119,6 +120,8 @@ export interface CreatorSetupDom {
   /** ...and a Drive tour's own numbered steps with the zip's name, written
    *  here (Drive replace plan §2 decision 1). */
   replaceHelpDrive: HTMLElement;
+  /** Step 6's Drive address button (`creator-handoff.ts`). */
+  replaceDriveCopy: HTMLButtonElement;
   /** The printed side length - lives in the print step (DEC-F2). */
   sizeInput: HTMLInputElement;
   /** The print step, opened when the size error points at it. */
@@ -206,6 +209,9 @@ export function wireCreatorSetup(deps: {
   /** The summary after Finish (authoring plan 2026-09-28-0953 M3b,
    *  `summary-panel.ts`); none in the node tests that do not need it. */
   summary?: Pick<SummaryPanel, "show" | "hide">;
+  /** The host chosen in step 1, for step 6's replace steps (polish round
+   *  M2); absent in the node tests that do not need it. */
+  host?: () => TourHost | null;
 }): CreatorSetup {
   const { ctx, mode, arStore, arController, seams, wizard, dom } = deps;
   const codeTour: Pick<ScanOpen, "onDetection" | "status" | "relation"> =
@@ -628,6 +634,7 @@ export function wireCreatorSetup(deps: {
     render: () => {
       renderAuthorReadout();
     },
+    ...(deps.host === undefined ? {} : { host: deps.host }),
   });
 
   /** Finish: the rebuilt zip and what it changes (`creator-finish.ts`). */

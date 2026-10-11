@@ -57,7 +57,9 @@ were here. What stays is the Finish's side:
 
 ## Public API
 
-- `wireCreatorSetup({ ctx, mode, arStore, arController, seams, wizard, dom, openDraftStore?, codeTour?, summary? }): CreatorSetup`
+- `wireCreatorSetup({ ctx, mode, arStore, arController, seams, wizard, dom, openDraftStore?, codeTour?, summary?, host? }): CreatorSetup`
+  - `host()` - the host chosen in step 1, handed to the hand-off for step
+    6's replace steps (polish round M2).
   - `openDraftStore(key)` resolves this tour's draft namespace, or
     `undefined` where there is no persistence. Injected so the unit tests
     and the e2e can supply one without OPFS.

@@ -19,6 +19,13 @@ offered). Plan:
   (`Access-Control-Allow-Origin: *`, `Accept-Ranges: bytes`; the site's
   `/api` proxy fronts Google Drive only) and that its link can be pasted
   before the file exists.
+- `hostReplaceText(host)` - step 6's sentence on putting the saved zip in
+  place of the hosted one under the same link (Dropbox and OneDrive: same
+  folder, same name, overwriting - Dropbox ends a shared link when the file
+  is deleted first (its forum, 2026-10-11); GitHub: the same path; own
+  server: the same place and
+  name). Null for Google Drive, whose numbered steps come from the link
+  itself (`driveReplaceSteps`, which knows the file's name).
 - `needsStarterZip(host)` - every cloud host needs a file before it gives a
   link; an own server does not.
 - `readTourHost(store)` / `writeTourHost(store, host)` - the choice under
@@ -36,5 +43,6 @@ offered). Plan:
 ## Tests
 
 `tour-host.test.ts` - the host list and order, the steps of each, the own
-server's headers, the starter-zip rule, the stored round trip, unknown
+server's headers, the replace text per host (one host each, none for
+Drive), the starter-zip rule, the stored round trip, unknown
 values and throwing stores.

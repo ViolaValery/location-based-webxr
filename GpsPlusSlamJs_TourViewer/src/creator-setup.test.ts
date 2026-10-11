@@ -91,6 +91,7 @@ const DOM_KEYS = [
   "replaceHelp",
   "replaceHelpGeneric",
   "replaceHelpDrive",
+  "replaceDriveCopy",
   "sizeInput",
   "printPanel",
   "status",

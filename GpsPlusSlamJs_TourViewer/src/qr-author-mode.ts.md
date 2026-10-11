@@ -117,6 +117,11 @@ and the mint itself — raw-WebXR stable pose → GPS-world NUE →
   Drive steps (F4 milestone review #2: the page cannot know the name the
   phone gave it). `saveFailed` says the save, not the Finish, failed
   (review #9).
+- `driveFileAddress(url, base?)` - the Drive website's address of the file
+  behind any Drive form a link takes (`/file/d/<id>/` on drive.google.com,
+  `?id=` on the open, download and proxy forms, the API's path), or null:
+  another host, no id, or an id outside Drive's alphabet (letters, digits, `_` and `-`). Step 6's
+  copy button (polish round M2) hands it to the Drive website.
 - `driveReplaceSteps(name, nameKnown)` - the numbered Drive steps shown
   after the save: an optional rename/check-the-name step, then a check that
   the saved file is not "name (1).zip" (if it is: delete every copy, tap

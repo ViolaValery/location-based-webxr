@@ -283,6 +283,7 @@ describe("the creator measures and mints with the fused pose", () => {
     "replaceHelp",
     "replaceHelpGeneric",
     "replaceHelpDrive",
+    "replaceDriveCopy",
     "sizeInput",
     "printPanel",
     "status",
