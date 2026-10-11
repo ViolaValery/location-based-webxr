@@ -22,7 +22,13 @@ so a field session where "the tour did not place" needs to say why:
 - (module-private) `fusedCountsLine(label, counts)` - one code's counts on one line:
   `<label>: locks N, stable S | views a (empty e), fit b, fallback c, motion d, order f | re-reads r, natives ignored k`.
 - `debugReadoutLines({ status, unknownCode, unusableCode, tallies,
-movedCodeChecks?, ignoredCodes? })` - since D20 M5c also one line per live
+movedCodeChecks?, ignoredCodes?, gps?, recordingOn? })` - since polish
+  round C4 a GPS line right after the head (`gps: ±a m median, spread s m
+over n fixes, heading ±h°` from device fixes only, the heading sigma by
+  `visitHeadingSigmaDeg`; `gps: no fix yet` before one) and, with a
+  recording running (C7), `recording: exit AR, then "Save the recording"
+below` (the save button is outside the AR overlay); "no code evaluated
+  yet" counts the code lines, not the block. Since D20 M5c also one line per live
   moved-code check (`moved-code check <code>: |D| x m, yaw y°, s s,
 spread m, n fixes, turn check on|off, <verdict>`; the turn check runs
   for a settled save only) and one per

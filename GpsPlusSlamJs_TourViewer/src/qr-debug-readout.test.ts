@@ -197,4 +197,53 @@ describe("debugReadoutLines - the moved-code checks (D20, M5c)", () => {
       "ignored (moved): …abcdefgh&n=2",
     ]);
   });
+
+  // Why (polish round C4): indoors the owner saw the content drift and
+  // could not tell whether GPS was poor - nothing showed its quality in
+  // viewer AR. With ?debug=1 the block now says how good the GPS is and
+  // how far its heading can be off (the heading model the turn checks use).
+  it("shows the live GPS quality: accuracy, spread, fixes and the heading sigma", () => {
+    const lines = debugReadoutLines({
+      status: "tracking",
+      unknownCode: null,
+      unusableCode: null,
+      tallies: null,
+      gps: { accuracyM: 8.3, extentM: 4.3, fixes: 169 },
+    });
+    expect(lines).toContain(
+      "gps: ±8.3 m median, spread 4.3 m over 169 fixes, heading ±63°",
+    );
+  });
+
+  it("says the GPS quality is unknown before a fix", () => {
+    const lines = debugReadoutLines({
+      status: null,
+      unknownCode: null,
+      unusableCode: null,
+      tallies: null,
+      gps: { accuracyM: null, extentM: null, fixes: 0 },
+    });
+    // ...and the block still says no code was evaluated (the GPS line must
+    // not swallow that line).
+    expect(lines).toEqual([
+      "qr: off",
+      "gps: no fix yet",
+      "no code evaluated yet",
+    ]);
+  });
+
+  // Why (polish round C7): the save button lives outside the AR overlay, so
+  // a visitor recording with ?debug=1 found no way to save during AR.
+  it("tells a recording visitor to exit AR to save the recording", () => {
+    const lines = debugReadoutLines({
+      status: null,
+      unknownCode: null,
+      unusableCode: null,
+      tallies: null,
+      recordingOn: true,
+    });
+    expect(lines).toContain(
+      'recording: exit AR, then "Save the recording" below',
+    );
+  });
 });

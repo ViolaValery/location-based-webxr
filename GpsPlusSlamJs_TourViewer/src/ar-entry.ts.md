@@ -60,7 +60,12 @@ since the flows plan M6.
 
 `renderArStatus` passes `ignoredCode: ctx.viewerIgnoredText` to the line;
 `renderDebugReadout` passes the live checks' snapshot and the ignored
-codes to the `?debug=1` block.
+codes to the `?debug=1` block, the session's GPS quality from device
+fixes only (median accuracy, extent through the framework's
+`createGpsExtentTracker`, fix count; recomputed only when the GPS list
+changed, since the block re-renders per frame; polish round C4) and
+whether this entry records (the depth sampler runs only for a recorded
+entry; C7).
 
 ## Invariants & assumptions
 

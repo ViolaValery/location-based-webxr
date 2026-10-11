@@ -238,7 +238,10 @@ describe("wireArEntry QR readout and visitor hint", () => {
     expect(h.dom.arDebug.textContent).toBe("");
     h.ctx.debug = true;
     h.entry.renderArStatus();
-    expect(h.dom.arDebug.textContent).toBe("qr: off\nno code evaluated yet");
+    // The GPS line (polish round C4) says there is no fix in the harness.
+    expect(h.dom.arDebug.textContent).toBe(
+      "qr: off\ngps: no fix yet\nno code evaluated yet",
+    );
   });
 
   // Milestone review of b4c #2: the creator pipeline never writes the

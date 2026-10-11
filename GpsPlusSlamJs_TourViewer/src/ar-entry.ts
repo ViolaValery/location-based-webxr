@@ -10,7 +10,12 @@
  */
 
 import type { EnableGpsArState } from "gps-plus-slam-app-framework/ar";
+import {
+  GPS_POINT_SOURCE_DEVICE,
+  gpsPointSourceOf,
+} from "gps-plus-slam-app-framework/core";
 import type { GpsPosition } from "gps-plus-slam-app-framework/sensors";
+import { createGpsExtentTracker } from "gps-plus-slam-app-framework/state/gps-extent-tracker";
 import {
   type DepthSample,
   clearAllQrMarkers,
@@ -99,6 +104,16 @@ export function wireArEntry(deps: {
   const authorMode = mode === "creator";
   /** Whether THIS session's depth sampler was started (a recorded entry). */
   let depthRunning = false;
+  /** The device fixes' extent, for the ?debug=1 GPS line (polish round C4). */
+  const gpsExtent = createGpsExtentTracker();
+  /** That line's inputs, recomputed only when the GPS list changed: the
+   *  block re-renders on every frame. */
+  let gpsQualityFor: unknown = null;
+  let gpsQuality: {
+    accuracyM: number | null;
+    extentM: number | null;
+    fixes: number;
+  } = { accuracyM: null, extentM: null, fixes: 0 };
 
   /**
    * The recording's part of an AR entry (authoring recording plan
@@ -216,6 +231,27 @@ export function wireArEntry(deps: {
     return gate.kind;
   }
 
+  /** The session's GPS quality from DEVICE fixes only: the store's median
+   *  folds the code's synthetic votes in, which would make poor indoor GPS
+   *  read about 5 m (polish round C4). */
+  function sessionGpsQuality(): typeof gpsQuality {
+    const positions = selectGpsPositions(arStore.getState());
+    if (positions === gpsQualityFor) return gpsQuality;
+    gpsQualityFor = positions;
+    const accuracies = positions
+      .filter((p) => gpsPointSourceOf(p) === GPS_POINT_SOURCE_DEVICE)
+      .map((p) => p.latLongAccuracy)
+      .filter((a): a is number => typeof a === "number" && Number.isFinite(a))
+      .sort((a, b) => a - b);
+    gpsQuality = {
+      accuracyM:
+        accuracies.length === 0 ? null : accuracies[accuracies.length >> 1]!,
+      extentM: gpsExtent.update(positions),
+      fixes: accuracies.length,
+    };
+    return gpsQuality;
+  }
+
   /** The ?debug=1 block: the controller state and each code's counts. */
   function renderDebugReadout(): void {
     if (!ctx.debug || dom.arDebug === undefined) return;
@@ -228,6 +264,9 @@ export function wireArEntry(deps: {
       tallies: ctx.fusedTallies,
       movedCodeChecks: ctx.movedCodeChecks?.snapshot() ?? [],
       ignoredCodes: [...ctx.ignoredCodes.values()].map((c) => c.text),
+      gps: sessionGpsQuality(),
+      // A recorded entry is the one that runs the depth sampler.
+      recordingOn: depthRunning,
     }).join("\n");
   }
 
