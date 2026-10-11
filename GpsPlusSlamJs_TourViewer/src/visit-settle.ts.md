@@ -283,7 +283,10 @@ mint accuracy)` (unknown or unusable accuracies count as 5 m), or whose
   shows one line and logs it in `tourAuthoring/settled`.
   - **A tighter yaw bound from the sighting's own GPS** (field test 3,
     owner decision D-F6b; `LARGE_TURN_DEG` = 60, `TURN_OUTLIER_FACTOR` =
-    3, `turnLimitDeg(quality)`). A stored code whose heading was saved
+    3, `turnLimitDeg(quality, options?)`; `options.floorDeg` and
+    `options.factor` exist for the viewer's moved-code turn check, polish
+    round C5, which uses its own calibrated floor of 45). A stored code
+    whose heading was saved
     wrong turned a whole visit 108 degrees, and a pin 13 m away moved
     24 m. The yaw bound of a correction through a sighting is the smaller
     of 120 and that sighting's pick's turn limit: `max(60, 3 x

@@ -33,6 +33,7 @@ import { objectPoseNue } from "./content-placement.js";
 import {
   checkHadItsWindow,
   createMovedCodeChecks,
+  RESTORE_SPREAD_FACTOR,
 } from "./moved-code-check.js";
 import {
   MOVED_CODE_FIT_WINDOW_S,
@@ -519,3 +520,93 @@ describe("checkHadItsWindow (tour kit K4 review R1)", () => {
     expect(checkHadItsWindow(fresh.checks.snapshot()[0]!)).toBe(false);
   });
 });
+
+describe(
+  "a veto is re-judged as evidence grows (polish round C5)",
+  {
+    timeout: 120_000,
+  },
+  () => {
+    // Why these tests matter (the 2026-10-10 viewer recording; owner
+    // decision Q-C5): a veto used to hold for the rest of the session, so a
+    // code vetoed on poor early GPS stayed ignored however often it was
+    // scanned afterwards. The check now keeps folding a vetoed code and
+    // lifts the veto once the verdict is consistent again on at least
+    // `RESTORE_SPREAD_FACTOR` times the spread it was vetoed on; a code that
+    // really moved never reads consistent and stays vetoed.
+    function withRestorations() {
+      const store = createTourViewerStore();
+      store.dispatch(setZeroPos(ZERO));
+      const restored: { levelId: string; s: number; spreadM: number }[] = [];
+      let nowS = 0;
+      const checks = createMovedCodeChecks({
+        onRestored: (r) => {
+          restored.push({
+            levelId: r.levelId,
+            s: nowS,
+            spreadM: r.evidence.spreadM,
+          });
+        },
+      });
+      const vetoes: { s: number; spreadM: number }[] = [];
+      const feed = (fixes: readonly RecordGpsEventPayload[]) => {
+        for (const f of fixes) {
+          store.dispatch(recordGpsEvent(f));
+          nowS = (f.rawGpsPoint.timestamp - T0) / 1000;
+          const s = store.getState();
+          for (const v of checks.update(
+            {
+              gpsPositions: selectGpsPositions(s),
+              odometryPositions: selectOdometryPositions(s),
+              zero: selectZeroReference(s),
+            },
+            T0 + nowS * 1000,
+          )) {
+            vetoes.push({ s: nowS, spreadM: v.evidence.spreadM });
+          }
+        }
+      };
+      return { checks, feed, restored, vetoes };
+    }
+
+    it("lifts a veto that poor early GPS caused, once a wider walk reads the code where it is", () => {
+      const h = withRestorations();
+      h.checks.pin({
+        text: "text-lvl",
+        levelId: "lvl",
+        level: level(),
+        qrPoseWorld: codeSeen([0, 0]),
+        atMs: T0,
+        zero: ZERO,
+      });
+      // 70 s of GPS biased 30 m east on a small circle: a position veto.
+      h.feed(circle(0, 70, [20, 10], 4, { bias: [0, 30] }));
+      expect(h.vetoes).toHaveLength(1);
+      expect(h.restored).toEqual([]);
+      // Then good GPS on a wide walk: the fit settles back on the code.
+      h.feed(circle(71, 600, [20, 10], 15));
+      expect(h.restored).toHaveLength(1);
+      expect(h.restored[0]!.levelId).toBe("lvl");
+      expect(h.restored[0]!.spreadM).toBeGreaterThanOrEqual(
+        RESTORE_SPREAD_FACTOR * h.vetoes[0]!.spreadM,
+      );
+      // Lifted once; the check is gone.
+      expect(h.checks.snapshot()).toEqual([]);
+    });
+
+    it("keeps a code that really moved vetoed, however long the visitor walks", () => {
+      const h = withRestorations();
+      h.checks.pin({
+        text: "text-lvl",
+        levelId: "lvl",
+        level: level(),
+        qrPoseWorld: codeSeen([0, 40]),
+        atMs: T0,
+        zero: ZERO,
+      });
+      h.feed(circle(0, 600, [20, 50], 15));
+      expect(h.vetoes).toHaveLength(1);
+      expect(h.restored).toEqual([]);
+    });
+  },
+);

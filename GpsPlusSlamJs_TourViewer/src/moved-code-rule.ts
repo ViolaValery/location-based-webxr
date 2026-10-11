@@ -38,6 +38,7 @@ import {
   type CodeMoveVerdict,
   type DisplacementEstimate,
 } from "./code-displacement.js";
+import { turnLimitDeg } from "./visit-settle.js";
 
 /** The turn check's parameters (see {@link CODE_TURN_RULE}). */
 export interface CodeTurnRule {
@@ -46,6 +47,10 @@ export interface CodeTurnRule {
   /** A save is settled when its alignment had solved at least this many
    *  fixes (`mintQuality.alignmentSampleCount`). */
   readonly settledAlignmentSamples: number;
+  /** A turn must also exceed this many sigmas of the fit's own GPS heading
+   *  error (polish round C5; `turnLimitDeg` with `settledYawDeg` as its
+   *  floor). */
+  readonly sigmaFactor: number;
 }
 
 /**
@@ -68,11 +73,55 @@ export interface CodeTurnRule {
  *   settled at the median rate. Swept 60 / 120 / 180: the check reads
  *   0-0.3 % at all three; a phone at 1 Hz needs 2 minutes to reach it
  *   (conservative: its codes are then judged by position only).
+ * - `sigmaFactor` 3 (polish round C5, swept 0 / 2 / 3 / 4 x T 30 / 45 / 60
+ *   on the same 710 outdoor virtual codes, settled at 120, within 120 s):
+ *   at T 45 the false alarms go from 1 of 710 (k 0, the rule before C5)
+ *   to 0, while 90-degree turns are caught exactly as before (1,022 of
+ *   1,420, every covered one); k 4 loses 2 catches, k 2 keeps the false
+ *   alarm. The corpus has no indoor virtual codes, so the indoor effect
+ *   rests on the 2026-10-10 recording: 2.15 m of spread at 8.3 m makes the
+ *   threshold about 188 degrees, and its 46-degree reading no veto. What
+ *   reverses it: indoor recordings in which real turns go uncaught.
  */
 export const CODE_TURN_RULE: CodeTurnRule = Object.freeze({
   settledYawDeg: 45,
   settledAlignmentSamples: 120,
+  sigmaFactor: 3,
 });
+
+/** The accuracy assumed (m) when no fix of the fit reported one. */
+const DEFAULT_FIT_ACCURACY_M = 5;
+
+/**
+ * The largest yaw (deg) the fit's own GPS heading error explains: the
+ * heading model's sigma (`visitHeadingSigmaDeg` through `turnLimitDeg`)
+ * for the fit's accuracy and a baseline of twice its RMS spread (the
+ * spread is the fixes' RMS distance from their centroid; a walk's extent is
+ * about two to three and a half times that), times `sigmaFactor`, never
+ * below `settledYawDeg`. Polish round C5: at 2.15 m of spread and 8.3 m
+ * accuracy indoors the sigma is about 63 degrees, so the 46-degree reading
+ * that vetoed the code is no evidence; after a 12 m spread at 4 m it is
+ * about 10, and the calibrated 45 decides as before.
+ */
+function turnThresholdDeg(
+  estimate: Pick<DisplacementEstimate, "spreadM">,
+  accuracyMedianM: number | null | undefined,
+  rule: CodeTurnRule = CODE_TURN_RULE,
+): number {
+  const accuracyM =
+    accuracyMedianM !== null &&
+    accuracyMedianM !== undefined &&
+    Number.isFinite(accuracyMedianM) &&
+    accuracyMedianM > 0
+      ? accuracyMedianM
+      : DEFAULT_FIT_ACCURACY_M;
+  return (
+    turnLimitDeg(
+      { extentM: 2 * estimate.spreadM, accuracyM },
+      { floorDeg: rule.settledYawDeg, factor: rule.sigmaFactor },
+    ) ?? rule.settledYawDeg
+  );
+}
 
 /**
  * How long after its pin (seconds) the viewer keeps checking a code. The
@@ -106,7 +155,7 @@ export const MOVED_CODE_FIT_WINDOW_S = 300;
 /** Bumped whenever a value above or in `CODE_MOVE_RULE`, or what counts as
  *  settled ({@link isSettledSave}), changes; the
  *  `tourViewing/codeIgnored` log carries it. */
-export const MOVED_CODE_RULE_VERSION = "d20-m5c-2026-10-03-d31";
+export const MOVED_CODE_RULE_VERSION = "d20-m5c-2026-10-03-d31-c5";
 
 /**
  * Whether a saved level's pose was minted on a settled alignment: its
@@ -150,6 +199,9 @@ export function judgeCodeMove(
     readonly estimate: DisplacementEstimate | null;
     /** {@link isSettledSave} of the saved level. */
     readonly settled: boolean;
+    /** The median reported accuracy (m) of the fit's device fixes; absent
+     *  or unusable: 5 m ({@link turnThresholdDeg}). */
+    readonly accuracyMedianM?: number | null;
   },
   rules: { readonly move: CodeMoveRule; readonly turn: CodeTurnRule } = {
     move: CODE_MOVE_RULE,
@@ -168,13 +220,15 @@ export function judgeCodeMove(
     turnChecked: settled,
   });
   if (position.verdict === "moved") return judged("moved", "position");
-  // The yaw needs the position rule's evidence: the time span and the
-  // spread (the visitor walked enough for the fit to carry a turn).
+  // The yaw needs the position rule's evidence (the time span and the
+  // spread), and must exceed what the fit's own GPS heading can be off by
+  // (polish round C5).
   const turned =
     settled &&
     estimate !== null &&
     estimate.spanS >= rules.move.minSpanS &&
     estimate.spreadM >= rules.move.minSpreadM &&
-    Math.abs(estimate.yawDeg) > rules.turn.settledYawDeg;
+    Math.abs(estimate.yawDeg) >
+      turnThresholdDeg(estimate, input.accuracyMedianM, rules.turn);
   return turned ? judged("moved", "turn") : judged(position.verdict, null);
 }

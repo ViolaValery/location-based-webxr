@@ -782,6 +782,10 @@ interface Trace {
   readonly spread: number[];
   readonly yaw: number[];
   readonly bound: number[];
+  /** The median reported accuracy of the folded fixes (m); null: none
+   *  reported. The turn check's heading-evidence gate reads it (polish
+   *  round C5). */
+  readonly acc: (number | null)[];
 }
 
 function sortedInsert(arr: number[], v: number): void {
@@ -813,6 +817,7 @@ function traceOf(input: {
     spread: [],
     yaw: [],
     bound: [],
+    acc: [],
   };
   let stats: DisplacementStats = EMPTY_DISPLACEMENT_STATS;
   const accs: number[] = [];
@@ -836,6 +841,7 @@ function traceOf(input: {
     out.span.push(est.spanS);
     out.spread.push(est.spreadM);
     out.yaw.push(est.yawDeg);
+    out.acc.push(med);
     out.bound.push(
       correctionBoundM(med, input.storedAccM, {
         accuracyFactor: 3,
@@ -2485,6 +2491,9 @@ const SHIPPED_HORIZONS_S = [120, 300, 600, Number.POSITIVE_INFINITY] as const;
 const FIT_WINDOWS_S = [120, 300, 600, Number.POSITIVE_INFINITY] as const;
 const SETTLED_SAMPLES_SWEEP = [60, 120, 180] as const;
 const SETTLED_YAW_SWEEP_DEG = [30, 45, 60] as const;
+/** The turn check's heading-evidence factor (polish round C5), swept; 0 is
+ *  the rule before C5 (the floor alone). */
+const SIGMA_FACTOR_SWEEP = [0, 2, 3, 4] as const;
 
 /** A trace's estimate at fix `k`, a move and a heading offset added (the
  *  rigid fit: a move adds exactly, a turn reaches the yaw only). */
@@ -2518,7 +2527,11 @@ function firstShipped(
 ): { tS: number; by: "position" | "turn" } | null {
   for (let k = 0; k < tr.tS.length && tr.tS[k]! <= h; k += 1) {
     const j = judgeCodeMove(
-      { settled, estimate: estimateAt(tr, k, move, yawDeltaDeg) },
+      {
+        settled,
+        estimate: estimateAt(tr, k, move, yawDeltaDeg),
+        accuracyMedianM: tr.acc[k] ?? null,
+      },
       rules,
     );
     if (j.verdict === "moved" && j.decidedBy !== null)
@@ -2539,6 +2552,10 @@ function sweepShippedRule(
   cross: readonly PairResult[],
   outdoorCases: readonly Case[],
   turnSign: number,
+  /** Indoor and mixed virtual codes (polish round C5): the turn check's
+   *  false alarms where GPS is poor, the saved heading still drawn from
+   *  the outdoor pool (a code minted on a good walk, visited indoors). */
+  poorGpsCases: readonly Case[] = [],
 ): void {
   // Position only: the marks carry no code heading (see above).
   const settled = false; // no turn check: position only
@@ -2625,89 +2642,99 @@ function sweepShippedRule(
       return e == null ? [] : finiteOf(e.published.filter((_, i) => keep(i)));
     });
   const rows: Record<string, unknown>[] = [];
-  for (const nSettled of SETTLED_SAMPLES_SWEEP) {
-    for (const kind of ["settled", "early"] as const) {
-      const pool = poolOf((i) => (kind === "settled") === i >= nSettled);
-      const candidates = pool.flatMap((a, k) => (a.length > 0 ? [k] : []));
-      const rnd = seeded(kind === "settled" ? 71 + nSettled : 73 + nSettled);
-      // One draw per code, shared by every variant below.
-      const draws = outdoorCases.map((c) => {
-        const pubSame = errsOf.get(c.walk)?.published[c.scanIdx];
-        if (pubSame === undefined || !Number.isFinite(pubSame))
+  for (const [where, caseSet] of [
+    ["outdoor", outdoorCases],
+    ["indoor+mixed", poorGpsCases],
+  ] as const) {
+    if (caseSet.length === 0) continue;
+    for (const nSettled of SETTLED_SAMPLES_SWEEP) {
+      for (const kind of ["settled", "early"] as const) {
+        const pool = poolOf((i) => (kind === "settled") === i >= nSettled);
+        const candidates = pool.flatMap((a, k) => (a.length > 0 ? [k] : []));
+        const rnd = seeded(kind === "settled" ? 71 + nSettled : 73 + nSettled);
+        // One draw per code, shared by every variant below.
+        const draws = caseSet.map((c) => {
+          const pubSame = errsOf.get(c.walk)?.published[c.scanIdx];
+          if (pubSame === undefined || !Number.isFinite(pubSame))
+            return Number.NaN;
+          for (let tries = 0; tries < 50; tries += 1) {
+            const k = candidates[Math.floor(rnd() * candidates.length)];
+            if (k === undefined) return Number.NaN;
+            if (poolWalks[k]!.key === c.walk) continue;
+            const a = pool[k]!;
+            const other = a[Math.floor(rnd() * a.length)]!;
+            return -turnSign * pubSame + turnSign * other;
+          }
           return Number.NaN;
-        for (let tries = 0; tries < 50; tries += 1) {
-          const k = candidates[Math.floor(rnd() * candidates.length)];
-          if (k === undefined) return Number.NaN;
-          if (poolWalks[k]!.key === c.walk) continue;
-          const a = pool[k]!;
-          const other = a[Math.floor(rnd() * a.length)]!;
-          return -turnSign * pubSame + turnSign * other;
-        }
-        return Number.NaN;
-      });
-      const variants =
-        kind === "settled"
-          ? SETTLED_YAW_SWEEP_DEG.map((T) => ({
-              label: `turn check T=${String(T)}`,
-              turn: {
-                ...CODE_TURN_RULE,
-                settledYawDeg: T,
-                settledAlignmentSamples: nSettled,
-              },
-              settled: true,
-            }))
-          : [
-              {
-                label: "early save: no turn check (shipped)",
-                turn: CODE_TURN_RULE,
-                settled: false,
-              },
-            ];
-      const drawn = outdoorCases
-        .map((c, i) => ({ c, d: draws[i]! }))
-        .filter((x) => Number.isFinite(x.d));
-      for (const h of [120, 300]) {
-        const cov = drawn.filter((x) => covers(x.c.rigid, h));
-        for (const v of variants) {
-          const hitAt = (x: (typeof drawn)[number], extra: number) =>
-            firstShipped(
-              x.c.rigid,
-              h,
-              v.settled,
-              turnOnly(v.turn),
-              [0, 0],
-              x.d + extra,
-            ) !== null;
-          const fa = (xs: typeof drawn) =>
-            rate(
-              xs.map((x) => ({
-                hit: hitAt(x, 0),
-                unit: x.c.walk,
-                walks: [x.c.walk],
-              })),
-              "walks",
-            );
-          const det = (xs: typeof drawn, turn: number) => {
-            const hits = xs.flatMap((x) =>
-              turn === 180
-                ? [hitAt(x, 180)]
-                : [hitAt(x, turn), hitAt(x, -turn)],
-            );
-            return kOfN(hits.filter(Boolean).length, hits.length);
-          };
-          rows.push({
-            settledSamples: nSettled,
-            savedFrom: kind,
-            withinS: h,
-            rule: v.label,
-            codes: `${String(cov.length)} covered of ${String(drawn.length)}`,
-            faAll: fa(drawn),
-            faCovered: fa(cov),
-            det90All: det(drawn, 90),
-            det90Covered: det(cov, 90),
-            det180All: det(drawn, 180),
-            det180Covered: det(cov, 180),
-          });
+        });
+        const variants =
+          kind === "settled"
+            ? SETTLED_YAW_SWEEP_DEG.flatMap((T) =>
+                SIGMA_FACTOR_SWEEP.map((k) => ({
+                  label: `turn check T=${String(T)} k=${String(k)}`,
+                  turn: {
+                    ...CODE_TURN_RULE,
+                    settledYawDeg: T,
+                    settledAlignmentSamples: nSettled,
+                    sigmaFactor: k,
+                  },
+                  settled: true,
+                })),
+              )
+            : [
+                {
+                  label: "early save: no turn check (shipped)",
+                  turn: CODE_TURN_RULE,
+                  settled: false,
+                },
+              ];
+        const drawn = caseSet
+          .map((c, i) => ({ c, d: draws[i]! }))
+          .filter((x) => Number.isFinite(x.d));
+        for (const h of [120, 300]) {
+          const cov = drawn.filter((x) => covers(x.c.rigid, h));
+          for (const v of variants) {
+            const hitAt = (x: (typeof drawn)[number], extra: number) =>
+              firstShipped(
+                x.c.rigid,
+                h,
+                v.settled,
+                turnOnly(v.turn),
+                [0, 0],
+                x.d + extra,
+              ) !== null;
+            const fa = (xs: typeof drawn) =>
+              rate(
+                xs.map((x) => ({
+                  hit: hitAt(x, 0),
+                  unit: x.c.walk,
+                  walks: [x.c.walk],
+                })),
+                "walks",
+              );
+            const det = (xs: typeof drawn, turn: number) => {
+              const hits = xs.flatMap((x) =>
+                turn === 180
+                  ? [hitAt(x, 180)]
+                  : [hitAt(x, turn), hitAt(x, -turn)],
+              );
+              return kOfN(hits.filter(Boolean).length, hits.length);
+            };
+            rows.push({
+              where,
+              settledSamples: nSettled,
+              savedFrom: kind,
+              withinS: h,
+              rule: v.label,
+              codes: `${String(cov.length)} covered of ${String(drawn.length)}`,
+              faAll: fa(drawn),
+              faCovered: fa(cov),
+              det90All: det(drawn, 90),
+              det90Covered: det(cov, 90),
+              det180All: det(drawn, 180),
+              det180Covered: det(cov, 180),
+            });
+          }
         }
       }
     }
@@ -3390,6 +3417,7 @@ describe.runIf(MODE === "sweep")("D20 real walks: the sweep", () => {
         cross,
         cases.filter((c) => c.place === "outdoor"),
         turnSign,
+        cases.filter((c) => c.place === "indoor" || c.place === "mixed"),
       );
       fs.writeFileSync(
         path.join(path.dirname(CACHE_DIR), "d20-real-report.txt"),

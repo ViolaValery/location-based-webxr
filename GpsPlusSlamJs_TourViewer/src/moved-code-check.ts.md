@@ -5,7 +5,9 @@
 The viewer's per-AR-entry moved-code check (Tour Viewer authoring plan
 2026-09-28-0953 §3.6, decision D20, milestone M5c): each scanned code is
 pinned at its first voted lock and judged on every new device fix of the
-store's GPS history with `moved-code-rule.ts` `judgeCodeMove`, until it
+store's GPS history with `moved-code-rule.ts` `judgeCodeMove` (handing
+it the folded fixes' median accuracy, the turn check's evidence gate since
+polish round C5), until it
 reads `moved` (reported once, with the detector's inputs) or its horizon
 (`MOVED_CODE_HORIZON_S`, 300 s) passes. Pure of the page: the caller
 (`viewer-placement.ts`) hands in the history and the page clock, and acts on
@@ -23,7 +25,14 @@ a verdict (the veto). No compass reading is taken (owner, 2026-10-02).
 - `update({ gpsPositions, odometryPositions, zero }, nowMs)` - fold the
   history's new device fixes into every live check and judge it; returns
   the codes that read `moved` now (`{ text, levelId, evidence }`), each
-  once: its check ends. A check past its horizon ends silently.
+  once. A check past its horizon ends silently - except a vetoed code's,
+  which goes on until a consistent verdict on at least
+  `RESTORE_SPREAD_FACTOR` (2) times the spread it was vetoed on lifts the
+  veto: `createMovedCodeChecks({ onRestored })` is called with a
+  `RestoredCode` (`{ text, levelId, evidence }`: |D|, yaw, span, spread, the
+  veto's spread, the accuracy median, seconds since the pin) and the check
+  ends (polish round C5, owner decision Q-C5). A code that really moved
+  never reads consistent and stays vetoed.
 - `frameChanged(storedCount)` - the odometry frame changed: every check
   ends, and later pins fold only the history from `storedCount` on.
 - `clear()` - end every check (a tour switch).

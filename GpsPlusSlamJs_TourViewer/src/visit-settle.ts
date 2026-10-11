@@ -207,11 +207,18 @@ export const TURN_OUTLIER_FACTOR = 3;
  * Field test 3: 20.1 m at 5.6 m gives sigma 15.6, so the limit is the 60
  * floor and the recorded 108-degree turn is beyond it at any factor up to
  * 6.9; a 5 m walk at 5.6 m gives about 145.
+ *
+ * `options` exist for the viewer's moved-code turn check (polish round C5,
+ * `moved-code-rule.ts`), which shares this model under its own calibrated
+ * floor (45) and swept factor; absent, they are the settle's values.
  */
-export function turnLimitDeg(quality: {
-  readonly extentM: number | null;
-  readonly accuracyM: number | null;
-}): number | null {
+export function turnLimitDeg(
+  quality: {
+    readonly extentM: number | null;
+    readonly accuracyM: number | null;
+  },
+  options: { readonly floorDeg?: number; readonly factor?: number } = {},
+): number | null {
   const { extentM, accuracyM } = quality;
   if (
     extentM === null ||
@@ -222,8 +229,9 @@ export function turnLimitDeg(quality: {
     return null;
   }
   return Math.max(
-    LARGE_TURN_DEG,
-    TURN_OUTLIER_FACTOR * visitHeadingSigmaDeg(accuracyM, extentM),
+    options.floorDeg ?? LARGE_TURN_DEG,
+    (options.factor ?? TURN_OUTLIER_FACTOR) *
+      visitHeadingSigmaDeg(accuracyM, extentM),
   );
 }
 

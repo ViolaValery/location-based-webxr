@@ -118,7 +118,8 @@ recording. Its own module since the flows plan M6.
   No compass reading reaches the checks (owner, 2026-10-02): a code's turn
   comes from its pose in GPS world space only.
 - **Veto** (`vetoMovedCode`), once per level id: the id joins
-  `ignoredCodes` (the rest of the page session for this tour); the
+  `ignoredCodes` (until the check lifts the veto, or the page session for
+  this tour ends); the
   keep-alive stops if it holds this code; `viewerVoteSink.retractVotes()`
   resets the history and re-feeds the device fixes with the soft keys off,
   so the content moves ONCE, to the GPS answer; the vote budget is reset
@@ -133,6 +134,14 @@ recording. Its own module since the flows plan M6.
   no vote, no keep-alive; `onIgnoredLock` sets the line and the gate. The
   next entry's gate starts from `ignoredLevelIds` (all lockable codes
   ignored: passed at once).
+- **Lifted** (`restoreMovedCode`, polish round C5, owner decision Q-C5):
+  the check keeps folding a vetoed code and, once it reads consistent on
+  at least `RESTORE_SPREAD_FACTOR` (2) times the spread it was vetoed on,
+  calls back: the id leaves `ignoredCodes`, `viewerIgnoredText` clears if
+  it names the code, the viewing log records `codeRestored`; the next lock
+  votes and pins a new check. The veto's retracted votes are not restored.
+  An AR exit or a tour switch still ends the checks: a code vetoed then
+  stays ignored for the page session.
 - **Two codes** (M5c review M1): the gate records which code passed it
   (`ctx.scanGateCodeText`); a veto flips it to `ignored` only for that
   code. Another code's voted lock clears `viewerIgnoredText` (the line no

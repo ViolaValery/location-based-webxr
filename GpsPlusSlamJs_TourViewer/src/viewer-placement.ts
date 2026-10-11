@@ -11,8 +11,9 @@
  * 2026-09-28-0953 §3.6, D20, M5c; `moved-code-check.ts`): on each new device
  * fix in the store. A code read as moved is VETOED - its keep-alive stops,
  * every vote is taken back (`ViewerVoteSink.retractVotes`), so the content
- * moves once to where GPS puts it; its later locks are ignored for the rest
- * of the tour; the gate and the line say so; the viewing log records why.
+ * moves once to where GPS puts it; its later locks are ignored until wider
+ * evidence lifts the veto (polish round C5); the gate and the line say so;
+ * the viewing log records why.
  */
 
 import { createQrTrackingController } from "gps-plus-slam-app-framework/ar/qr/qr-tracking-controller";
@@ -45,6 +46,7 @@ import {
   createMovedCodeChecks,
   type MovedCodeChecks,
   type MovedCodeVerdict,
+  type RestoredCode,
 } from "./moved-code-check.js";
 import { describeOpenError } from "./open-errors.js";
 import { tallyEvaluation, type FusedTallies } from "./qr-debug-readout.js";
@@ -524,7 +526,7 @@ export function createViewerPlacement(deps: {
    * dispatches of the veto's own recovery are not judged again.
    */
   function startMovedCodeChecks(): MovedCodeChecks {
-    const checks = createMovedCodeChecks();
+    const checks = createMovedCodeChecks({ onRestored: restoreMovedCode });
     ctx.movedCodeChecks = checks;
     const frameEpoch = (): number =>
       arStore.getState().qrDetected.frameEpoch ?? 0;
@@ -567,8 +569,8 @@ export function createViewerPlacement(deps: {
   }
 
   /**
-   * The veto (owner decision 2026-10-02): the code is ignored for the rest
-   * of the tour; its keep-alive stops; every vote is taken back - the GPS
+   * The veto (owner decision 2026-10-02; re-judged since polish round C5,
+   * `restoreMovedCode`): the code is ignored; its keep-alive stops; every vote is taken back - the GPS
    * history reset and the device fixes re-fed with the soft keys off (the
    * M5a arm that lands on the GPS answer), so the content moves ONCE; the
    * gate and the line say the code is ignored; the viewing log records the
@@ -603,6 +605,24 @@ export function createViewerPlacement(deps: {
     });
     ctx.viewerIgnoredText = verdict.text;
     markGateIgnored(verdict.text);
+    hooks.renderArStatus();
+  }
+
+  /**
+   * A veto lifted (polish round C5, owner decision Q-C5): the check read
+   * the code consistent again on wider evidence. The code is no longer
+   * ignored, so its next lock votes and the check pins it again; the line
+   * stops saying it is ignored. Votes taken back at the veto are not
+   * restored: the next lock casts fresh ones.
+   */
+  function restoreMovedCode(restored: RestoredCode): void {
+    if (!ctx.ignoredCodes.delete(restored.levelId)) return;
+    if (ctx.viewerIgnoredText === restored.text) ctx.viewerIgnoredText = null;
+    deps.viewingLog?.codeRestored({
+      text: restored.text,
+      levelId: restored.levelId,
+      evidence: restored.evidence,
+    });
     hooks.renderArStatus();
   }
 
