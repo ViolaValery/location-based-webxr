@@ -2337,12 +2337,12 @@ test("Exit AR keeps the work: the pin is still listed after the exit and offered
   await expect(page.getByTestId("object-list")).toContainText(
     "Kept by the exit",
   );
-  // Back into AR: the pin is still there.
+  // Back into AR: the pin is still there. In AR the list is the chooser,
+  // which counts the objects rather than naming them: the fixture's pin
+  // and this one.
   await page.getByTestId("enter-ar").click();
   await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
-  await expect(page.getByTestId("object-list")).toContainText(
-    "Kept by the exit",
-  );
+  await expect(page.getByTestId("object-list")).toContainText("2 objects");
 
   await page.reload();
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
