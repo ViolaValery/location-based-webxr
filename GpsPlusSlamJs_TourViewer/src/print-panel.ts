@@ -25,6 +25,7 @@ import { recheckNote, type LinkCheckResult } from "./link-check.js";
 import type { ViewerMode } from "./mode.js";
 import { codeIndexFromInput, reprintOrphanWarning } from "./qr-author-mode.js";
 import { qrCodeId } from "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id";
+import { readSideM } from "./printed-side.js";
 
 /**
  * The CSS side length to write into `--print-side` right now, or null to
@@ -510,7 +511,7 @@ async function generatePrintCode(
   writeInfo: (text: string) => void,
   measuredCodeIds: () => readonly string[],
 ): Promise<string> {
-  const sideCss = printedSideCss(Number(dom.sizeInput.value)); // validates
+  const sideCss = printedSideCss(readSideM(dom.sizeInput)); // validates
   const { codeIndex, coerced } = codeIndexFromInput(dom.codeInput.value);
   const plan = await planPrintCode(dom.urlInput.value.trim(), { codeIndex });
   // margin 0: the canvas carries the SYMBOL only — the printed side equals
@@ -526,7 +527,7 @@ async function generatePrintCode(
   // The page-fit warning rides IN #print-info, not a separate channel: it
   // must be read in the same glance as the "100% scale" instruction whose
   // combination with an oversized symbol clips the code (PR #364 review).
-  const sizeM = Number(dom.sizeInput.value);
+  const sizeM = readSideM(dom.sizeInput);
   const warning = homePrintWarning(sizeM);
   // The warning is about printing THIS PAGE from the browser's dialog,
   // whose margins are not ours. The PDF below draws its own page and fits
@@ -571,7 +572,7 @@ async function buildPrintPdf(
   dom: PrintPanelDom,
   downloadPdf: (blob: Blob, filename: string) => Promise<boolean>,
 ): Promise<string> {
-  const sideM = Number(dom.sizeInput.value);
+  const sideM = readSideM(dom.sizeInput);
   const url = dom.urlInput.value.trim();
   const { count, coerced, clamped } = printCountFromInput(dom.countInput.value);
   // The numbering starts where the code-number field says, so a second

@@ -1773,10 +1773,10 @@ test("the print panel renders a scannable code at a declared true size", async (
 
   // An oversized size warns in the same info line the scale instruction
   // lives in — a clipped code does not decode, so silence is the bug.
-  await page.getByTestId("author-size").fill("0.3");
+  await page.getByTestId("author-size").fill("30");
   await page.getByTestId("print-generate").click();
   await expect(page.getByTestId("print-info")).toContainText("cut off");
-  await page.getByTestId("author-size").fill("0.16");
+  await page.getByTestId("author-size").fill("16");
 
   // Failure path (async-UI rule): a bad URL surfaces in the panel and the
   // button restores.
@@ -1919,7 +1919,7 @@ test("a refused AR entry explains itself on the page, with no session to explain
   // this whole rule exists to keep on screen (M3 milestone review #2).
   await expect(page.getByTestId("setup-status")).toBeVisible();
   await expect(page.getByTestId("setup-status")).toContainText(
-    /side length in metres/i,
+    /side length in centimetres/i,
   );
   // Step 4 is still open - the message lives in it - and step 2, which
   // holds the field to fix, was opened alongside rather than instead.
@@ -2083,7 +2083,7 @@ test("the print step builds a real PDF of numbered codes", async ({ page }) => {
 
   // The failure path (async-UI rule): a size no paper can hold says which
   // size would work, and the button comes back.
-  await page.getByTestId("author-size").fill("0.4");
+  await page.getByTestId("author-size").fill("40");
   await page.getByTestId("print-pdf").click();
   // An EXPLICIT budget, because the failure this produced pointed
   // somewhere else entirely. Measured with a mutation observer on this

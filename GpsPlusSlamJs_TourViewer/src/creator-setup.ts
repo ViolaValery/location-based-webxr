@@ -88,6 +88,7 @@ import {
   type TourViewerStore,
 } from "./tour-viewer-session.js";
 import type { Wizard } from "./wizard.js";
+import { writeSideM } from "./printed-side.js";
 
 /**
  * Whether an AR session is live, from the controller's status.
@@ -283,7 +284,7 @@ export function wireCreatorSetup(deps: {
   dom.panel.addEventListener("beforexrselect", (event) => {
     event.preventDefault();
   });
-  dom.sizeInput.value = String(AUTHOR_DEFAULT_SIZE_M);
+  writeSideM(dom.sizeInput, AUTHOR_DEFAULT_SIZE_M);
 
   // The print-size check (QR size consensus plan S3a): measures the printed
   // code by parallax while the creator walks; reset per AR session and per

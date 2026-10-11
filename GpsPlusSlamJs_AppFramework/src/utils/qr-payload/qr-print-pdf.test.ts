@@ -24,6 +24,7 @@ import {
   type PrintablePdfCode,
 } from './qr-print-pdf.js';
 import { MAX_HOME_PRINTABLE_SIDE_M } from './qr-print-plan.js';
+import { AUTHOR_DEFAULT_SIZE_M } from '../../ar/qr/qr-mint-level.js';
 
 /** A checkerboard of `size` modules - dense enough to exercise the run
  *  merging, and every row differs from the next. */
@@ -564,5 +565,19 @@ describe('the print-scale guards (polish round M0b, A10)', () => {
     ].filter((m) => Math.abs(Number(m[1]) - widthPt) < 0.02);
     expect(bars).toHaveLength(2); // one per page
     expect((text.match(/10 cm/g) ?? []).length).toBe(2);
+  });
+});
+
+describe('the authoring default size (polish round M0b, P7)', () => {
+  // Why: the Tour Viewer prefills this size and prints it by PDF only. A
+  // default the PDF refuses would greet every creator with an error.
+  it('is a size the PDF prints on A4 and on Letter', () => {
+    expect(AUTHOR_DEFAULT_SIZE_M).toBe(0.18);
+    expect(AUTHOR_DEFAULT_SIZE_M).toBeLessThanOrEqual(
+      maxPrintablePdfSideM('a4')
+    );
+    expect(AUTHOR_DEFAULT_SIZE_M).toBeLessThanOrEqual(
+      maxPrintablePdfSideM('letter')
+    );
   });
 });

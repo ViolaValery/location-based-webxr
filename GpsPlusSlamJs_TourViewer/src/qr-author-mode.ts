@@ -428,7 +428,7 @@ export function archiveSizeNote(bytes: number): string {
  * not the default sends a creator looking for a number the page would have
  * supplied anyway (second testing session, F2).
  */
-export const MISSING_SIZE_MESSAGE = `Enter the printed code's side length in metres (e.g. ${String(AUTHOR_DEFAULT_SIZE_M)}) in step 2 before starting.`;
+export const MISSING_SIZE_MESSAGE = `Enter the printed code's side length in centimetres (e.g. ${String(Math.round(AUTHOR_DEFAULT_SIZE_M * 1000) / 10)}) in step 3 before starting.`;
 
 /** The finish step's labels through its async cycle (async-UI rule). */
 export const FINISH_LABELS = {

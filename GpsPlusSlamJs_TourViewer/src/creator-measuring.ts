@@ -49,6 +49,7 @@ import {
   type CodeMeasurement,
 } from "./visit-settle.js";
 import type { Wizard } from "./wizard.js";
+import { readSideM, writeSideM } from "./printed-side.js";
 
 /** Why a measurement found no stable pose: the gate closed since the
  *  render, so it is tried again. */
@@ -215,7 +216,7 @@ export function wireCreatorMeasuring(deps: {
     // min attribute never fires outside a form, and the resulting RangeError
     // used to unwind into the generic error box - the surface the creator is
     // not looking at (PR #360 review).
-    const parsedSize = Number(dom.sizeInput.value);
+    const parsedSize = readSideM(dom.sizeInput);
     if (!Number.isFinite(parsedSize) || parsedSize <= 0) {
       ctx.authorErrorText = MISSING_SIZE_MESSAGE;
       // REVEAL, not open (M3 milestone review #2): the message lands in
@@ -303,7 +304,7 @@ export function wireCreatorMeasuring(deps: {
     // For ITS code (M4c-3); the field too, the size new codes are solved
     // at - a code the tour stores at its own size keeps that.
     adoptedSizes.set(offer.text, sizeM);
-    dom.sizeInput.value = String(sizeM);
+    writeSideM(dom.sizeInput, sizeM);
     ctx.mintGeneration += 1;
     // That code's measurement no longer counts; another code in hand keeps
     // its own.
