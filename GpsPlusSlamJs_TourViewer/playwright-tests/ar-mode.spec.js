@@ -2347,6 +2347,12 @@ test("Exit AR keeps the work: the pin is still listed after the exit and offered
   await page.reload();
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
+  // The open has to finish first: it opens the remembered step itself, and
+  // a summary tap that lands after the helper read the step as closed then
+  // closes it again (red three times in a row on CI, PR #580).
+  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
+    timeout: 15000,
+  });
   await openMeasureStep(page);
   await expect(page.getByTestId("draft-offer")).toBeVisible({ timeout: 15000 });
   await expect(page.getByTestId("draft-offer-text")).toContainText("1 thing");
