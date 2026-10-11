@@ -82,7 +82,12 @@ async function buildZip({ withLevel = true } = {}) {
               lat: 47.5001,
               lon: 8.7001,
               alt: 400,
-              rotation: [0, 0, 0, 1],
+              // The facing a measurement of the fakes' code stores (it faces
+              // the camera: -90 degrees about Up in GPS-world NUE). An
+              // identity read 90 degrees off every visit's view of it -
+              // harmless until the settle replaced a stored code whose
+              // heading the visit's GPS cannot explain (field test 3, D-F6a).
+              rotation: [0, -Math.SQRT1_2, 0, Math.SQRT1_2],
             },
           },
         }),

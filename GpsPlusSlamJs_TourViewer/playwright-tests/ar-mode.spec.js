@@ -152,6 +152,12 @@ test("the plain page is the creator's setup; a ?qr= launch is the visitor's scre
   await openAsVisitor(page, RANGES_ARCHIVE);
   await expect(page.getByTestId("visitor-screen")).toBeVisible();
   await expect(page.getByTestId("visitor-screen")).toContainText("camera");
+  // The way from a tour to making one (polish round A8): the setup page,
+  // in a new tab so the tour stays open.
+  const own = page.getByTestId("make-your-own");
+  await expect(own).toBeVisible();
+  await expect(own).toHaveAttribute("href", "./");
+  await expect(own).toHaveAttribute("target", "_blank");
   await expect(page.getByTestId("wizard")).toBeHidden();
   await expect(page.getByTestId("link-input")).toBeHidden();
   // The transport-demo surfaces are the creator's (M2 review #2): a visitor
@@ -602,7 +608,8 @@ test("the creator measures the code, finishes, and downloads a rebuilt zip that 
     lat: 47.5001,
     lon: 8.7001,
     alt: 400,
-    rotation: [0, 0, 0, 1],
+    // The fixture's stored facing (archive-server.mjs), kept as hosted.
+    rotation: [0, -Math.SQRT1_2, 0, Math.SQRT1_2],
   });
   expect(level.qr.mintQuality).toBeUndefined();
   // The pin the hosted zip already carried SURVIVES the rebuild - the
@@ -1801,6 +1808,10 @@ test("opening a tour shows the code and the link it carries, without asking agai
   await expect(link).toBeVisible();
   const printed = await page.getByTestId("print-url-out").textContent();
   expect(await link.getAttribute("href")).toBe(new URL(printed ?? "").search);
+  // A new tab (polish round A17): the same tab threw away the open tour,
+  // the code and the step the creator was on - back reset everything.
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", /noopener/);
 
   // A SECOND tour replaces what the code carries (PR #434 review): the
   // panel used to re-open showing the previous tour's link, so the printed
@@ -2297,6 +2308,41 @@ test("a crash does not lose the walk: placed content survives a reload and lands
   );
   // The fixture's own pin, plus the one placed BEFORE the reload.
   expect(labels).toContain("The old gate");
+});
+
+test("Exit AR keeps the work: the pin is still listed after the exit and offered after a reload (polish round B7)", async ({
+  page,
+}) => {
+  // Why this matters (polish round B7): the owner left AR with "Exit AR"
+  // and read it as "my changes are gone". Every placement is in the draft
+  // the moment it is made; this pins what the page shows after the exit
+  // and that a reload still offers the work.
+  await page.goto("/?nocache=1");
+  await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
+  await page.getByTestId("open-button").click();
+  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
+    timeout: 15000,
+  });
+  await measureTheCode(page);
+  await page.getByTestId("setup-pin").click();
+  await page.getByTestId("pin-label").fill("Kept by the exit");
+  await page.getByTestId("pin-save").click();
+  await expect(page.getByTestId("setup-status")).toContainText(
+    /1 object placed/,
+  );
+
+  await page.getByTestId("enter-ar").click();
+  await expect(page.getByTestId("enter-ar")).not.toHaveText("Exit AR");
+  await expect(page.getByTestId("object-list")).toContainText(
+    "Kept by the exit",
+  );
+
+  await page.reload();
+  await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
+  await page.getByTestId("open-button").click();
+  await openMeasureStep(page);
+  await expect(page.getByTestId("draft-offer")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId("draft-offer-text")).toContainText("1 thing");
 });
 
 test("a draft is offered again after Not now, and gone after Delete it", async ({
