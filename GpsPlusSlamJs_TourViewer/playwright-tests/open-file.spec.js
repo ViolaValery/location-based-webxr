@@ -32,7 +32,7 @@ async function tourFile(request) {
  *  creator has a stored host, so the page starts at step 2.
  *  @param {import("@playwright/test").Page} page */
 async function openHostStep(page) {
-  await page.getByTestId("step-host").locator("summary").click();
+  await page.getByTestId("station-host").click();
   await expect(page.getByTestId("step-host")).toHaveAttribute("open", "");
 }
 

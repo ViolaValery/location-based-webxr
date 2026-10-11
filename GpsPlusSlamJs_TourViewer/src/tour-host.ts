@@ -109,14 +109,15 @@ export function readTourHost(
   }
 }
 
-/** Store the choice; a store that throws is ignored (the choice then lasts
- *  this page only). */
+/** Store the choice, or clear it with null (a deselected tile); a store
+ *  that throws is ignored (the choice then lasts this page only). */
 export function writeTourHost(
   store: TourHostStore | undefined,
-  host: TourHost,
+  host: TourHost | null,
 ): void {
   try {
-    store?.setItem(HOST_KEY, host);
+    // An empty value reads back as no choice (`readTourHost`).
+    store?.setItem(HOST_KEY, host ?? "");
   } catch {
     // Site data blocked: the choice holds for this page only.
   }

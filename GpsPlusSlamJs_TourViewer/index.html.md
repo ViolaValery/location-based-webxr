@@ -14,7 +14,22 @@ screen. Everything marked `.creator-only` is hidden for a visitor
   device (M6). **SIX steps since polish round M2** (the flow rework of
   F10 had made it four; step 6 restores a completion step of its own). The
   steps use up to `48rem` of the width (A14; they were capped at 26rem,
-  half a landscape phone), and a short overview sits in the header:
+  half a landscape phone).
+
+  **The L5 look since polish round M2b** (the owner's prototype verdict,
+  D-P1): on the creator page an intro (`#setup-intro`: the opening, the
+  "why" list with the privacy line, "Follow the route"), then the stage
+  (`#setup-stage`): the illustrated map (`#setup-map`, an example route
+  with six stations drawn by `setup-stage.ts`; ids prefixed `map-`)
+  beside the step card (`#setup-card`) on a wide or landscape screen, above
+  it on a phone. The card shows ONE step - the open `<details>`; closed
+  steps are hidden by CSS - under its station row (`#setup-badge`,
+  `#setup-of`, `#setup-dots`) and over `#setup-nav` (Back/Next; none on
+  step 6, no Next on step 5). The paper palette is set on the design
+  system's own tokens on `:root`, only for the creator page and only while
+  no AR session runs (`body[data-ar-active]`), so `#ar-root` over the
+  camera keeps the sheet's tokens; L5's own tokens are `--map-*`. The
+  header (`<h1>Tour Viewer</h1>`) shows for a visitor only. The steps:
   1. **Where the tour lives** (`#step-host`): the host tiles
      (`#host-tiles`, a radiogroup filled by `host-picker.ts`), the chosen
      host's steps (`#host-steps`), the starter zip (`#starter-zip`, only
@@ -78,7 +93,11 @@ Behaviour lives in the wiring modules composed by `src/main.ts` (see
 ## Public API
 
 The `data-testid` contract the e2e suite drives: `wizard`, `step-host`
-(owns `host-tiles`, `host-steps`, `host-continue`), `step-link` (owns
+(owns `host-tiles`, `host-steps`, `host-continue`), `setup-intro` (owns
+`setup-begin`), `setup-stage`, `setup-map` (owns `setup-map-svg` and the
+drawn `map-station-<step>`), `setup-card` (owns `setup-badge`, `setup-of`,
+`setup-dots` with `station-<step>`, `setup-nav`, `setup-back`,
+`setup-next`), `step-link` (owns
 `link-status`),
 `starter-zip`, `link-input`, `open-button`, `open-file-button`,
 `file-input`, `file-status`, `tour-trust`, `file-advice`, `open-file-advice`,

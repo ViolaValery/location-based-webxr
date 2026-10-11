@@ -57,8 +57,9 @@ describe("the shortener advice carries its warning", () => {
     // one check a creator would naturally run is the one that lies. The
     // copy has to say so in words, and point at this step's check instead.
     const copy = linkStepCopy();
-    expect(copy).toMatch(/proves nothing|is not (?:a|the) test/i);
-    expect(copy).toMatch(/paste the short link here/i);
+    expect(copy).toMatch(/proves\s+nothing|is\s+not\s+(?:a|the)\s+test/i);
+    // Whitespace-tolerant: the formatter wraps prose wherever it likes.
+    expect(copy).toMatch(/paste the\s+short link\s+here/i);
   });
 
   it("does not offer t.co as the way out", () => {

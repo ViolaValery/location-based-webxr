@@ -124,7 +124,8 @@ async function openMeasureStep(page) {
   // closes it.
   if (await step.evaluate((el) => /** @type {HTMLDetailsElement} */ (el).open))
     return;
-  await step.locator("summary").click();
+  // The step card shows one step; its station dot opens another (M2b).
+  await page.getByTestId("station-measure").click();
   await expect(step).toHaveAttribute("open", "");
 }
 
@@ -1730,7 +1731,7 @@ test("the print panel renders a scannable code at a declared true size", async (
   // hang, then author" loop), collapsed until expanded.
   await page.goto("/");
   await expect(page.getByTestId("print-url")).toBeHidden();
-  await page.getByTestId("print-panel").locator("summary").click();
+  await page.getByTestId("station-print").click();
   await page
     .getByTestId("print-url")
     .fill("https://www.dropbox.com/scl/fi/abc/tour.zip?rlkey=k&dl=0");
@@ -1826,7 +1827,7 @@ test("opening a tour shows the code and the link it carries, without asking agai
   // code launched the wrong tour. The displayed link and the encoded
   // payload must move together.
   const SECOND = "http://127.0.0.1:5197/ranges-ok/plain-tour.zip";
-  await page.getByTestId("step-link").locator("summary").click();
+  await page.getByTestId("station-link").click();
   await page.getByTestId("link-input").fill(SECOND);
   await page.getByTestId("open-button").click();
   await expect(page.getByTestId("print-url-shown")).toHaveText(SECOND, {
@@ -1880,7 +1881,7 @@ test("the setup remembers the step the creator reached, per hosted link (M6)", a
   await page.getByTestId("link-input").fill(ARCHIVE);
   await page.getByTestId("open-button").click();
   await expect(page.getByTestId("print-panel")).toHaveAttribute("open", "");
-  await page.getByTestId("step-hang").locator("summary").click();
+  await page.getByTestId("station-hang").click();
   await expect(page.getByTestId("step-hang")).toHaveAttribute("open", "");
   await expect(page.getByTestId("print-panel")).not.toHaveAttribute("open", "");
 
@@ -2139,7 +2140,7 @@ test("a failed open puts the page back to having no tour, not to showing the old
   await expect(page.getByTestId("print-url-ask")).toBeHidden();
 
   // A second link that does not resolve: the tour closes and none opens.
-  await page.getByTestId("step-link").locator("summary").click();
+  await page.getByTestId("station-link").click();
   await page
     .getByTestId("link-input")
     .fill("http://127.0.0.1:5197/ranges-ok/nope.zip");
@@ -2849,7 +2850,7 @@ test("on a device that can share files, the starter button says share and report
   // Downloads - and it needs no AR session to reach.
   await installTourViewerArFakes(page, { shareRoute: true });
   await page.goto("/?nocache=1");
-  await page.getByTestId("step-host").locator("summary").click();
+  await page.getByTestId("station-host").click();
   const starter = page.getByTestId("starter-zip");
   await expect(starter).toHaveText(/share the empty starter tour/i);
   await expect(starter).not.toHaveText(/download/i);
@@ -2877,7 +2878,7 @@ test("a share that hands nothing over says so, without blaming the creator", asy
   await page.evaluate(() => {
     /** @type {any} */ (window).__tourViewerTest.saveOutcome = false;
   });
-  await page.getByTestId("step-host").locator("summary").click();
+  await page.getByTestId("station-host").click();
   const starter = page.getByTestId("starter-zip");
   await starter.click();
   await expect(starter).toHaveText(/not shared/i);

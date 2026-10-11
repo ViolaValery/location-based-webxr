@@ -127,14 +127,89 @@ test.describe("a landscape phone", () => {
   test.use({ viewport: { width: 915, height: 412 } });
 
   test("uses the width, without scrolling sideways", async ({ page }) => {
-    // A14: the steps were capped at 26rem (416 px), half of this screen.
+    // A14, then M2b: on a landscape phone the map and the step card share
+    // the screen side by side, rather than one narrow column.
     await page.goto("/?nocache=1");
-    const body = page.getByTestId("step-link").locator(".step-copy").first();
-    const width = await body.evaluate((el) => el.getBoundingClientRect().width);
-    expect(width).toBeGreaterThan(600);
+    const map = await page.getByTestId("setup-map").boundingBox();
+    const card = await page.getByTestId("setup-card").boundingBox();
+    if (map === null || card === null)
+      throw new Error("map or card not laid out");
+    expect(card.x).toBeGreaterThanOrEqual(map.x + map.width - 1);
+    expect(map.width + card.width).toBeGreaterThan(800);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+});
+
+test.describe("the L5 look (polish round M2b)", () => {
+  // Why: the owner chose a page that shows one step at a time as a station
+  // on a route. The card must hold exactly one step, the dots and the
+  // map's stations must move between them, and the row must follow the
+  // verdict: no Back on step 1, no Next on step 5, no row on step 6.
+  test("shows one step at a time and moves between them by station", async ({
+    page,
+  }) => {
+    await page.goto("/?nocache=1");
+    await expect(page.getByTestId("setup-intro")).toBeVisible();
+    await expect(page.getByTestId("map-station-host")).toBeVisible();
+    const openSteps = page.locator("#setup-card .step[open]");
+    await expect(openSteps).toHaveCount(1);
+    await expect(page.getByTestId("setup-of")).toHaveText("Step 2 of 6");
+
+    await page.getByTestId("map-station-hang").click();
+    await expect(page.getByTestId("step-hang")).toHaveAttribute("open", "");
+    await expect(page.getByTestId("step-link")).toBeHidden();
+    await expect(openSteps).toHaveCount(1);
+
+    await page.getByTestId("setup-next").click();
+    await expect(page.getByTestId("setup-of")).toHaveText("Step 5 of 6");
+    await expect(page.getByTestId("setup-next")).toBeHidden();
+    await expect(page.getByTestId("setup-back")).toBeVisible();
+
+    await page.getByTestId("station-done").click();
+    await expect(page.getByTestId("setup-nav")).toBeHidden();
+
+    await page.getByTestId("station-host").click();
+    await expect(page.getByTestId("setup-back")).toBeHidden();
+    // A tap on the open step's heading must not collapse it.
+    await page.getByTestId("step-host").locator("summary").click();
+    await expect(page.getByTestId("step-host")).toHaveAttribute("open", "");
+  });
+
+  // Why (D-P1): the paper palette is the setup page's; over the camera the
+  // overlay keeps the design system's own tokens.
+  test("drops the paper palette while an AR session runs", async ({ page }) => {
+    await page.goto("/?nocache=1");
+    const paper = () =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--paper")
+          .trim()
+          .toLowerCase(),
+      );
+    expect(await paper()).toBe("#f4eedf");
+    await page.evaluate(() => {
+      document.body.dataset["arActive"] = "true";
+    });
+    expect(await paper()).not.toBe("#f4eedf");
+  });
+
+  test("keeps the visitor's screen out of the paper look", async ({ page }) => {
+    await page.goto(
+      `/?qr=${encodeURIComponent("http://127.0.0.1:5197/ranges-ok/tour.zip")}`,
+    );
+    await expect(page.getByTestId("visitor-screen")).toBeVisible();
+    await expect(page.getByTestId("setup-intro")).toBeHidden();
+    await expect(page.getByTestId("setup-map")).toBeHidden();
+    expect(
+      await page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--paper")
+          .trim()
+          .toLowerCase(),
+      ),
+    ).not.toBe("#f4eedf");
   });
 });

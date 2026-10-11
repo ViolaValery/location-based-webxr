@@ -28,7 +28,7 @@ offered). Plan:
   itself (`driveReplaceSteps`, which knows the file's name).
 - `needsStarterZip(host)` - every cloud host needs a file before it gives a
   link; an own server does not.
-- `readTourHost(store)` / `writeTourHost(store, host)` - the choice under
+- `readTourHost(store)` / `writeTourHost(store, host | null)` - the choice (null clears it) under
   `tour-viewer.wizard.host`.
 
 ## Invariants & assumptions

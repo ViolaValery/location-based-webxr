@@ -17,6 +17,8 @@ listed in `index.html.md`. The concerns and their modules:
 - `mode.ts` - the mode from the launch URL (`viewerModeFromSearch`).
 - `wizard.ts` - the creator's guided setup: the six steps, the starter zip,
   the "open as a visitor" link (`wireWizard`).
+- `setup-stage.ts` - the L5 station row and map (`wireSetupStage`, creator
+  only, wired after the visitor screen so its hidden states are final).
 - `host-picker.ts` - step 1's host tiles (`wireHostPicker`, creator only;
   Continue opens the link step and focuses the field).
 - `link-check.ts` - the PDF's re-check of an unverified link, bound here

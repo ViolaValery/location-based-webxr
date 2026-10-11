@@ -161,3 +161,30 @@ describe("wireHostPicker", () => {
     }
   });
 });
+
+describe("a second tap deselects (prototype verdict P6)", () => {
+  // Why: the owner tapped Google Drive twice and expected to be back where
+  // they started - the text shown before a choice. The stored choice goes
+  // too, or a reload would bring back a host they just let go of.
+  it("a tap on the chosen host clears the choice, its steps and the store", () => {
+    const store = memoryStore();
+    const { dom, tile } = setup(store);
+    tile("drive").fire("click");
+    tile("drive").fire("click");
+    expect(
+      dom.tiles.children.map((t) => t.getAttribute("aria-checked")),
+    ).toEqual(["false", "false", "false", "false", "false"]);
+    expect(dom.steps.hidden).toBe(true);
+    expect(dom.starter.hidden).toBe(true);
+    expect(dom.continueButton.hidden).toBe(true);
+    expect(readTourHost(store)).toBeNull();
+  });
+
+  it("a tap on another host still switches to it", () => {
+    const store = memoryStore();
+    const { tile } = setup(store);
+    tile("drive").fire("click");
+    tile("github").fire("click");
+    expect(readTourHost(store)).toBe("github");
+  });
+});

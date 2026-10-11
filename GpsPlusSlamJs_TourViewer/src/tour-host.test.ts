@@ -122,3 +122,13 @@ describe("hostReplaceText (polish round M2, step 6)", () => {
     }
   });
 });
+
+describe("clearing the stored host", () => {
+  // Why: a deselected host (P6) must not come back after a reload.
+  it("writeTourHost(store, null) leaves no choice", () => {
+    const store = memoryStore();
+    writeTourHost(store, "drive");
+    writeTourHost(store, null);
+    expect(readTourHost(store)).toBeNull();
+  });
+});

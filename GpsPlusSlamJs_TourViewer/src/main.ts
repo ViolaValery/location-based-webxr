@@ -41,6 +41,7 @@ import type { ScanOpen } from "./scan-open.js";
 import { viewerModeFromSearch } from "./mode.js";
 import { describeOpenError } from "./open-errors.js";
 import { wireHostPicker } from "./host-picker.js";
+import { wireSetupStage } from "./setup-stage.js";
 import { readTourHost } from "./tour-host.js";
 import { checkLink } from "./link-check.js";
 import { wirePrintPanel } from "./print-panel.js";
@@ -309,6 +310,63 @@ const visitor = wireVisitorScreen({
     hooks.renderArEntry();
   },
 });
+
+// The setup page's station row and map (polish round M2b, the L5 look):
+// wired after the visitor screen, which reveals the creator-only parts,
+// so the row's own hidden states are the last word.
+if (mode === "creator") {
+  const stepNodes = {
+    host: element<HTMLDetailsElement>("step-host"),
+    link: element<HTMLDetailsElement>("step-link"),
+    print: printPanel,
+    hang: element<HTMLDetailsElement>("step-hang"),
+    measure: measureStep,
+    done: element<HTMLDetailsElement>("step-done"),
+  };
+  const summaryOf = (step: HTMLDetailsElement): HTMLElement | undefined =>
+    step.querySelector<HTMLElement>(":scope > summary") ?? undefined;
+  const svgById = <T extends SVGElement>(id: string): T | undefined =>
+    (document.getElementById(id) as T | null) ?? undefined;
+  const route = svgById<SVGGeometryElement>("map-route");
+  const reveal = svgById<SVGPathElement>("map-route-reveal");
+  const stations = svgById<SVGGElement>("map-stations");
+  const start = svgById<SVGGElement>("map-start");
+  const endFlag = svgById<SVGGElement>("map-end-flag");
+  wireSetupStage<HTMLButtonElement>({
+    dom: {
+      steps: stepNodes,
+      summaries: Object.fromEntries(
+        Object.entries(stepNodes).map(([step, node]) => [
+          step,
+          summaryOf(node),
+        ]),
+      ),
+      badge: element("setup-badge"),
+      of: element("setup-of"),
+      dots: element("setup-dots"),
+      nav: element("setup-nav"),
+      back: element("setup-back"),
+      next: element("setup-next"),
+      begin: element("setup-begin"),
+      stage: element("setup-stage"),
+    },
+    openStep: (step) => {
+      wizard.openStep(step);
+    },
+    createElement: (tag) => document.createElement(tag),
+    ...(route === undefined || reveal === undefined || stations === undefined
+      ? {}
+      : {
+          map: {
+            route,
+            reveal,
+            stations,
+            ...(start === undefined ? {} : { start }),
+            ...(endFlag === undefined ? {} : { endFlag }),
+          },
+        }),
+  });
+}
 
 // Step 4's scan-to-open lives in archive-open, which is wired below the
 // setup panel that feeds it; bound once both exist.

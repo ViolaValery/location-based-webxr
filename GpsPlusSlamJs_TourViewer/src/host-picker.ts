@@ -74,8 +74,9 @@ export function wireHostPicker<T extends TileNode>(deps: {
     tile.dataset.host = id;
     tile.setAttribute("role", "radio");
     tile.addEventListener("click", () => {
-      chosen = id;
-      writeTourHost(store, id);
+      // A second tap on the chosen host lets it go (prototype verdict P6).
+      chosen = chosen === id ? null : id;
+      writeTourHost(store, chosen);
       render();
     });
     return { id, tile };

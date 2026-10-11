@@ -12,7 +12,9 @@ and a Continue that hands over to step 2 (the link). Plan:
 ## Public API
 
 - `wireHostPicker<T>({ dom, store, createElement, onContinue })`
-  - `dom.tiles` - the `role="radiogroup"` the tiles are rendered into.
+  - `dom.tiles` - the `role="radiogroup"` the tiles are rendered into. A
+    second tap on the chosen tile deselects it and clears the stored choice
+    (prototype verdict P6).
   - `dom.steps` - the `<ol>` for the chosen host's steps; hidden until a
     choice.
   - `dom.starter` - the starter zip button. Only its visibility is this

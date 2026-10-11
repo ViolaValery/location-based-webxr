@@ -61,7 +61,7 @@ for (const viewport of PHONES) {
     });
     const step = page.getByTestId("step-measure");
     if (!(await step.evaluate((el) => /** @type {any} */ (el).open))) {
-      await step.locator("summary").click();
+      await page.getByTestId("station-measure").click();
     }
     // The troubleshooting recording's marker is one more line inside the
     // overlay (authoring recording plan 2026-09-28-0953, M1a) - part of the
@@ -106,7 +106,7 @@ for (const viewport of PHONES) {
     await page.goto("/?debug=1");
     const step = page.getByTestId("step-measure");
     if (!(await step.evaluate((el) => /** @type {any} */ (el).open))) {
-      await step.locator("summary").click();
+      await page.getByTestId("station-measure").click();
     }
     await expect(page.getByTestId("enter-ar")).toBeEnabled({ timeout: 10000 });
     await page.getByTestId("enter-ar").click();
@@ -152,7 +152,7 @@ for (const viewport of PHONES) {
     });
     const step = page.getByTestId("step-measure");
     if (!(await step.evaluate((el) => /** @type {any} */ (el).open))) {
-      await step.locator("summary").click();
+      await page.getByTestId("station-measure").click();
     }
     await page.getByTestId("record-session").check();
     await expect(page.getByTestId("enter-ar")).toBeEnabled({ timeout: 10000 });
