@@ -248,6 +248,20 @@ describe.skipIf(ZIP === undefined)("a Tour Viewer field recording", () => {
     say("events in detail:");
     for (const a of actions) {
       const p = a.payload as Record<string, unknown>;
+      // A viewing session's decisions (the 2026-10-10 viewer recording):
+      // everything but the bulky matrices and level text; the per-vote
+      // stream is summarised by its first and last entries elsewhere.
+      if (
+        a.type.startsWith("tourViewing/") &&
+        a.type !== "tourViewing/votesCast"
+      ) {
+        const brief = Object.fromEntries(
+          Object.entries(p).filter(
+            ([k]) => !["alignmentMatrix", "level", "qrPoseWorld"].includes(k),
+          ),
+        );
+        say(`  ${a.type} ${JSON.stringify(brief).slice(0, 700)}`);
+      }
       if (a.type === "tourAuthoring/codeMeasured") {
         const level = JSON.parse(String(p.levelJson)) as {
           qr?: {
