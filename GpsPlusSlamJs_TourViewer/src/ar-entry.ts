@@ -247,6 +247,8 @@ export function wireArEntry(deps: {
       accuracyM:
         accuracies.length === 0 ? null : accuracies[accuracies.length >> 1]!,
       extentM: gpsExtent.update(positions),
+      // Fixes WITH an accuracy are all the fixes there are: the store keeps
+      // no fix without one (ar-entry.test.ts pins it; PR #583 review).
       fixes: accuracies.length,
     };
     return gpsQuality;

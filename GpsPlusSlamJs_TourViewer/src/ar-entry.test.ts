@@ -22,6 +22,7 @@ import { RECORDING_DEPTH } from "./authoring-recording.js";
 import {
   endSession,
   recordGpsEvent,
+  selectGpsPositions,
   resetGpsSessionData,
   setZeroPos,
 } from "gps-plus-slam-app-framework/state";
@@ -263,6 +264,35 @@ describe("wireArEntry QR readout and visitor hint", () => {
     expect(h.dom.arDebug.textContent).toMatch(
       /gps: ±8\.3 m median, extent [\d.]+ m over 3 fixes/,
     );
+  });
+
+  // Why (PR #583 review, rejected with this test): the review read the GPS
+  // line's fix count as missing fixes that carry no accuracy (the field is
+  // optional), so a device sending none would read "no fix yet" while their
+  // extent was known. The store keeps no such fix, so the count is every
+  // fix there is; if the store ever starts keeping them, this fails first.
+  it("sees no fix without an accuracy: the store keeps none", () => {
+    const h = harness();
+    for (let i = 0; i < 4; i += 1) {
+      h.arStore.dispatch(
+        recordGpsEvent({
+          odomPosition: [i, 0, 0],
+          odomRotation: [0, 0, 0, 1],
+          rawGpsPoint: {
+            id: `fix-${String(i)}`,
+            latitude: 47.5 + i * 1e-5,
+            longitude: 8.7,
+            altitude: 400,
+            timestamp: 1_790_000_000_000 + i * 1000,
+          },
+        } as never),
+      );
+    }
+    h.arStore.dispatch(setZeroPos({ lat: 47.5, lon: 8.7 }));
+    expect(selectGpsPositions(h.arStore.getState())).toHaveLength(0);
+    h.ctx.debug = true;
+    h.entry.renderArStatus();
+    expect(h.dom.arDebug.textContent).toContain("gps: no fix yet");
   });
 
   it("writes the ?debug=1 block only with the flag", () => {
