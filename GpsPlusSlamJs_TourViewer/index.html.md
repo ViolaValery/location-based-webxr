@@ -18,7 +18,9 @@ screen. Everything marked `.creator-only` is hidden for a visitor
 
   **The L5 look since polish round M2b** (the owner's prototype verdict,
   D-P1): on the creator page an intro (`#setup-intro`: the opening, the
-  "why" list with the privacy line - four reasons two per row, as in the
+  "why" list - four reasons two per row ("No sign-up, no account" in place
+  of the privacy line since 2026-10-12: the Drive relay passes tours through
+  the site worker, so "no servers of ours" was not true), as in the
   L5 prototype, with the gaps set in the page's own CSS because the design
   system zeroes paragraph and list margins (r820 feedback R1;
   `setup-flow.spec.js` pins rows and gaps at three viewports) - and
