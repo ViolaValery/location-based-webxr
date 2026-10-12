@@ -608,7 +608,8 @@ export function reprintOrphanWarning(
   // warn about.
   if (measuredCodeIds.some((id) => linkCodeIds.includes(id))) return null;
   return (
-    "Note: this tour's measured codes were printed from another link. " +
+    "Note: this tour's measured codes do not match this link (or this " +
+    "spelling of it). " +
     "Posters printed from this one are new codes: the old measurement " +
     "will not be found for them, so hang them and measure them in step 5. " +
     "To print codes that match the posters already hanging, use the " +

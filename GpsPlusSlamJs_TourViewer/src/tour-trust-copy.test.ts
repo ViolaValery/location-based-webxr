@@ -83,14 +83,15 @@ describe("trustLines", () => {
   });
 
   it.each([
-    ["not signed", { kind: "listed" } as const],
+    ["not signed", { kind: "listed" } as const, 0],
     [
       "signed but not checked here",
       { kind: "unsupported", author: A } as const,
+      1,
     ],
   ])(
     "shows no links for a tour that is %s (K1 milestone review R12)",
-    (_label, signature) => {
+    (_label, signature, expectedLines) => {
       // Why: links are the AUTHOR's claim about their other tours. Without
       // a checked signature nobody vouches for the list, and a line naming
       // keys would lend any key the look of a known author.
@@ -99,8 +100,9 @@ describe("trustLines", () => {
         links: [{ seriesId: "K7fQ2mX9pL4sT8vB1nR6wA", author: A }],
       });
       // An unsigned tour has no line at all since the r820 feedback; a
-      // signature that was not checked keeps its one line.
-      expect(out.length).toBeLessThanOrEqual(1);
+      // signature that was not checked keeps its one line (exact counts:
+      // M0c review, finding 6a).
+      expect(out).toHaveLength(expectedLines);
       expect(out.join("\n")).not.toMatch(/Links to/);
     },
   );

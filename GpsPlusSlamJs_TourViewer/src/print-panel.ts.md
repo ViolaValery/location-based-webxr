@@ -62,7 +62,14 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
     it from then on; the code number continues theirs unless the creator
     typed one. Until then, and for a tour without codes, the codes carry
     the link trimmed (`printableLink`: a Drive link to its file address,
-    R5).
+    R5). The search runs only for the PRESENTED tour link (none after a
+    tour from a file, which asks for a link again), a link typed into the
+    field drops the spelling found, and while a tour's codes are being
+    matched the PDF button reads "Matching your printed codes…" and the
+    orphan warning waits - otherwise it printed new codes from 1 and
+    warned about the very thing R4 reported (M0c review, findings 1-2).
+    The preview tiles show the poster text as the PDF prints it
+    (`winAnsiText`).
   - `PrintPanel.presentNoTour()` - back to asking for the link, the tiles
     cleared.
   - The optional `checkLink` dep runs before the PDF while the link is

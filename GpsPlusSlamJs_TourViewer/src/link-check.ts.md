@@ -23,7 +23,9 @@ PDF. Plan:
   (PR #585 review: it IS a tour); anything else says the file is not a tour
   that opens here.
 - `printsUnverified(cause, host?)` - true for `offline`, and for `missing`
-  unless the host is a cloud host (`needsStarterZip`).
+  unless the host is a cloud host (`needsStarterZip`). Step 2 passes the
+  host the LINK points to (`tour-host.ts` `hostOfLink`, M0c review), not
+  the tile picked in step 1.
 - `type LinkCheckResult`, `recheckNote(result)` - the line put in front of
   the PDF's result after the re-check.
 - `type LinkOpener`, `checkLink(url, open)` - opens the archive with

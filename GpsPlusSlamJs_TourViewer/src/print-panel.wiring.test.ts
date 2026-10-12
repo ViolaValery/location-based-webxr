@@ -64,6 +64,7 @@ function el(value = "") {
     disabled: false,
     open: false,
     replaceChildren: () => undefined,
+    removeAttribute: () => undefined,
     addEventListener: (type: string, handler: () => void) => {
       handlers.set(type, [...(handlers.get(type) ?? []), handler]);
     },
@@ -101,6 +102,7 @@ function wire(
     codeInput: el("1"),
     info: el(),
     tiles: el(),
+    urlOut: el(),
     countInput: el("3"),
     countDown: el(),
     countUp: el(),
@@ -306,10 +308,56 @@ describe("the link the codes carry (r820 feedback R4, R5)", () => {
     await vi.waitFor(() => {
       expect(dom.codeInput.value).toBe("2");
     });
+    // ...with no warning: the codes match (M0c review, finding 6c).
+    await vi.waitFor(() => {
+      expect(dom.info.textContent).not.toMatch(/Note:/);
+    });
     spies.planned.length = 0;
     dom.pdfButton.fire("click");
     await settled(dom);
     expect(new Set(spies.planned)).toEqual(new Set([PHONE]));
+  });
+
+  // M0c review, finding 2: while the tour's codes are matched, the warning
+  // would name the very problem R4 reported, and the PDF would print new
+  // codes from 1. Both wait, and the button says why.
+  it("holds the PDF while the tour's codes are being matched", async () => {
+    const plan =
+      await import("gps-plus-slam-app-framework/utils/qr-payload/qr-print-plan");
+    const { qrCodeId } =
+      await import("gps-plus-slam-app-framework/utils/qr-payload/qr-code-id");
+    const measured = [
+      await qrCodeId((await plan.planPrintCode(PHONE, { codeIndex: 1 })).url),
+    ];
+    const { dom, panel } = wire({ measuredCodeIds: () => measured });
+    panel.presentTour(DESKTOP);
+    panel.presentCodes();
+    expect(dom.pdfButton.disabled).toBe(true);
+    expect(dom.pdfButton.textContent).toMatch(/matching/i);
+    await vi.waitFor(() => {
+      expect(dom.pdfButton.disabled).toBe(false);
+    });
+    expect(dom.pdfButton.textContent).toBe("Download PDF to print");
+    expect(dom.codeInput.value).toBe("2");
+  });
+
+  // M0c review, finding 1: after a tour from a FILE (no link), the print
+  // step asks for a link again; the previous tour's spelling must not ride
+  // along into the codes of the link the creator types.
+  it("prints the typed link after a tour without one, never the previous tour's", async () => {
+    const { dom, panel } = wire({ measuredCodeIds: () => ["some-id"] });
+    panel.presentTour(PHONE);
+    panel.presentNoTour();
+    panel.presentCodes();
+    dom.urlInput.value = "https://h.example/other.zip";
+    dom.urlInput.fire("change");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    spies.planned.length = 0;
+    dom.pdfButton.fire("click");
+    await settled(dom);
+    expect(new Set(spies.planned)).toEqual(
+      new Set(["https://h.example/other.zip"]),
+    );
   });
 });
 

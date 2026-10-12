@@ -115,9 +115,13 @@ test("an offline phone is told it is offline, not to download the file", async (
   await context.setOffline(true);
   await page.getByTestId("link-input").fill(RANGES_URL);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("error")).toContainText("offline", {
+  // Step 2's status line says it (since r821 it speaks alone: the error
+  // box's "connect to the internet" contradicted its "you can print the
+  // code now" - PRs #584/#585 reviews).
+  await expect(page.getByTestId("link-status")).toContainText("offline", {
     timeout: 15000,
   });
+  await expect(page.getByTestId("error")).toHaveText("");
   await expect(page.getByTestId("open-file-advice")).toBeHidden();
   await context.setOffline(false);
 });

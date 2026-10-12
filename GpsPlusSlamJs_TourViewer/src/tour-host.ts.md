@@ -14,6 +14,10 @@ offered). Plan:
 
 - `TOUR_HOSTS` - `{ id, label }` in display order; `type TourHost` is the id.
 - `isTourHost(value)` - a type guard for stored or external values.
+- `hostOfLink(link)` - the cloud host a link points to (Drive, Dropbox,
+  OneDrive, GitHub, by hostname - share pages and their raw forms), or
+  null for any other link. Step 2 judges a missing file by it (M0c
+  review): a stored tile outlives the tour it was picked for.
 - `hostStepParts(host)` - the same steps as runs of text, the host's name
   in the step that sends the creator there as `{ text, href }` to the
   host's site (r820 feedback R2): drive.google.com, dropbox.com/home,

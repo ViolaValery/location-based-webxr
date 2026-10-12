@@ -120,6 +120,36 @@ export function hostReplaceText(host: TourHost): string | null {
   return HOST_REPLACE[host];
 }
 
+/** The hostnames each cloud host's links (share pages and their raw
+ *  forms) are served from. */
+const HOST_NAMES: Readonly<
+  Record<Exclude<TourHost, "own">, readonly string[]>
+> = {
+  drive: ["drive.google.com", "drive.usercontent.google.com"],
+  dropbox: ["dropbox.com", "www.dropbox.com", "dl.dropboxusercontent.com"],
+  onedrive: ["1drv.ms", "onedrive.live.com"],
+  github: ["github.com", "raw.githubusercontent.com"],
+};
+
+/**
+ * The cloud host a link points to, or null for any other link (an own
+ * server, or not a link). Step 2 judges a missing file by it (M0c review):
+ * where the link points decides whether it can come before its file, not
+ * the tile picked once in step 1 and kept across tours.
+ */
+export function hostOfLink(link: string): TourHost | null {
+  let hostname: string;
+  try {
+    hostname = new URL(link).hostname;
+  } catch {
+    return null;
+  }
+  for (const [host, names] of Object.entries(HOST_NAMES)) {
+    if (names.includes(hostname)) return host as TourHost;
+  }
+  return null;
+}
+
 /** Whether the host needs a file before it gives a link: every cloud host;
  *  an own server's link is known before the file exists. */
 export function needsStarterZip(host: TourHost): boolean {

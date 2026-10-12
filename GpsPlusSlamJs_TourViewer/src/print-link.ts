@@ -53,22 +53,27 @@ export function printableLink(url: string): string {
 }
 
 /**
- * The spellings a tour's measured codes may have been printed from, the
- * likeliest first: the trimmed address, Drive's own `/view` with the
- * desktop's and the phone's share tails, then the link as given. Each
- * once; a link that is not a Drive file has one spelling.
+ * The spellings a tour's measured codes may have been printed from: the
+ * link as given first (a tour re-printed from the link it was printed from
+ * is the common case, found in one round - M0c review), then the trimmed
+ * address, Drive's own `/view` and its share tails - the desktop's
+ * `sharing`, the phone app's `drivesdk`, the newer `drive_link` and
+ * `share_link`. Each once; a link that is not a Drive file has one
+ * spelling. A spelling outside the list stays a different code (follow-up
+ * F2: store the printed spelling in the tour).
  */
 export function linkSpellings(url: string): string[] {
   const printable = printableLink(url);
   const candidates =
-    printable === url && driveFileId(url) === null
+    driveFileId(url) === null
       ? [url]
       : [
+          url,
           printable,
           `${printable}/view`,
-          `${printable}/view?usp=sharing`,
-          `${printable}/view?usp=drivesdk`,
-          url,
+          ...["sharing", "drivesdk", "drive_link", "share_link"].map(
+            (tail) => `${printable}/view?usp=${tail}`,
+          ),
         ];
   return [...new Set(candidates)];
 }

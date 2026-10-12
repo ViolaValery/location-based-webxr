@@ -29,6 +29,7 @@ import { codeIndexFromInput, reprintOrphanWarning } from "./qr-author-mode.js";
 import { qrCodeId } from "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id";
 import { readSideM } from "./printed-side.js";
 import { printableLink, spellingOfRecord } from "./print-link.js";
+import { winAnsiText } from "gps-plus-slam-app-framework/utils/qr-payload/pdf-text";
 import {
   defaultPosterFields,
   readPosterFields,
@@ -138,6 +139,8 @@ export function orphanScanCovers(codeIndex: number, count: number): boolean {
 /** The PDF button's labels through its async cycle (async-UI rule). */
 const PDF_LABELS = {
   idle: "Download PDF to print",
+  /** While the open tour's codes are matched to a spelling of its link. */
+  matching: "Matching your printed codes…",
   busy: "Building the PDF…",
 } as const;
 
@@ -172,7 +175,8 @@ export function printPdfFilename(
 }
 
 /**
- * The line printed under one code. ASCII only - see `qr-print-pdf.ts`.
+ * The line printed under one code. WinAnsi, fitted to its code's width -
+ * see `qr-print-pdf.ts`.
  *
  * It names the code's own NUMBER and not "n of m": the PDF starts at
  * whatever the code-number field says, so a second download can continue
@@ -309,6 +313,28 @@ export function wirePrintPanel(deps: {
    *  print the trimmed link (`printableLink`, R5). */
   let recordLink: string | null = null;
 
+  /** The tour link presented (`presentTour`), null when none is: the
+   *  spelling search runs only for it, so a tour from a file - which asks
+   *  for a link again - never inherits the previous tour's (M0c review). */
+  let presentedUrl: string | null = null;
+
+  /** The link whose codes are being matched (`presentCodes`): until it
+   *  settles the warning waits and the PDF button says so, or it would
+   *  print new codes from 1 and warn about the very thing R4 reported
+   *  (M0c review). */
+  let matching: string | null = null;
+
+  /** The PDF button at rest: held while codes are being matched. */
+  function restPdfButton(): void {
+    dom.pdfButton.disabled = matching !== null;
+    dom.pdfButton.textContent =
+      matching === null ? PDF_LABELS.idle : PDF_LABELS.matching;
+  }
+
+  /** The measured codes the warning may speak of: none while matching. */
+  const settledCodeIds = (): readonly string[] =>
+    matching === null ? measuredCodeIds() : [];
+
   /** The link the codes carry: the spelling of record, else the field's
    *  link trimmed. */
   function printLink(): string {
@@ -349,7 +375,7 @@ export function wirePrintPanel(deps: {
       dom,
       printLink(),
       writeInfo,
-      measuredCodeIds,
+      settledCodeIds,
       () => generation === renderGeneration,
     )
       .then((launchUrl) => {
@@ -413,10 +439,13 @@ export function wirePrintPanel(deps: {
         tab?.close();
         writeInfo(err instanceof Error ? err.message : String(err));
       })
-      .finally(() => {
-        dom.pdfButton.disabled = false;
-        dom.pdfButton.textContent = PDF_LABELS.idle;
-      });
+      .finally(restPdfButton);
+  });
+
+  // A link typed into the field (no tour open) is the link: a spelling
+  // found for an earlier tour no longer applies (M0c review).
+  dom.urlInput.addEventListener("change", () => {
+    recordLink = null;
   });
 
   // Every input re-renders the tiles (no Generate button since M0b, A13).
@@ -465,6 +494,9 @@ export function wirePrintPanel(deps: {
       // The code on screen belonged to the tour that just went away.
       unverifiedUrl = null;
       recordLink = null;
+      presentedUrl = null;
+      matching = null;
+      restPdfButton();
       showLink(null);
       dom.tiles.hidden = true;
       dom.tiles.replaceChildren();
@@ -474,14 +506,19 @@ export function wirePrintPanel(deps: {
       renderGeneration += 1;
     },
     presentCodes: () => {
-      const url = dom.urlInput.value.trim();
       // The tour's name comes with its manifest, after the open.
       const name = deps.tourTitle?.() ?? null;
       if (!posterTyped && name !== null && dom.posterTitle.value === "") {
         dom.posterTitle.value = name.trim();
       }
-      if (!creator || url === "") return;
+      // Only for a presented tour link: a tour from a file has none.
+      const url = presentedUrl;
+      if (!creator || url === null) return;
       const ids = new Set(measuredCodeIds());
+      if (ids.size > 0) {
+        matching = url;
+        restPdfButton();
+      }
       spellingOfRecord(
         url,
         ids,
@@ -490,20 +527,28 @@ export function wirePrintPanel(deps: {
         MAX_PRINTED_CODES,
       )
         .then(({ link, next }) => {
-          // Still the same tour's link.
-          if (dom.urlInput.value.trim() !== url) return;
+          // Still the same tour.
+          if (presentedUrl !== url) return;
           recordLink = link;
           // The numbering continues the tour's, unless one was typed.
           if (!codeTyped) dom.codeInput.value = String(next);
-          regenerate();
         })
         // No Web Crypto (a plain-http preview) or an unplannable link: the
         // numbering stays where it is, which is what the panel did before.
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => {
+          if (presentedUrl !== url) return;
+          if (matching === url) matching = null;
+          restPdfButton();
+          regenerate();
+        });
     },
     presentTour: (url, options) => {
       unverifiedUrl = options?.verified === false ? url : null;
       recordLink = null;
+      presentedUrl = url;
+      matching = null;
+      restPdfButton();
       // A new tour: its own numbering, until its codes say otherwise.
       codeTyped = false;
       dom.codeInput.value = "1";
@@ -699,7 +744,9 @@ function posterLines(
     .map(([className, text]) => {
       const line = document.createElement("div");
       line.className = className;
-      line.textContent = text.trim();
+      // What the PDF prints, not what was typed: a letter the PDF's font
+      // has no glyph for must not show in the preview (M0c review).
+      line.textContent = winAnsiText(text).trim();
       return line;
     });
 }

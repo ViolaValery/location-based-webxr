@@ -19,10 +19,14 @@ printed in.
   button, `qr-author-mode.ts`) is built on it: one parser.
 - `printableLink(url)` - a Drive file link as
   `https://drive.google.com/file/d/<id>`; anything else unchanged.
-- `linkSpellings(url)` - the spellings a tour's measured codes may carry,
-  likeliest first: the trimmed address, `/view`, `/view?usp=sharing` (the
-  desktop's "copy link"), `/view?usp=drivesdk` (the phone app's share),
-  then the link as given; each once. One spelling for a non-Drive link.
+- `linkSpellings(url)` - the spellings a tour's measured codes may carry:
+  the link as given first (a re-print from the same link is the common
+  case and costs one round - M0c review), then the trimmed address,
+  `/view`, and `/view?usp=` with `sharing` (the desktop's "copy link"),
+  `drivesdk` (the phone app's share), `drive_link` and `share_link`
+  (Drive's newer copy-link tails); each once. One spelling for a
+  non-Drive link. A spelling outside the list is a different code -
+  follow-up F2 stores the printed spelling in the tour instead.
 - `nextCodeIndex(ids, idOfCode, limit)` - the first free code number
   (moved here from `print-panel.ts`): one past the highest number whose code
   the tour holds, 1 for none; stops once every id is found (PR #586
@@ -44,9 +48,10 @@ printed in.
   reads it).
 - Old printed codes are untouched: their text, and with it their id, is
   what it was; visitors' scans resolve them as before.
-- Cost: a tour with codes from another link walks every spelling to the
-  limit - five spellings by 50 numbers of a launch-URL build and a hash,
-  sequential, once per open.
+- Cost: a spelling with no match is walked to the limit (50 numbers of a
+  launch-URL build and a hash); a tour with codes from another link walks
+  all seven, once per open. While it runs the print panel holds its PDF
+  button and its warning (`print-panel.ts`).
 
 ## Examples
 

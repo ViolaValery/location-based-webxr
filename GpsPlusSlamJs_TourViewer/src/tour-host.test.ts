@@ -20,6 +20,7 @@ import {
   readTourHost,
   writeTourHost,
   hostStepParts,
+  hostOfLink,
 } from "./tour-host.js";
 
 function memoryStore() {
@@ -173,6 +174,30 @@ describe("the host's name opens the host (r820 feedback R2)", () => {
       expect(
         hostStepParts(id).map((parts) => parts.map((p) => p.text).join("")),
       ).toEqual([...hostSteps(id)]);
+    }
+  });
+});
+
+describe("hostOfLink (M0c review, finding 5)", () => {
+  // Why: whether a missing file is "not uploaded yet" or "a wrong link"
+  // depends on where the link points, not on a tile picked once and kept
+  // in storage across tours - a stale "Drive" refused an own server's
+  // link, and no choice let a wrong Drive link through to printing.
+  it("names the cloud host a link points to", () => {
+    const cases: [string, string | null][] = [
+      ["https://drive.google.com/file/d/abc/view?usp=sharing", "drive"],
+      ["https://drive.usercontent.google.com/download?id=abc", "drive"],
+      ["https://www.dropbox.com/scl/fi/a/t.zip?rlkey=k&dl=0", "dropbox"],
+      ["https://dl.dropboxusercontent.com/scl/fi/a/t.zip", "dropbox"],
+      ["https://1drv.ms/u/c/abc/def", "onedrive"],
+      ["https://onedrive.live.com/?cid=abc", "onedrive"],
+      ["https://github.com/u/r/blob/main/t.zip", "github"],
+      ["https://raw.githubusercontent.com/u/r/main/t.zip", "github"],
+      ["https://own.example/tour.zip", null],
+      ["not a link", null],
+    ];
+    for (const [link, host] of cases) {
+      expect(hostOfLink(link), link).toBe(host);
     }
   });
 });

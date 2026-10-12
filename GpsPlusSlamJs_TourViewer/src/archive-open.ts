@@ -28,7 +28,7 @@ import {
   printsUnverified,
   type LinkStatus,
 } from "./link-check.js";
-import type { TourHost } from "./tour-host.js";
+import { hostOfLink } from "./tour-host.js";
 import { toStatsView } from "./stats-view.js";
 import { describeTourTrust } from "./tour-trust-view.js";
 import { codeTrustKey, linkTrustKey, trustStorage } from "./tour-trust.js";
@@ -119,13 +119,8 @@ export function wireArchiveOpen(deps: {
   /** A visitor's page stops the background download of a copy that
    *  carries more than visitors read (scan-pass plan S1). */
   mode: ViewerMode;
-  /** The host chosen in step 1 (`readTourHost`): a missing file is a
-   *  wrong link on a cloud host and "not there yet" on an own server
-   *  (PR #584 review). Absent: an own server's rule. */
-  host?: () => TourHost | null;
 }): ArchiveOpen {
   const { ctx, dom, cacheStore, corsProxyBaseUrl, hooks } = deps;
-  const host = (): TourHost | null => deps.host?.() ?? null;
   let objectUrls: string[] = [];
   /** An open is in flight (a real flag, cleared by the open that owns it):
    *  scan-to-open starts none meanwhile (plan §9 #6). */
@@ -607,8 +602,10 @@ export function wireArchiveOpen(deps: {
     if (outcome.kind === "opened") {
       showLinkStatus({ kind: "found" });
     } else if (outcome.kind === "failed") {
-      showLinkStatus({ kind: "failed", cause: outcome.cause });
-      if (printsUnverified(outcome.cause, host())) {
+      showLinkStatus({ kind: "failed", cause: outcome.cause }, url);
+      // Where the link points decides (M0c review): a missing file is a
+      // wrong link on a cloud host, "not there yet" on an own server.
+      if (printsUnverified(outcome.cause, hostOfLink(url))) {
         // The status line is the whole message for a tolerated failure:
         // the open's own error ("that file does not exist") would
         // contradict its "that is fine for now" (PRs #584/#585 reviews).
@@ -623,8 +620,11 @@ export function wireArchiveOpen(deps: {
     // superseded: the newer check owns the line.
   }
 
-  function showLinkStatus(status: LinkStatus): void {
-    dom.linkStatus.textContent = linkStatusText(status, host());
+  function showLinkStatus(status: LinkStatus, url?: string): void {
+    dom.linkStatus.textContent = linkStatusText(
+      status,
+      url === undefined ? null : hostOfLink(url),
+    );
     dom.linkStatus.hidden = false;
   }
 

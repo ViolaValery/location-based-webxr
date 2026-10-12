@@ -16,9 +16,9 @@ DOM glue, its own module since the flows plan M6.
       (deferred a turn, since the value lands after the event) or a
       `change` with a new link runs the open and writes its outcome to
       `linkStatus` (`link-check.ts`): "Checking the link…", then found or
-      failed. A failure whose cause `printsUnverified` for the chosen host
-      (`deps.host`, step 1's `readTourHost`; `offline`, or `missing` on an
-      own server) calls `hooks.presentUnverifiedLink(url)`, so the print
+      failed. A failure whose cause `printsUnverified` for the host the link points
+      to (`hostOfLink`, M0c review: not the tile kept from step 1;
+      `offline`, or `missing` on an own server) calls `hooks.presentUnverifiedLink(url)`, so the print
       step carries the link marked unverified and the creator gives it
       once - and clears the error box, whose "that file does not exist"
       contradicted the line's "that is fine for now" (PRs #584/#585). A

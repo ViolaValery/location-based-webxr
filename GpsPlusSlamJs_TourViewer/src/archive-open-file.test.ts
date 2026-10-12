@@ -16,7 +16,6 @@ import { OpenRemoteArchiveError } from "gps-plus-slam-app-framework/storage";
 import { TourIntegrityError } from "gps-plus-slam-app-framework/ar/tour-signed-manifest";
 
 import { wireArchiveOpen, type ArchiveOpenDom } from "./archive-open.js";
-import type { TourHost } from "./tour-host.js";
 import {
   createTourViewerSession,
   createUnwiredHooks,
@@ -83,7 +82,7 @@ function fakeSession(url: string) {
   };
 }
 
-function wire(options: { host?: TourHost | null } = {}) {
+function wire() {
   const dom = {
     form: el(),
     linkInput: el(),
@@ -117,7 +116,6 @@ function wire(options: { host?: TourHost | null } = {}) {
     corsProxyBaseUrl: "https://proxy.test",
     mode: "creator",
     hooks,
-    ...(options.host === undefined ? {} : { host: () => options.host ?? null }),
   });
   return { dom, hooks, ctx };
 }
@@ -315,8 +313,8 @@ describe("step 2's link check (polish round M2, A13/A16)", () => {
   // A link whose file is not there yet still goes on to printing, marked
   // unverified; a link that can never work for a visitor must not, or the
   // printed code fails for every one of them.
-  function withUnverifiedHook(host: TourHost | null = "own") {
-    const env = wire({ host });
+  function withUnverifiedHook() {
+    const env = wire();
     const presentUnverifiedLink = vi.fn();
     env.hooks.presentUnverifiedLink = presentUnverifiedLink;
     return { ...env, presentUnverifiedLink };
@@ -348,7 +346,7 @@ describe("step 2's link check (polish round M2, A13/A16)", () => {
     mocks.openTourSession.mockRejectedValueOnce(
       new OpenRemoteArchiveError("x", "missing"),
     );
-    const { dom, presentUnverifiedLink } = withUnverifiedHook("drive");
+    const { dom, presentUnverifiedLink } = withUnverifiedHook();
     dom.linkInput.value = "https://drive.google.com/file/d/abc/view";
     dom.form.fire("submit");
     await vi.waitFor(() =>

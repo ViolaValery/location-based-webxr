@@ -1750,6 +1750,11 @@ test("the print panel draws one tile per poster at the declared size, and prints
   // 18 cm: the default, the largest whole centimetre the PDF fits on A4.
   await expect(page.getByTestId("print-info")).toContainText("18cm");
   await expect(page.getByTestId("print-info")).not.toContainText("Too large");
+  // The 100 % instruction is the step's one line of copy since the r820
+  // feedback (M0c review, finding 6b).
+  await expect(
+    page.getByTestId("print-panel").locator(".step-copy").first(),
+  ).toContainText("100 %");
   // Each tile is a small poster (polish round D-P7): the default text
   // around its code.
   await expect(page.getByTestId("print-tile").first()).toContainText(
@@ -2148,11 +2153,6 @@ test("a failed open puts the page back to having no tour, not to showing the old
   // longer had, for the rest of its life: printing before hosting became a
   // one-shot per page load, and a creator whose second link failed had no
   // field to correct it in without reloading.
-  // A link on the test server is an own server's - the one host whose
-  // link can come before its file (PR #584 review).
-  await page.addInitScript(() => {
-    localStorage.setItem("tour-viewer.wizard.host", "own");
-  });
   await page.goto("/");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();

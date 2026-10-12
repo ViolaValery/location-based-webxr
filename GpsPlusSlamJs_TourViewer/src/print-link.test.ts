@@ -80,22 +80,25 @@ describe("printableLink", () => {
 });
 
 describe("linkSpellings", () => {
-  it("tries the trimmed address first, Drive's spellings next, the link as given last", () => {
+  // The link as given first: a tour re-printed from the link it was
+  // printed from - the common case - is found in one round (M0c review,
+  // finding 2). Drive's newer share tails too (finding 3).
+  it("tries the link as given first, then the trimmed address and Drive's spellings", () => {
     expect(linkSpellings(PHONE)).toEqual([
+      PHONE,
       BARE,
       `${BARE}/view`,
       DESKTOP,
-      PHONE,
+      `${BARE}/view?usp=drive_link`,
+      `${BARE}/view?usp=share_link`,
     ]);
-    expect(linkSpellings(`${BARE}/edit?usp=x`).at(-1)).toBe(
-      `${BARE}/edit?usp=x`,
-    );
+    expect(linkSpellings(`${BARE}/edit?usp=x`)[0]).toBe(`${BARE}/edit?usp=x`);
     expect(linkSpellings("https://h.example/t.zip")).toEqual([
       "https://h.example/t.zip",
     ]);
   });
 
-  it("always starts with the printable link and holds each spelling once (property)", () => {
+  it("starts with the link as given, holds the printable link, and each spelling once (property)", () => {
     fc.assert(
       fc.property(
         fc.constantFrom(DESKTOP, PHONE, BARE, "https://h.example/t.zip"),
@@ -103,7 +106,8 @@ describe("linkSpellings", () => {
         (base, tail) => {
           const link = base + tail.replace(/\s/g, "");
           const spellings = linkSpellings(link);
-          expect(spellings[0]).toBe(printableLink(link));
+          expect(spellings[0]).toBe(link);
+          expect(spellings).toContain(printableLink(link));
           expect(new Set(spellings).size).toBe(spellings.length);
         },
       ),
@@ -156,8 +160,11 @@ describe("spellingOfRecord", () => {
       link: BARE,
       next: 2,
     });
-    expect(new Set(asked)).toEqual(new Set([BARE]));
-    // ...and, with its one code found at number 1, asks once (PR #586).
-    expect(asked).toHaveLength(1);
+    // The link as given (the phone's) has no match, so all 50 numbers are
+    // tried; the trimmed one matches at number 1 and the search stops there
+    // (PR #586).
+    expect(asked.filter((l) => l === PHONE)).toHaveLength(50);
+    expect(asked.filter((l) => l === BARE)).toHaveLength(1);
+    expect(asked.at(-1)).toBe(BARE);
   });
 });
