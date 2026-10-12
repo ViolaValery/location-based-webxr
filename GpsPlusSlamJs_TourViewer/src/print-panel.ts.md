@@ -81,9 +81,12 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
     creator asked for (PR #585 review).
 - `printCountFromInput(raw)` - how many posters the PDF carries:
   `{ count, coerced, clamped }`; caps at `MAX_PRINTED_CODES` (50).
-- `printPdfFilename(start, count, sideM)`, `printedCodeCaption(index, sideM)`
-  - the file's name and the line under each code (plain ASCII: a PDF
-    base-14 font is single-byte).
+- `printPdfFilename(start, count, sideM)` - the file's name, which names
+  the code range. No line is printed under the codes since the owner's
+  verdict on r821 ("Code 2 - 18cm - print at 100%" went; the 10 cm bar
+  carries the 100 % instruction): the PDF is built with empty captions and
+  `captionMm: 0`, and `print-panel.wiring.test.ts` pins the code numbers
+  the PDF is built from.
 - `MAX_PRINTED_CODES`; `highestPrintedCode(codeIndex, count)` (a SUM, PR
   #443 review); `orphanScanCovers(codeIndex, count)` (exported because it is
   the claim; when false the orphaning check says nothing, PR #445 review).

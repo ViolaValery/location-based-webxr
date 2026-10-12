@@ -2094,9 +2094,9 @@ test("the print step builds a real PDF of numbered codes", async ({ page }) => {
   // Three codes at 16 cm: one per page, because two would need 37 cm.
   expect(text).toContain("/Count 3");
   expect(text).toContain("/MediaBox [0 0 595.28 841.89]");
-  for (const n of [1, 2, 3]) {
-    expect(text).toContain(`(Code ${String(n)} - 18cm - print at 100%)`);
-  }
+  // No caption line under the codes (owner, on r821); the numbers are
+  // the file name's and each code's own (print-panel.wiring.test.ts).
+  expect(text).not.toMatch(/\(Code \d+ - /);
   // The poster text around every code (polish round D-P7), defaults.
   expect(text).toContain("(AR tour starts here) Tj");
   expect(text).toContain("(Scan with your phone camera) Tj");
@@ -2252,9 +2252,11 @@ test("the PDF button shows it is working, says when nothing was saved, and conti
       new Uint8Array(await d[d.length - 1].blob.arrayBuffer()),
     );
   });
-  expect(text).toContain("(Code 4 - 18cm - print at 100%)");
-  expect(text).toContain("(Code 5 - 18cm - print at 100%)");
-  expect(text).not.toContain("(Code 1 - ");
+  // Three pages' worth of codes would be codes 1-3: two pages means the
+  // count, and the numbers inside each code are pinned by
+  // print-panel.wiring.test.ts (no caption line since the owner's verdict
+  // on r821).
+  expect(text).toContain("/Count 2");
 });
 
 /** Measure the hung code and unlock placement - the state every authoring

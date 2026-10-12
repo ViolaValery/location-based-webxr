@@ -21,7 +21,9 @@ import type { LinkCheckResult } from "./link-check.js";
 
 const spies = vi.hoisted(() => ({
   planned: [] as string[],
+  indexes: [] as number[],
   pdfOptions: [] as unknown[],
+  pdfCodes: [] as unknown[],
 }));
 
 vi.mock(
@@ -32,6 +34,7 @@ vi.mock(
       ...real,
       planPrintCode: (url: string, options?: { codeIndex?: number }) => {
         spies.planned.push(url);
+        spies.indexes.push(options?.codeIndex ?? 1);
         return real.planPrintCode(url, options);
       },
     };
@@ -48,6 +51,7 @@ vi.mock(
         ...args: Parameters<typeof real.buildQrPrintPdf>
       ): ReturnType<typeof real.buildQrPrintPdf> => {
         spies.pdfOptions.push(args[1]);
+        spies.pdfCodes.push(args[0]);
         return real.buildQrPrintPdf(...args);
       },
     };
@@ -358,6 +362,37 @@ describe("the link the codes carry (r820 feedback R4, R5)", () => {
     expect(new Set(spies.planned)).toEqual(
       new Set(["https://h.example/other.zip"]),
     );
+  });
+});
+
+describe("no caption line under the codes (owner, on r821)", () => {
+  // Why: the owner did not want "Code 2 - 18cm - print at 100%" on the
+  // poster; the 10 cm bar carries the 100 % instruction and the file name
+  // the code range. The band is given back to the layout.
+  // The caption used to be where a test could read a poster's number;
+  // the numbers now live only inside the codes, so the PDF's code numbers
+  // are pinned here: a second run continues where the field says.
+  it("builds the codes the code-number field and the count say", async () => {
+    const { dom, panel } = wire();
+    panel.presentTour("https://h.example/t.zip");
+    dom.codeInput.value = "4";
+    dom.countInput.value = "2";
+    spies.indexes.length = 0;
+    dom.pdfButton.fire("click");
+    await settled(dom);
+    expect(spies.indexes).toEqual([4, 5]);
+  });
+
+  it("builds the PDF with empty captions and no caption band", async () => {
+    const { dom, panel } = wire();
+    panel.presentTour("https://h.example/t.zip");
+    spies.pdfCodes.length = 0;
+    dom.pdfButton.fire("click");
+    await settled(dom);
+    expect(spies.pdfOptions.at(-1)).toMatchObject({ captionMm: 0 });
+    const codes = spies.pdfCodes.at(-1) as { caption: string }[];
+    expect(codes.length).toBe(3);
+    expect(codes.every((code) => code.caption === "")).toBe(true);
   });
 });
 

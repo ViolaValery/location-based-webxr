@@ -16,7 +16,6 @@ import {
   highestPrintedCode,
   orphanScanCovers,
   printCountFromInput,
-  printedCodeCaption,
   printPdfFilename,
   printUrlDisplay,
 } from "./print-panel.js";
@@ -139,33 +138,6 @@ describe("the printable PDF's inputs (second testing session, M4)", () => {
     // two files called tour-codes-3x are two files nobody can tell apart.
     expect(printPdfFilename(4, 3, 0.16)).toBe("tour-codes-4-to-6-16cm.pdf");
     expect(printPdfFilename(2, 1, 0.125)).toBe("tour-code-2-12-5cm.pdf");
-  });
-
-  it("captions each code with its number, its size and the scale rule", () => {
-    // The caption is read while hanging posters, so it has to say WHICH
-    // poster this is; the size and the scale rule are there because a
-    // reprint from the wrong dialog settings is the failure that put the
-    // whole PDF path in this round.
-    // Its own NUMBER, not "2 of 3": the PDF starts where the code-number
-    // field says, so "of 3" would be a claim about a series the next
-    // download continues.
-    expect(printedCodeCaption(2, 0.16)).toBe("Code 2 - 16cm - print at 100%");
-  });
-
-  it("keeps captions to characters a PDF string can carry (property)", () => {
-    // qr-print-pdf strips anything outside printable ASCII; a caption that
-    // arrives already clean cannot lose its number to that filter.
-    fc.assert(
-      fc.property(
-        fc.integer({ min: 1, max: 50 }),
-        fc.integer({ min: 1, max: 50 }),
-        (index, _count) => {
-          const caption = printedCodeCaption(index, 0.16);
-          expect(caption).toMatch(/^[\x20-\x7e]+$/);
-          expect(caption).toContain(`Code ${String(index)} `);
-        },
-      ),
-    );
   });
 });
 

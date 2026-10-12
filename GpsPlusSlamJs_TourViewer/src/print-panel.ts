@@ -174,21 +174,6 @@ export function printPdfFilename(
     : `tour-codes-${String(startIndex)}-to-${String(startIndex + count - 1)}-${size}.pdf`;
 }
 
-/**
- * The line printed under one code. WinAnsi, fitted to its code's width -
- * see `qr-print-pdf.ts`.
- *
- * It names the code's own NUMBER and not "n of m": the PDF starts at
- * whatever the code-number field says, so a second download can continue
- * the numbering rather than minting duplicates of codes 1..n. Two posters
- * carrying the same printed text are one code as far as the level lookup
- * is concerned, and an author who hung them in two places would get one of
- * the two positions at random.
- */
-export function printedCodeCaption(index: number, sideM: number): string {
-  return `Code ${String(index)} - ${printedSideCss(sideM)} - print at 100%`;
-}
-
 export interface PrintPanelDom {
   panel: HTMLDetailsElement;
   urlInput: HTMLInputElement;
@@ -779,12 +764,19 @@ async function buildPrintPdf(
     codes.push({
       size: matrix.modules.size,
       modules: matrix.modules.data,
-      caption: printedCodeCaption(index, sideM),
+      // No line under the code (owner, on r821): the 10 cm bar says to
+      // print at 100 %, and the file name names the range.
+      caption: "",
     });
   }
   // Throws with the size that WOULD fit when the paper cannot hold this
   // one; that message is the useful half of the failure.
-  const bytes = buildQrPrintPdf(codes, { sideM, paper, poster });
+  const bytes = buildQrPrintPdf(codes, {
+    sideM,
+    paper,
+    poster,
+    captionMm: 0,
+  });
   const blob = new Blob([bytes], { type: "application/pdf" });
   const filename = printPdfFilename(startIndex, count, sideM);
   const range =
