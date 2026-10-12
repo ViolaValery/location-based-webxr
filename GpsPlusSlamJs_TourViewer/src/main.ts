@@ -712,6 +712,8 @@ const arEntry = wireArEntry({
     escapeButton,
     arDebug: element("ar-debug"),
     arStatusLive: element("ar-status-live"),
+    scanCard: element("scan-card"),
+    scanCardLine: element("scan-card-line"),
   },
   hooks,
   ...(recordingPanel === null ? {} : { recording: recordingPanel }),

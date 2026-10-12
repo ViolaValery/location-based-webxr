@@ -22,6 +22,24 @@ export interface VisitorStartView {
 /** A tour without a name still reads as a tour. */
 const UNNAMED = "An AR tour";
 
+/** "N places to discover": its stations, objects and recorded photos. */
+function sublineFor(manifest: TourManifest): string | null {
+  const count =
+    manifest.stations.length +
+    manifest.objects.length +
+    (manifest.captureSpots?.captures.length ?? 0);
+  if (count === 0) return null;
+  return `${String(count)} ${count === 1 ? "place" : "places"} to discover`;
+}
+
+/** The first placed photo, else the first recorded one. */
+function coverPathOf(manifest: TourManifest): string | null {
+  for (const object of manifest.objects) {
+    if (object.kind === "photo") return object.image;
+  }
+  return manifest.captureSpots?.captures[0]?.image ?? null;
+}
+
 export function visitorStartView(
   manifest: TourManifest | null,
 ): VisitorStartView {
@@ -29,18 +47,10 @@ export function visitorStartView(
     return { title: UNNAMED, subline: null, coverPath: null };
   }
   const name = manifest.title?.trim() ?? "";
-  const captures = manifest.captureSpots?.captures ?? [];
-  const count =
-    manifest.stations.length + manifest.objects.length + captures.length;
-  const placed = manifest.objects.find((object) => object.kind === "photo");
   return {
     title: name === "" ? UNNAMED : name,
-    subline:
-      count === 0
-        ? null
-        : `${String(count)} ${count === 1 ? "place" : "places"} to discover`,
-    coverPath:
-      placed?.kind === "photo" ? placed.image : (captures[0]?.image ?? null),
+    subline: sublineFor(manifest),
+    coverPath: coverPathOf(manifest),
   };
 }
 

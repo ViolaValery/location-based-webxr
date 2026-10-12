@@ -95,6 +95,8 @@ function harness(
     escapeButton: el(),
     arDebug: el(),
     arStatusLive: el(),
+    scanCard: el(),
+    scanCardLine: el(),
   };
   const arStore = createTourViewerStore();
   const seams = {
@@ -496,5 +498,47 @@ describe("a visitor's phone without AR copies the link (polish round M4a, V4)", 
   it("hides the AR hint, which would describe a session that cannot start", () => {
     const h = harness({ arStatus: "unsupported" });
     expect(h.dom.arHint.hidden).toBe(true);
+  });
+});
+
+describe("the visitor's scan card (polish round M4b, the owner's S1)", () => {
+  // Why: while the gate waits the card in the middle of the camera view
+  // says what to do, so the same sentence must not also sit at the top
+  // (the status line steps aside), and the card must close by itself when
+  // the gate passes. With ?debug=1 the technical line stays visible.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the visitor's sentence in the card while the gate scans, and steps the line aside", () => {
+    const h = harness({ arStatus: "running" });
+    h.ctx.scanGate = { kind: "scanning", escapeOffered: false };
+    h.entry.renderArStatus();
+    expect(h.dom.scanCard.hidden).toBe(false);
+    // The visitor's own sentence (here: no tour open in the harness),
+    // the one the live region reads to a screen reader too.
+    expect(h.dom.scanCardLine.textContent).not.toBe("");
+    expect(h.dom.scanCardLine.textContent).toBe(h.dom.arStatusLive.textContent);
+    expect(h.dom.arStatus.hidden).toBe(true);
+  });
+
+  it("closes once the gate passes, and gives the line back", () => {
+    const h = harness({ arStatus: "running" });
+    h.ctx.scanGate = { kind: "scanning", escapeOffered: false };
+    h.entry.renderArStatus();
+    h.ctx.scanGate = { kind: "passed", via: "code" };
+    h.entry.renderArStatus();
+    expect(h.dom.scanCard.hidden).toBe(true);
+    expect(h.dom.scanCardLine.textContent).toBe("");
+    expect(h.dom.arStatus.hidden).toBe(false);
+  });
+
+  it("keeps the technical line visible under ?debug=1", () => {
+    const h = harness({ arStatus: "running" });
+    h.ctx.debug = true;
+    h.ctx.scanGate = { kind: "scanning", escapeOffered: false };
+    h.entry.renderArStatus();
+    expect(h.dom.scanCard.hidden).toBe(false);
+    expect(h.dom.arStatus.hidden).toBe(false);
   });
 });

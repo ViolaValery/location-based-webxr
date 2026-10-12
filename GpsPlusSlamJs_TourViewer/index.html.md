@@ -84,6 +84,7 @@ screen. Everything marked `.creator-only` is hidden for a visitor
      the save, the summary and `#replace-help`), opened by the Finish
      (polish round M2, B9). Until then `.done-pending` says what the step
      is for; page CSS hides it once the block shows.
+
 - The visitor's start page in the owner's V4 look (polish round M4a,
   D-R12/D-R14; reference `public/prototypes/visitor-4-one-tap/`):
   `#visitor-screen` (kicker, `#visitor-cover` one photo, `#visitor-title`,
@@ -99,6 +100,14 @@ screen. Everything marked `.creator-only` is hidden for a visitor
   (the lint's css-tree grammar knows neither `clamp()` nor `dvh`); a
   phone held sideways gets two columns. `playwright-tests/visitor-start.spec.js`
   pins the layout at 412x915, 360x640 and 915x412.
+- The visitor's scan card in AR (polish round M4b, the owner's S1, D-P5
+  amended; reference `public/prototypes/scan-1-centre-card/`):
+  `#scan-card` inside `#ar-root` (fixed, centred, `pointer-events:
+none`), its `.scan-card-panel` darker than the prototype's, with the
+  phone-over-code animation, `#scan-card-title` and `#scan-card-line`
+  (the visitor's sentence); `#scan-escape` lives in it, at the bottom of
+  the screen, the only part that takes taps. Sideways: animation beside
+  the words. `ar-mode.spec.js` pins its centring and the skip's place.
 - Below the steps, creator-only: the Storage section (`#storage-panel`,
   summary "Other settings" - something you normally do not open, F9).
 - Shared: `#error`, `#ar-root` (the DOM-overlay root: hint, status line,

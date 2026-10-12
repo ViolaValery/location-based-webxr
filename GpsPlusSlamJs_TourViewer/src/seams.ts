@@ -209,7 +209,7 @@ export interface TourViewerSeams {
    *  has none). */
   createLabel(text: string): { object: Object3D; dispose(): void };
   /** A one-shot clock (the scan gate's escape, DEC-N3): returns the
-   *  cancel. A seam so the e2e fires it instead of waiting 45 s. */
+   *  cancel. A seam so the e2e fires it instead of waiting for it. */
   schedule(fn: () => void, ms: number): () => void;
   /**
    * The wayfinding HUD over the session camera (tour kit plan K4: the

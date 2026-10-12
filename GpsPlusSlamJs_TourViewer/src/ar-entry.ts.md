@@ -59,6 +59,11 @@ since the flows plan M6.
     ("Copying…" disabled, then "Link copied"; a failure restores "Copy
     link" and puts the address-bar advice in `errorBox`) - the owner's
     V4, polish round M4a.
+  - `renderArStatus` also renders the visitor's scan card (`dom.scanCard`,
+    `dom.scanCardLine`, optional; the owner's S1, polish round M4b): shown
+    while `scanCardShown` holds, carrying the visitor's sentence, with the
+    status line hidden meanwhile (kept under `?debug=1`, whose technical
+    line the card does not carry); the live region is unchanged.
   - The render also writes `data-ar-state` (the controller status, for
     the page CSS: V4 steps the round button down on `unsupported`) and
     `data-step` (`visitorStep`: "1 of 2" / "2 of 2", removed otherwise)

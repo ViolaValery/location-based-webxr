@@ -1378,6 +1378,161 @@
           animation: none;
         }
       }
+
+      /* ===== The visitor's scan card in AR (polish round M4b) =====
+         The owner's S1 (D-P5): a card in the middle of the camera view
+         while the scan gate waits, its words on a darker panel (D-P5
+         amended), the escape at the bottom of the screen. It never takes a
+         tap meant for the scene: only the escape button catches pointers.
+         The reference is public/prototypes/scan-1-centre-card/. */
+      #scan-card {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: grid;
+        place-items: center;
+        pointer-events: none;
+      }
+      #scan-card[hidden] {
+        display: none;
+      }
+      .scan-card-panel {
+        --scan-card-width: min(74vw, 286px);
+
+        width: var(--scan-card-width);
+        margin-top: -6vh;
+        padding: 12px 18px 16px;
+        border: 1px solid rgb(255 255 255 / 22%);
+        border-radius: 24px;
+        background: rgb(10 15 20 / 58%);
+        box-shadow: 0 12px 32px rgb(0 0 0 / 16%);
+        color: #fff;
+        text-align: center;
+      }
+      .scan-card-anim {
+        display: block;
+        width: 150px;
+        height: 112px;
+        margin: 0 auto 6px;
+        overflow: visible;
+      }
+      .scan-card-phone {
+        transform-box: fill-box;
+        transform-origin: 50% 50%;
+        animation: scan-card-phone 4.2s cubic-bezier(0.45, 0.05, 0.3, 1)
+          infinite;
+      }
+      .scan-card-brackets {
+        animation: scan-card-brackets 4.2s linear infinite;
+      }
+
+      @keyframes scan-card-phone {
+        0% {
+          transform: translate(58px, 26px) rotate(14deg);
+          opacity: 0;
+        }
+
+        14% {
+          opacity: 1;
+        }
+
+        42%,
+        80% {
+          transform: translate(0, 0) rotate(0deg);
+          opacity: 1;
+        }
+
+        94%,
+        100% {
+          transform: translate(58px, 26px) rotate(14deg);
+          opacity: 0;
+        }
+      }
+
+      @keyframes scan-card-brackets {
+        0%,
+        50% {
+          stroke: #fff;
+        }
+
+        54%,
+        80% {
+          stroke: #4ade80;
+        }
+
+        86%,
+        100% {
+          stroke: #fff;
+        }
+      }
+      #scan-card #scan-card-title {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 650;
+        line-height: 1.3;
+        letter-spacing: normal;
+        text-transform: none;
+      }
+      #scan-card-line {
+        margin: 5px 0 0;
+        font-size: 13px;
+        line-height: 1.35;
+        opacity: 0.9;
+      }
+      #scan-card-line:empty {
+        display: none;
+      }
+      #scan-card #scan-escape {
+        position: absolute;
+        bottom: calc(26px + env(safe-area-inset-bottom));
+        left: 50%;
+        margin: 0;
+        padding: 10px 16px;
+        border: 1px solid rgb(255 255 255 / 45%);
+        border-radius: 999px;
+        background: rgb(0 0 0 / 40%);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: normal;
+        text-transform: none;
+        white-space: nowrap;
+        transform: translateX(-50%);
+        pointer-events: auto;
+      }
+      #scan-card #scan-escape[hidden] {
+        display: none;
+      }
+      /* A phone held sideways: the animation beside the words. */
+      @media (orientation: landscape) and (height <= 520px) {
+        .scan-card-panel {
+          --scan-card-width: min(62vw, 420px);
+
+          display: grid;
+          grid-template-columns: 112px 1fr;
+          column-gap: 14px;
+          align-items: center;
+          margin-top: -4vh;
+          padding: 10px 18px 10px 10px;
+          text-align: left;
+        }
+        .scan-card-anim {
+          grid-row: 1 / 3;
+          width: 112px;
+          height: 84px;
+          margin: 0;
+        }
+        #scan-card #scan-escape {
+          bottom: calc(14px + env(safe-area-inset-bottom));
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .scan-card-phone,
+        .scan-card-brackets {
+          animation: none;
+        }
+      }
     </style>
   </head>
   <body class="page">
@@ -2853,17 +3008,110 @@
               >
                 Checking AR support…
               </button>
-              <!-- The scan gate's escape (M5, DEC-N3): offered after 45 s without
-               a lock; inside #ar-root because it is tapped DURING the session. -->
-              <button
-                type="button"
-                id="scan-escape"
-                class="btn btn--prose"
-                data-testid="scan-escape"
-                hidden
-              >
-                Continue with GPS only (less accurate)
-              </button>
+              <!-- The visitor's scan card (polish round M4b, the owner's S1,
+               D-P5 amended): centred over the camera while the scan gate
+               waits for the code, with the phone-over-code animation, a
+               darker panel behind the words, and the gate's escape at the
+               bottom of the screen after its clock (10 s, Q-Scan). It
+               closes by itself on the lock (ar-entry.ts renders it). The
+               escape stays inside #ar-root: it is tapped DURING the
+               session. -->
+              <div id="scan-card" data-testid="scan-card" hidden>
+                <div class="scan-card-panel" data-testid="scan-card-panel">
+                  <svg
+                    class="scan-card-anim"
+                    viewBox="0 0 160 120"
+                    aria-hidden="true"
+                  >
+                    <rect
+                      x="34"
+                      y="16"
+                      width="72"
+                      height="96"
+                      rx="4"
+                      fill="#000"
+                      opacity=".2"
+                    />
+                    <rect
+                      x="30"
+                      y="12"
+                      width="72"
+                      height="96"
+                      rx="4"
+                      fill="#fbf9f3"
+                    />
+                    <!-- A code: three finder squares and a few modules. -->
+                    <g fill="#1c232b">
+                      <path
+                        d="M42 22h14v14H42zM46 26v6h6v-6zM76 22h14v14H76zM80 26v6h6v-6zM42 56h14v14H42zM46 60v6h6v-6z"
+                        fill-rule="evenodd"
+                      />
+                      <path
+                        d="M60 22h4v4h-4zM66 28h4v4h-4zM60 34h4v4h-4zM62 42h4v4h-4zM70 40h4v4h-4zM78 44h4v4h-4zM86 42h4v4h-4zM60 50h4v4h-4zM68 54h4v4h-4zM62 62h4v4h-4zM76 58h4v4h-4zM84 62h4v4h-4zM72 66h4v4h-4zM86 52h4v4h-4z"
+                      />
+                    </g>
+                    <rect
+                      x="44"
+                      y="80"
+                      width="44"
+                      height="5"
+                      rx="2.5"
+                      fill="#c9c2b4"
+                    />
+                    <rect
+                      x="50"
+                      y="91"
+                      width="32"
+                      height="4"
+                      rx="2"
+                      fill="#ddd7cb"
+                    />
+                    <g class="scan-card-phone">
+                      <rect
+                        x="36"
+                        y="4"
+                        width="60"
+                        height="100"
+                        rx="11"
+                        fill="rgb(12 18 24 / 28%)"
+                        stroke="#fff"
+                        stroke-width="3"
+                      />
+                      <rect
+                        x="57"
+                        y="9"
+                        width="18"
+                        height="3.5"
+                        rx="1.75"
+                        fill="#fff"
+                        opacity=".85"
+                      />
+                      <path
+                        class="scan-card-brackets"
+                        d="M40 28v-8h8M84 20h8v8M92 64v8h-8M48 72h-8v-8"
+                        fill="none"
+                        stroke="#fff"
+                        stroke-width="3"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </g>
+                  </svg>
+                  <h2 id="scan-card-title">
+                    Scan the code again so the tour can start
+                  </h2>
+                  <p id="scan-card-line" data-testid="scan-card-line"></p>
+                </div>
+                <button
+                  type="button"
+                  id="scan-escape"
+                  class="btn btn--prose"
+                  data-testid="scan-escape"
+                  hidden
+                >
+                  Continue with GPS only (less accurate)
+                </button>
+              </div>
               <!-- The visitor's stations (tour kit plan K4): the station line,
                the labelled skip (§8 D5) and the story panel. Inside
                #ar-root because the visitor stays in AR the whole tour

@@ -41,6 +41,7 @@ import { describeOpenError } from "./open-errors.js";
 import { debugReadoutLines, visitorFusedHint } from "./qr-debug-readout.js";
 import type { TourViewerSeams } from "./seams.js";
 import { arStatusLine, type ArStatusInput } from "./tour-flow.js";
+import { scanCardShown } from "./scan-gate.js";
 import { visitorStatus } from "./visitor-status.js";
 import type { LocationGate } from "./visitor-screen.js";
 import type { RecordingPanel } from "./recording-panel.js";
@@ -69,6 +70,10 @@ export interface ArEntryDom {
    *  review F14): written only when the sentence changes, never per camera
    *  frame like the visible line. */
   arStatusLive?: HTMLElement;
+  /** The visitor's scan card (polish round M4b) and its sentence line.
+   *  Absent: no card (the node tests that do not need one). */
+  scanCard?: Pick<HTMLElement, "hidden">;
+  scanCardLine?: Pick<HTMLElement, "textContent">;
 }
 
 /** Properties, not methods: they are handed to the hooks object unbound. */
@@ -146,6 +151,18 @@ export function wireArEntry(deps: {
     depthRunning = true;
   }
 
+  /** The scan card shows the visitor's sentence while the gate waits;
+   *  the status line steps aside meanwhile (kept with ?debug=1, whose
+   *  technical line the card does not carry). */
+  function renderScanCard(input: ArStatusInput, sentence: string): void {
+    const shown = scanCardShown(mode, input.arStatus, ctx.scanGate);
+    if (dom.scanCard !== undefined) dom.scanCard.hidden = !shown;
+    if (dom.scanCardLine !== undefined) {
+      dom.scanCardLine.textContent = shown ? sentence : "";
+    }
+    dom.arStatus.hidden = shown && !ctx.debug;
+  }
+
   function renderArStatus(): void {
     renderDebugReadout();
     const input: ArStatusInput = {
@@ -207,6 +224,7 @@ export function wireArEntry(deps: {
     const visitor = mode === "visitor";
     const line = visitor && !ctx.debug ? plain.text : arStatusLine(input);
     dom.arStatus.textContent = line;
+    renderScanCard(input, plain.text);
     // The visitor's state machine only (a creator's would mislead), and
     // the gate for both (U1 milestone review #8, #9).
     if (visitor) dom.arStatus.dataset.state = plain.state;

@@ -1340,7 +1340,7 @@ test("a tour with no recording and no printed codes says so, instead of scanning
   await expect(page.getByTestId("scan-escape")).toBeHidden();
 });
 
-test("the visitor's content and ring wait for the lock; the escape after 45 s places by GPS instead (M5, DEC-N3)", async ({
+test("the visitor's content and ring wait for the lock; the escape after its clock places by GPS instead (M5, DEC-N3)", async ({
   page,
 }) => {
   // Why this matters: the mandatory scan is the demo's claim. Before the
@@ -1407,6 +1407,56 @@ test("the visitor's content and ring wait for the lock; the escape after 45 s pl
     "Placing by GPS (less accurate)",
   );
   await expect(page.getByTestId("ar-status")).toContainText("1 placed object");
+});
+
+test("the visitor's scan card sits mid-screen, offers the skip at the bottom after its clock, and closes on the lock (polish round M4b)", async ({
+  page,
+}) => {
+  // Why this matters: the owner chose S1 (D-P5) - a card in the middle of
+  // the camera view while the gate waits for the code, the skip at the
+  // bottom after 10 s, the card gone by itself once the code is read. A
+  // card off-centre, a skip below the edge of a DOM overlay (where nothing
+  // scrolls), or a card left over the scene would each break it, and only
+  // a browser sees them.
+  await page.setViewportSize({ width: 412, height: 915 });
+  await openAsVisitor(page, RANGES_ARCHIVE);
+  await enterAr(page);
+  await seedAlignment(page);
+  await forceTrackingReady(page);
+  const card = page.getByTestId("scan-card");
+  await expect(card).toBeVisible();
+  await expect(page.getByTestId("scan-card-line")).toHaveText(
+    "Point your phone at the tour's code (on the poster).",
+  );
+  // The line at the top steps aside while the card says it.
+  await expect(page.getByTestId("ar-status")).toBeHidden();
+  const box = await page.getByTestId("scan-card-panel").boundingBox();
+  expect(box).not.toBeNull();
+  const viewport = /** @type {{ width: number, height: number }} */ (
+    page.viewportSize()
+  );
+  expect(Math.abs(box.x + box.width / 2 - viewport.width / 2)).toBeLessThan(1);
+  const middle = (box.y + box.height / 2) / viewport.height;
+  expect(middle).toBeGreaterThan(0.35);
+  expect(middle).toBeLessThan(0.55);
+  // The skip waits for its clock, then sits at the bottom, on screen.
+  const skip = page.getByTestId("scan-escape");
+  await expect(skip).toBeHidden();
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__tourViewerTest.fireTimers();
+  });
+  await expect(skip).toBeVisible();
+  const skipBox = await skip.boundingBox();
+  expect(skipBox).not.toBeNull();
+  expect(skipBox.y + skipBox.height).toBeLessThanOrEqual(viewport.height);
+  expect(skipBox.y).toBeGreaterThan(box.y + box.height);
+  expect(
+    Math.abs(skipBox.x + skipBox.width / 2 - viewport.width / 2),
+  ).toBeLessThan(1);
+  // The code is read: the card closes by itself, the line comes back.
+  await lockTheCode(page);
+  await expect(card).toBeHidden();
+  await expect(page.getByTestId("ar-status")).toBeVisible();
 });
 
 test("a visitor reads one plain sentence per state, never the debug readout (UI round 1, U1)", async ({
