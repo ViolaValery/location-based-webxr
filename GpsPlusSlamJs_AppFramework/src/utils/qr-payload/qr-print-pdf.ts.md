@@ -22,7 +22,8 @@ is the actual request (second testing session, §4).
 
 A QR code is a grid of black squares, so a page is a few hundred vector
 rectangles - a content stream of `re f` operators. No image encoding, no
-compression, no font embedding (the caption uses base-14 Helvetica). The
+compression, no font embedding (the text uses the base-14 Helvetica and
+Helvetica-Bold, which every viewer and printer carries). The
 result prints at the printer's own resolution instead of a bitmap's, which
 is the property that matters for something a camera has to measure.
 
@@ -46,7 +47,12 @@ is the property that matters for something a camera has to measure.
   hands exactly this over).
 - `PAPER_SIZES_MM` (`a4`, `letter`), `type PaperSize`.
 - `PrintPdfOptions`: `paper`, `sideM` (required), `marginMm`,
-  `quietFraction`, `captionMm`, `gapMm`.
+  `quietFraction`, `captionMm`, `gapMm`, `poster`.
+- `PosterText`: `{ title?, explanation?, callToAction? }` - the poster
+  text printed with EVERY code of a run (Tour Viewer polish round D-P7).
+  The plan carries it laid out as `plan.poster`: `lines` (part, text,
+  face, colour, em and width in mm, baseline `dyMm` from the box's bottom
+  edge) and `captionDyMm`, where the code's caption moved to.
 
 ## Invariants & assumptions
 
@@ -72,8 +78,10 @@ is the property that matters for something a camera has to measure.
 - **One fit test** (`gridFor`) decides the grid, the refusal and
   `maxPrintablePdfSideM`, so the three cannot disagree.
 - **A grid per page** (A11): as many columns as fit across, as many rows
-  as fit above the check bar, centred across and top-anchored; the last
-  page holds the rest.
+  as fit above the check bar; the stack is centred across the sheet and
+  vertically centred between the check bar's band and the highest a box
+  top may sit (PR #586 review: this said "top-anchored", which the code
+  never was); the last page holds the rest.
 - **Every page carries a 10 cm check bar** (a bar with a tick per
   centimetre and a line saying to print again at 100 % if it measures
   anything else), and the catalog asks the viewer not to scale
@@ -91,9 +99,26 @@ is the property that matters for something a camera has to measure.
 - **xref offsets are measured from encoded BYTES**, not string lengths. The
   two agree only while every byte is ASCII, and relying on that silently is
   how the file breaks the first time a caption is not.
-- **Captions are stripped to printable ASCII** and the three PDF-string
-  characters are escaped. The base-14 fonts are single-byte WinAnsi, and a
-  stray multi-byte character would render as mojibake rather than fail.
+- **Text is WinAnsi** (`pdf-text.ts`): the base-14 fonts read one byte per
+  character, so Latin-1 letters (a German tour name's umlauts) are mapped
+  to their byte and written as octal escapes - the file stays ASCII -
+  while what the font has no glyph for (emoji, CJK) is dropped rather than
+  printed as some other letter. The three PDF-string characters are
+  escaped.
+- **The poster text** (D-P7/D-P8): the title (bold) over the explanation
+  above each code's quiet box, the call to action below it, the code's
+  caption below that; every line centred on its box. Sizes are a share of
+  the SYMBOL side (title 11 %, the other two 7.5 %), so the text is scaled
+  to the code. It never costs the code anything: the ceiling and the
+  refusal are decided without it. What gives way, in order: the text's
+  size (down to 30 %), then a row of codes per page, then a part - the
+  explanation first, the title next, the call to action last. A title or
+  explanation under about 6 pt (2.2 mm em) is dropped; the call to action
+  is held at that size instead, so it goes only when two lines of it no
+  longer fit the code. Measured over 3-18 cm with all three texts: every
+  size keeps all three, and a page loses at most one row (3, 4, 6 and
+  10 cm lose one; 5, 7, 8, 9 cm none). The text is ink: it stays inside
+  the margin, off every quiet zone and above the check bar.
 - At 16 cm a page holds one code; at 8 cm four; at 5 cm a dozen or more.
 
 ## Examples
@@ -113,8 +138,17 @@ const pdf = buildQrPrintPdf(
 dependency of that test only; production ships no PDF library) and
 measures the pixels: the page at its declared A4 size, every module of an
 18 cm symbol at its place (pitch, orientation, nothing cut), the check bar
-10 cm to within a pixel each end, and a grid run's page count. A mutant that
-shortened the bar to 99 mm fails it.
+10 cm to within a pixel each end, a grid run's second page carrying its
+codes, and the poster text drawn above and below the code, centred to
+within 2 mm, with the quiet zone blank. Mutants that shortened the bar to
+99 mm, or moved the text 10 mm off centre, fail it.
+
+`qr-print-pdf.poster.test.ts` holds the poster text in the plan: the
+codes' geometry unchanged, all three texts on the 18 cm A4 poster, the
+sizes in proportion, the drop order swept over 1-18 cm, an empty part
+left off, a long title wrapped, rows given up only after size (swept over
+3-18 cm), and a property that every line stays inside the margin, off
+every quiet zone and above the check bar.
 
 `qr-print-pdf.test.ts`. The two that carry the file:
 

@@ -157,5 +157,83 @@ describe('the print PDF in a real renderer (polish round M0b)', () => {
     const shot = await render(buildQrPrintPdf(codes, { sideM: 0.08 }), 2);
     expect(shot.pages).toBe(plan.pages.length);
     expect(shot.pages).toBe(2);
+    // ...and the overflow page carries its codes, not a blank sheet: the
+    // first module of each placement there is dark (PR #586 review).
+    const quiet = (plan.blockMm - plan.sideMm) / 2;
+    const step = plan.sideMm / 21;
+    const second = plan.pages[1] ?? [];
+    expect(second.length).toBeGreaterThan(0);
+    for (const place of second) {
+      const x = (place.xMm + quiet + 0.5 * step) * PX_PER_MM;
+      const y =
+        (297 - (place.yMm + quiet + plan.sideMm - 0.5 * step)) * PX_PER_MM;
+      expect(shot.dark(x, y)).toBe(true);
+    }
+  });
+
+  // Why (polish round D-P7): the poster text is only right if a viewer
+  // draws it where the plan says - above and below the code, centred on
+  // it, and never inside the quiet zone the scanner needs blank.
+  it('draws the poster text above and below the code, centred, and leaves the quiet zone blank', async () => {
+    const poster = {
+      title: 'Harbour Lights',
+      explanation: 'AR tour starts here',
+      callToAction: 'Scan with your phone camera',
+    };
+    const plan = planPrintPdf(1, { sideM: 0.18, poster });
+    const shot = await render(
+      buildQrPrintPdf([checkerboard(21, 'Code 1')], { sideM: 0.18, poster })
+    );
+    const place = plan.pages[0]?.[0];
+    if (place === undefined) throw new Error('no placement');
+    /** Columns (px) with ink in the band of rows [fromMm, toMm) from the
+     *  page top. */
+    const inkColumns = (fromMm: number, toMm: number): number[] => {
+      const columns: number[] = [];
+      for (let x = 0; x < shot.width; x += 1) {
+        for (let y = fromMm * PX_PER_MM; y < toMm * PX_PER_MM; y += 1) {
+          if (shot.dark(x, y)) {
+            columns.push(x);
+            break;
+          }
+        }
+      }
+      return columns;
+    };
+    const boxTopMm = 297 - (place.yMm + plan.blockMm);
+    const boxBottomMm = 297 - place.yMm;
+    const centreMm = place.xMm + plan.blockMm / 2;
+    // Above the box (the title and the explanation) and below it (the call
+    // to action, above the caption).
+    const cta = plan.poster.lines.find((l) => l.part === 'callToAction');
+    if (cta === undefined) throw new Error('no call to action');
+    for (const [from, to] of [
+      [6, boxTopMm],
+      [boxBottomMm, 297 - (place.yMm + cta.dyMm) + 0.25 * cta.emMm],
+    ] as const) {
+      const ink = inkColumns(from, to);
+      expect(ink.length).toBeGreaterThan(0);
+      const left = (ink[0] ?? 0) / PX_PER_MM;
+      const right = (ink[ink.length - 1] ?? 0) / PX_PER_MM;
+      // Centred on the code to within 2 mm (glyph side bearings).
+      expect(Math.abs((left + right) / 2 - centreMm)).toBeLessThan(2);
+      expect(left).toBeGreaterThanOrEqual(6);
+      expect(right).toBeLessThanOrEqual(210 - 6);
+    }
+    // The quiet zone: a ring between the box edge and the symbol, blank.
+    const quiet = (plan.blockMm - plan.sideMm) / 2;
+    const inner = 0.5;
+    expect(
+      inkColumns(boxTopMm + inner, boxTopMm + quiet - inner).filter(
+        (x) =>
+          x / PX_PER_MM > place.xMm && x / PX_PER_MM < place.xMm + plan.blockMm
+      )
+    ).toEqual([]);
+    expect(
+      inkColumns(boxBottomMm - quiet + inner, boxBottomMm - inner).filter(
+        (x) =>
+          x / PX_PER_MM > place.xMm && x / PX_PER_MM < place.xMm + plan.blockMm
+      )
+    ).toEqual([]);
   });
 });

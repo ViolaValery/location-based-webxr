@@ -526,10 +526,10 @@ describe('the parts nothing else watches', () => {
   });
 
   it('names a PDF ceiling larger than the browser-print one, and prints at it', () => {
-    // The panel shows homePrintWarning, which is about the browser's own
-    // dialog and is ~7 mm stricter. Without a separate number the panel
-    // tells an author their 17 cm code "will not scan" in the same breath
-    // as a PDF that prints it correctly.
+    // The print step judges sizes against THIS ceiling (it prints by PDF
+    // only). The browser-print ceiling is about the browser's own dialog
+    // and ~7 mm stricter; judged by it, a 17 cm code would be refused
+    // although the PDF prints it correctly.
     const ceiling = maxPrintablePdfSideM('a4');
     // Compared against the imported ceiling, not a copied 0.164: the browser
     // number moves if the quiet zone ever does, and a literal here would

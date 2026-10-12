@@ -24,6 +24,13 @@
  * number the author typed.
  */
 
+import {
+  pdfLiteral,
+  textWidthEm,
+  toWinAnsi,
+  wrapText,
+  type PdfFont,
+} from './pdf-text.js';
 import { QR_QUIET_ZONE_FRACTION } from './qr-quiet-zone.js';
 
 /** PDF user space is points: 1 pt = 1/72 inch. */
@@ -79,6 +86,79 @@ const DEFAULT_GAP_MM = 6;
  */
 const ROW_OVERLAP = 0.02;
 
+/**
+ * The poster's text (Tour Viewer polish round D-P7): the same for every
+ * code of a run. An empty or missing part is left off.
+ */
+export interface PosterText {
+  /** Above the code, bold: the tour's name. */
+  title?: string;
+  /** Under the title, e.g. "AR tour starts here". */
+  explanation?: string;
+  /** Below the code, e.g. "Scan with your phone camera". */
+  callToAction?: string;
+}
+
+type PosterPart = keyof PosterText;
+
+/**
+ * Each part's size as a fraction of the SYMBOL side (D-P8: scaled to the
+ * code), its face, colour and line budget. The proportions follow the
+ * chosen S1 design's poster (title over the explanation over the code, the
+ * call to action under it).
+ */
+const POSTER_STYLE: Record<
+  PosterPart,
+  {
+    ratio: number;
+    font: PdfFont;
+    rgb: readonly [number, number, number];
+    maxLines: number;
+  }
+> = {
+  title: { ratio: 0.11, font: 'bold', rgb: [0.11, 0.137, 0.169], maxLines: 2 },
+  explanation: {
+    ratio: 0.075,
+    font: 'bold',
+    rgb: [0.059, 0.463, 0.431],
+    maxLines: 2,
+  },
+  callToAction: {
+    ratio: 0.075,
+    font: 'regular',
+    rgb: [0.357, 0.396, 0.439],
+    maxLines: 2,
+  },
+};
+
+/**
+ * The smallest em (mm) a part is printed at: about 6 pt, readable at arm's
+ * length. A title or explanation that would come out smaller is left off;
+ * the call to action is held AT this size instead, so it is the last part
+ * to go (D-P8) - only when two lines of it no longer fit the code.
+ */
+const MIN_TEXT_EM_MM = 2.2;
+
+/** Line pitch, in em. */
+const LINE_HEIGHT_EM = 1.2;
+
+/** Space between the text and the quiet box, as a fraction of the side. */
+const TEXT_GAP_RATIO = 0.03;
+
+/** How far each shrink step takes the text when a sheet runs short. */
+const TEXT_SHRINK_STEP = 0.05;
+
+/** Never shrink the proportional sizes below this share. */
+const TEXT_MIN_SCALE = 0.3;
+
+/** The drop order (D-P8): each set is tried at every scale before the
+ *  next, smaller one. */
+const KEEP_SETS: readonly (readonly PosterPart[])[] = [
+  ['title', 'explanation', 'callToAction'],
+  ['title', 'callToAction'],
+  ['callToAction'],
+];
+
 export interface PrintPdfOptions {
   paper?: PaperSize;
   /** The SYMBOL side in metres - the number the pose solve reads. */
@@ -87,6 +167,30 @@ export interface PrintPdfOptions {
   quietFraction?: number;
   captionMm?: number;
   gapMm?: number;
+  /** Text around every code; none when absent. */
+  poster?: PosterText;
+}
+
+/** One line of poster text, drawn centred on its code's quiet box. */
+interface PosterLine {
+  part: PosterPart;
+  /** The line itself, whitespace collapsed. */
+  text: string;
+  font: PdfFont;
+  rgb: readonly [number, number, number];
+  /** The font size (em) in mm. */
+  emMm: number;
+  widthMm: number;
+  /** The BASELINE, in mm above the quiet box's bottom edge (negative:
+   *  below the box). */
+  dyMm: number;
+}
+
+/** The poster text as laid out for this run - one layout for every code. */
+interface PosterLayout {
+  lines: PosterLine[];
+  /** The code's caption baseline, relative to the box as `dyMm`. */
+  captionDyMm: number;
 }
 
 /** Where one code's QUIET-ZONE box sits, in mm from the page's bottom-left
@@ -111,6 +215,8 @@ export interface PrintPdfPlan {
   /** The 10 cm ruler check on every page: its left end, the bottom of its
    *  band, its length and the band's height, in mm. */
   checkBar: { xMm: number; yMm: number; lengthMm: number; bandMm: number };
+  /** The text around each code (no lines without a poster). */
+  poster: PosterLayout;
 }
 
 /**
@@ -152,22 +258,34 @@ export function planPrintPdf(
         `Use ${formatMm(ceilingMm(layout))} or less, or a larger sheet.`
     );
   }
-  const { columns, rows, edge } = grid;
-  const perPage = columns * rows;
-
-  // The grid is centred across the sheet and top-anchored in the space
-  // above the check bar. PDF's origin is the BOTTOM-left, so the first row
-  // gets the highest y.
-  const rowMm = blockMm + caption;
+  const { columns } = grid;
   const gridWidth = columns * blockMm + (columns - 1) * gap;
   const left = (paper.width - gridWidth) / 2;
+  // The text is ink: centred on a box, it may be no wider than twice the
+  // distance from the OUTER boxes' centres to the margin - and no wider
+  // than its own box, or it would reach under the next column's.
+  const textWidthMm = Math.min(blockMm, 2 * left + blockMm - 2 * margin);
+  const box = { sideMm, blockMm, widthMm: textWidthMm };
+  const fitted = fitPoster(options.poster, box, (extra) =>
+    gridFor(sideMm, layout, extra)
+  );
+  const { rows, blockTopMm } = fitted.grid;
+  const perPage = columns * rows;
+  const { aboveMm, belowMm } = fitted.extra;
+
+  // The stack - from the first row's box top to the last row's caption -
+  // is centred across the sheet and VERTICALLY CENTRED between the check
+  // bar's band and the highest a box top may sit. PDF's origin is the
+  // BOTTOM-left, so the first row gets the highest y.
+  const rowMm = blockMm + belowMm + caption;
+  const pitchMm = rowMm + gap + aboveMm;
   const floorMm = margin + CHECK_BAR_BAND_MM;
   const pages: PdfPlacement[][] = [];
   for (let placed = 0; placed < count; placed += perPage) {
     const onThisPage = Math.min(perPage, count - placed);
     const usedRows = Math.ceil(onThisPage / columns);
-    const stackMm = usedRows * rowMm + (usedRows - 1) * gap;
-    const space = paper.height - edge - floorMm;
+    const stackMm = usedRows * rowMm + (usedRows - 1) * (gap + aboveMm);
+    const space = blockTopMm - floorMm;
     const topMm = floorMm + (space - stackMm) / 2 + stackMm;
     const placements: PdfPlacement[] = [];
     for (let i = 0; i < onThisPage; i += 1) {
@@ -175,7 +293,7 @@ export function planPrintPdf(
       const col = i % columns;
       placements.push({
         xMm: left + col * (blockMm + gap),
-        yMm: topMm - (row + 1) * rowMm - row * gap + caption,
+        yMm: topMm - row * pitchMm - blockMm,
       });
     }
     pages.push(placements);
@@ -195,6 +313,11 @@ export function planPrintPdf(
       lengthMm: CHECK_BAR_MM,
       bandMm: CHECK_BAR_BAND_MM,
     },
+    poster: {
+      lines: fitted.lines,
+      // Under the call to action, where the caption sat under the box.
+      captionDyMm: -belowMm - caption + 2,
+    },
   };
 }
 
@@ -206,19 +329,38 @@ interface GridLayout {
   gap: number;
 }
 
+/** The poster text's height above and below each quiet box, in mm. */
+interface TextExtent {
+  aboveMm: number;
+  belowMm: number;
+}
+
+const NO_TEXT: TextExtent = { aboveMm: 0, belowMm: 0 };
+
+interface Grid {
+  columns: number;
+  rows: number;
+  /** The highest a quiet box's TOP may sit, in mm from the bottom. */
+  blockTopMm: number;
+}
+
 /**
  * The grid a sheet holds for a symbol of `sideMm`, or null when not even
  * one fits. ONE fit test, used by the planner and by the ceiling, so a
- * size the refusal suggests is a size the planner accepts.
+ * size the refusal suggests is a size the planner accepts. The ceiling and
+ * the refusal ask it WITHOUT text: the poster text never costs the code
+ * its size (D-P8 - the text shrinks instead).
  *
- * The rule: the SYMBOL stays `margin` inside the sheet (ink), the
- * quiet-zone box only has to be on it (blank paper), and each row's caption
- * sits under its box, above the check bar's band.
+ * The rule: the SYMBOL and all text stay `margin` inside the sheet (ink),
+ * the quiet-zone box only has to be on it (blank paper), and each row's
+ * call to action and caption sit under its box, above the check bar's
+ * band.
  */
 function gridFor(
   sideMm: number,
-  layout: GridLayout
-): { columns: number; rows: number; edge: number } | null {
+  layout: GridLayout,
+  extra: TextExtent = NO_TEXT
+): Grid | null {
   const { paper, margin, quiet, caption, gap } = layout;
   const quietMm = sideMm * quiet;
   const blockMm = sideMm + 2 * quietMm;
@@ -226,10 +368,155 @@ function gridFor(
   // quiet zone it carries, never past the edge itself.
   const edge = Math.max(0, margin - quietMm);
   const columns = Math.floor((paper.width - 2 * edge + gap) / (blockMm + gap));
-  const space = paper.height - edge - margin - CHECK_BAR_BAND_MM;
-  const rows = Math.floor((space + gap) / (blockMm + caption + gap));
+  // A box top may reach the sheet's edge band; text above it may not.
+  const blockTopMm = Math.min(
+    paper.height - edge,
+    paper.height - margin - extra.aboveMm
+  );
+  const floorMm = margin + CHECK_BAR_BAND_MM;
+  const rowMm = blockMm + extra.belowMm + caption;
+  const rows = Math.floor(
+    (blockTopMm - floorMm + gap + extra.aboveMm) / (rowMm + gap + extra.aboveMm)
+  );
   if (columns < 1 || rows < 1) return null;
-  return { columns, rows, edge };
+  return { columns, rows, blockTopMm };
+}
+
+/**
+ * Size the poster text for this run and the grid it leaves (D-P8): each
+ * part in proportion to the code, shrunk step by step until the sheet
+ * holds as many rows as it would without text; only where no readable size
+ * does that, one row fewer, and so on. A part that would come out
+ * unreadably small is dropped, the explanation first, the title next, the
+ * call to action last. Without a poster, or when even the call to action
+ * alone does not fit, the run has no text and the grid is the bare one.
+ */
+function fitPoster(
+  poster: PosterText | undefined,
+  box: { sideMm: number; blockMm: number; widthMm: number },
+  gridWith: (extra: TextExtent) => Grid | null
+): { lines: PosterLine[]; extra: TextExtent; grid: Grid } {
+  const bare = gridWith(NO_TEXT);
+  // The caller has already refused a size with no grid at all.
+  if (bare === null) throw new RangeError('no grid for this size');
+  const texts = posterTexts(poster);
+  // The order of what gives way: the text's SIZE first, then a row of
+  // codes per page (A11: a sheet of small codes must not go half empty for
+  // its text), then a part of the text.
+  for (const set of KEEP_SETS) {
+    const keep = set.filter((part) => texts.has(part));
+    if (keep.length === 0) continue;
+    for (let rows = bare.rows; rows >= 1; rows -= 1) {
+      for (
+        let scale = 1;
+        scale >= TEXT_MIN_SCALE - 1e-9;
+        scale -= TEXT_SHRINK_STEP
+      ) {
+        const stack = stackText(keep, texts, box, scale);
+        if (stack === 'too-small') break; // smaller scales only get smaller
+        if (stack === null) continue;
+        const grid = gridWith(stack.extra);
+        if (grid !== null && grid.rows >= rows) return { ...stack, grid };
+      }
+    }
+  }
+  return { lines: [], extra: NO_TEXT, grid: bare };
+}
+
+/** The parts with something printable in them. */
+function posterTexts(poster: PosterText | undefined): Map<PosterPart, string> {
+  const texts = new Map<PosterPart, string>();
+  for (const part of ['title', 'explanation', 'callToAction'] as const) {
+    const text = (poster?.[part] ?? '').replace(/\s+/g, ' ').trim();
+    if (toWinAnsi(text).some((code) => code !== 0x20)) texts.set(part, text);
+  }
+  return texts;
+}
+
+/**
+ * The lines of `keep` at `scale`, stacked around the box: the title over
+ * the explanation above it, the call to action below it. `'too-small'`
+ * when a title or explanation would be under the readable size; null when
+ * a part does not wrap into its line budget at this size.
+ */
+function stackText(
+  keep: readonly PosterPart[],
+  texts: ReadonlyMap<PosterPart, string>,
+  box: { sideMm: number; blockMm: number; widthMm: number },
+  scale: number
+): { lines: PosterLine[]; extra: TextExtent } | 'too-small' | null {
+  const { sideMm, blockMm, widthMm } = box;
+  const gapMm = TEXT_GAP_RATIO * sideMm;
+  const parts: { part: PosterPart; emMm: number; lines: string[] }[] = [];
+  for (const part of keep) {
+    const style = POSTER_STYLE[part];
+    let emMm = style.ratio * sideMm * scale;
+    if (emMm < MIN_TEXT_EM_MM) {
+      if (part !== 'callToAction') return 'too-small';
+      emMm = MIN_TEXT_EM_MM;
+    }
+    const wrapped = wrapText(
+      texts.get(part) ?? '',
+      style.font,
+      emMm,
+      widthMm,
+      style.maxLines
+    );
+    if (wrapped === null) return null;
+    parts.push({ part, emMm, lines: wrapped });
+  }
+  const line = (part: PosterPart, text: string, emMm: number, dyMm: number) => {
+    const style = POSTER_STYLE[part];
+    return {
+      part,
+      text,
+      font: style.font,
+      rgb: style.rgb,
+      emMm,
+      widthMm: textWidthEm(toWinAnsi(text), style.font) * emMm,
+      dyMm,
+    };
+  };
+  // A line's ink reaches about 0.8 em above its baseline and 0.25 em
+  // below it (Helvetica's ascender and descender, rounded up); lines of
+  // one part sit LINE_HEIGHT_EM apart, parts a little further.
+  const ascent = 0.8;
+  const descent = 0.25;
+  // Above the box, built upward from its top: the explanation's last line
+  // first, the title's first line last.
+  const above: PosterLine[] = [];
+  let top = blockMm + gapMm; // the highest ink so far, from the box bottom
+  for (const [i, { part, emMm, lines }] of parts
+    .filter((p) => p.part !== 'callToAction')
+    .reverse()
+    .entries()) {
+    let baseline = top + (i === 0 ? 0 : 0.2 * emMm) + descent * emMm;
+    for (const text of [...lines].reverse()) {
+      above.unshift(line(part, text, emMm, baseline));
+      top = baseline + ascent * emMm;
+      baseline += LINE_HEIGHT_EM * emMm;
+    }
+  }
+  // Below the box, built downward from its bottom.
+  const below: PosterLine[] = [];
+  let bottom = -gapMm; // the lowest ink so far, from the box bottom
+  for (const { part, emMm, lines } of parts.filter(
+    (p) => p.part === 'callToAction'
+  )) {
+    let baseline = bottom - ascent * emMm;
+    for (const text of lines) {
+      below.push(line(part, text, emMm, baseline));
+      bottom = baseline - descent * emMm;
+      baseline -= LINE_HEIGHT_EM * emMm;
+    }
+  }
+  return {
+    lines: [...above, ...below],
+    extra: {
+      aboveMm: above.length === 0 ? 0 : top - blockMm,
+      belowMm: below.length === 0 ? 0 : -bottom,
+    },
+  };
 }
 
 /** The largest WHOLE millimetre a sheet holds, by the same fit test. */
@@ -257,11 +544,11 @@ function resolveLayout(options: PrintPdfOptions) {
 /**
  * The largest symbol side, in metres, this writer can place on `paper`.
  *
- * Exported because the Tour Viewer's panel shows `homePrintWarning`, which
- * is about printing the PAGE from a browser dialog and is roughly 7 mm
- * stricter - the dialog's own margins are not ours. Without this the panel
- * tells an author their 17 cm code "will not scan" in the same breath as a
- * PDF that prints it correctly.
+ * Exported because the Tour Viewer's print step says "too large for A4:
+ * up to ... fits" against THIS ceiling: since polish round M0b it prints by
+ * PDF only, and the browser-print ceiling (`homePrintWarning`, roughly
+ * 7 mm stricter because the dialog's own margins are not ours) would refuse
+ * sizes this writer prints correctly.
  */
 export function maxPrintablePdfSideM(
   paper: PaperSize = 'a4',
@@ -289,7 +576,8 @@ export interface PrintablePdfCode {
   size: number;
   /** Row-major dark flags, `size * size` long; non-zero is dark. */
   modules: ArrayLike<number>;
-  /** The caption under the code. ASCII only - see `pdfText`. */
+  /** The caption under the code. WinAnsi: Latin-1 letters print, what
+   *  the font has no glyph for is dropped (`pdf-text.ts`). */
   caption: string;
 }
 
@@ -324,8 +612,7 @@ export function buildQrPrintPdf(
         placement,
         code: codes[pageIndex * plan.perPage + slot],
       })),
-      plan,
-      options.captionMm ?? DEFAULT_CAPTION_MM
+      plan
     )
   );
   return assemblePdf(contents, plan);
@@ -339,8 +626,7 @@ function pageContent(
     placement: PdfPlacement;
     code: PrintablePdfCode | undefined;
   }[],
-  plan: PrintPdfPlan,
-  captionMm: number
+  plan: PrintPdfPlan
 ): string {
   const parts: string[] = [];
   for (const { placement, code } of slots) {
@@ -359,13 +645,27 @@ function pageContent(
         plan.sideMm
       )
     );
-    // The caption sits BELOW the quiet box, never inside it: ink inside the
-    // quiet zone is exactly what the quiet zone exists to prevent.
-    // At the SYMBOL's left edge, not the box's: the box may reach into the
-    // margin, the caption is ink and may not.
+    // The poster text, centred on the box and never inside it (the plan
+    // keeps it clear of every quiet zone and inside the margin).
+    for (const line of plan.poster.lines) {
+      const x = placement.xMm + plan.blockMm / 2 - line.widthMm / 2;
+      parts.push(`${line.rgb.map((c) => String(c)).join(' ')} rg`);
+      parts.push(
+        `BT /${line.font === 'bold' ? 'F2' : 'F1'} ${pt(line.emMm)} Tf`
+      );
+      parts.push(
+        `${pt(x)} ${pt(placement.yMm + line.dyMm)} Td (${pdfLiteral(toWinAnsi(line.text))}) Tj`
+      );
+      parts.push('ET');
+    }
+    // The caption sits BELOW the quiet box (and below the call to action),
+    // never inside it: ink inside the quiet zone is exactly what the quiet
+    // zone exists to prevent. At the SYMBOL's left edge, not the box's: the
+    // box may reach into the margin, the caption is ink and may not.
+    parts.push('0 0 0 rg');
     parts.push('BT /F1 9 Tf');
     parts.push(
-      `${pt(placement.xMm + quietMm)} ${pt(placement.yMm - captionMm + 2)} Td (${pdfText(code.caption)}) Tj`
+      `${pt(placement.xMm + quietMm)} ${pt(placement.yMm + plan.poster.captionDyMm)} Td (${pdfLiteral(toWinAnsi(code.caption))}) Tj`
     );
     parts.push('ET');
   }
@@ -385,8 +685,10 @@ function checkBar(bar: PrintPdfPlan['checkBar']): string[] {
   }
   out.push('BT /F1 7 Tf');
   out.push(
-    `${pt(bar.xMm)} ${pt(bar.yMm + 4)} Td (${pdfText(
-      'This bar is 10 cm. If it measures anything else, print again at 100 % (actual size).'
+    `${pt(bar.xMm)} ${pt(bar.yMm + 4)} Td (${pdfLiteral(
+      toWinAnsi(
+        'This bar is 10 cm. If it measures anything else, print again at 100 % (actual size).'
+      )
     )}) Tj`
   );
   out.push('ET');
@@ -461,25 +763,6 @@ function formatMm(mm: number): string {
   return `${String(cm)} cm`;
 }
 
-/**
- * A PDF literal string's contents.
- *
- * Escapes the three characters that would end or nest the string, and drops
- * anything outside printable ASCII: the base-14 fonts are single-byte
- * WinAnsi and a stray multi-byte character would render as mojibake rather
- * than fail, which is the worse outcome on a caption whose whole job is to
- * tell one poster from another.
- */
-function pdfText(text: string): string {
-  let out = '';
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    if (ch === '(' || ch === ')' || ch === '\\') out += `\\${ch}`;
-    else if (code >= 32 && code <= 126) out += ch;
-  }
-  return out;
-}
-
 // --- the file ----------------------------------------------------------
 
 /**
@@ -498,10 +781,10 @@ function assemblePdf(
   const widthPt = pt(plan.paper.widthMm);
   const heightPt = pt(plan.paper.heightMm);
   const pageCount = contents.length;
-  // Object numbering: 1 catalog, 2 pages, 3 font, then per page a page
-  // object and its content stream.
-  const pageObjectNumber = (i: number) => 4 + i * 2;
-  const contentObjectNumber = (i: number) => 5 + i * 2;
+  // Object numbering: 1 catalog, 2 pages, 3 and 4 the regular and the
+  // bold font, then per page a page object and its content stream.
+  const pageObjectNumber = (i: number) => 5 + i * 2;
+  const contentObjectNumber = (i: number) => 6 + i * 2;
 
   const objects: string[] = [];
   // PrintScaling None asks the viewer's print dialog to start at 100 %
@@ -518,10 +801,13 @@ function assemblePdf(
   objects.push(
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'
   );
+  objects.push(
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'
+  );
   for (const [i, content] of contents.entries()) {
     objects.push(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${widthPt} ${heightPt}] ` +
-        `/Resources << /Font << /F1 3 0 R >> >> ` +
+        `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> ` +
         `/Contents ${String(contentObjectNumber(i))} 0 R >>`
     );
     objects.push(
