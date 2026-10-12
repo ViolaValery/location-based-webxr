@@ -88,6 +88,11 @@ test("a link with no file behind it yet still reaches the print step, marked unv
   // An own server's link can come before its file (A16): the creator
   // gives it once and prints; the check before the PDF settles it.
   const NOT_YET = "http://127.0.0.1:5197/ranges-ok/not-uploaded-yet.zip";
+  // A link on the test server is an own server's - the one host whose
+  // link can come before its file (PR #584 review).
+  await page.addInitScript(() => {
+    localStorage.setItem("tour-viewer.wizard.host", "own");
+  });
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(NOT_YET);
   await page.getByTestId("open-button").click();
@@ -99,6 +104,9 @@ test("a link with no file behind it yet still reaches the print step, marked unv
   await expect(page.getByTestId("print-url-shown")).toHaveText(
     `${NOT_YET} - not verified yet`,
   );
+  // The status line speaks alone: no "that file does not exist" under it
+  // (PRs #584/#585 reviews).
+  await expect(page.getByTestId("error")).toHaveText("");
   await expect(page.getByTestId("print-canvas")).toBeVisible();
 });
 

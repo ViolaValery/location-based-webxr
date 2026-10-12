@@ -13,11 +13,17 @@ PDF. Plan:
 
 - `type LinkStatus` - `checking`, `found`, or `failed` with the open's cause
   (a `RangeProbeRejectCause` or `"other"`).
-- `linkStatusText(status)` - the status line. A missing file and an offline
-  device say "Not verified yet" and that printing can go ahead; a host that
-  blocks browsers (`cors`, `unusable-link`) says a printed code would not open
-  for visitors; anything else says the file is not a tour that opens here.
-- `printsUnverified(cause)` - true for `missing` and `offline` only.
+- `linkStatusText(status, host?)` - the status line. An offline device, and
+  a missing file on an own server (or with no host chosen), say "Not
+  verified yet" and that printing can go ahead; a missing file on a cloud
+  host says to check the copied share link (PR #584 review: those hosts
+  give the link only once the file is uploaded, so it is a wrong link); a
+  host that blocks browsers (`cors`, `unusable-link`) says a printed code
+  would not open for visitors; `too-large` says to make the tour smaller
+  (PR #585 review: it IS a tour); anything else says the file is not a tour
+  that opens here.
+- `printsUnverified(cause, host?)` - true for `offline`, and for `missing`
+  unless the host is a cloud host (`needsStarterZip`).
 - `type LinkCheckResult`, `recheckNote(result)` - the line put in front of
   the PDF's result after the re-check.
 - `type LinkOpener`, `checkLink(url, open)` - opens the archive with

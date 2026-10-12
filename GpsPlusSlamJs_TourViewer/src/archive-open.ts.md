@@ -16,12 +16,17 @@ DOM glue, its own module since the flows plan M6.
       (deferred a turn, since the value lands after the event) or a
       `change` with a new link runs the open and writes its outcome to
       `linkStatus` (`link-check.ts`): "Checking the link…", then found or
-      failed. A failure whose cause `printsUnverified` (`missing`,
-      `offline`) calls `hooks.presentUnverifiedLink(url)`, so the print
+      failed. A failure whose cause `printsUnverified` for the chosen host
+      (`deps.host`, step 1's `readTourHost`; `offline`, or `missing` on an
+      own server) calls `hooks.presentUnverifiedLink(url)`, so the print
       step carries the link marked unverified and the creator gives it
-      once. A cancelled open hides the line; a superseded one leaves it to
-      the newer check. The same link is not checked twice by paste and
-      `change`; the button ("Check link") always re-checks.
+      once - and clears the error box, whose "that file does not exist"
+      contradicted the line's "that is fine for now" (PRs #584/#585). A
+      cancelled open hides the line; a superseded one leaves it to the
+      newer check. The same link is not checked twice by paste and
+      `change`, nor by "Check link" while its check still runs (PR #585:
+      the field's `change` fires on the button's blur); once settled, the
+      button re-checks.
     - **The advice (tour kit plan K0).** A failed open whose cause
       `offersFileOpen` (a host that blocks browsers, `cors`) shows
       `fileAdvice` - its button opens the same picker - under the error

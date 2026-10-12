@@ -7,29 +7,51 @@
  * @see link-check.ts.md
  */
 
+import { needsStarterZip, type TourHost } from "./tour-host.js";
+
 export type LinkStatus =
   { kind: "checking" } | { kind: "found" } | { kind: "failed"; cause: string };
 
 /** Failures that say nothing against the link itself: the file is not
- *  there YET (an own server's link can come before its file), or this
- *  device could not ask. Every other cause would fail for every visitor
- *  too, so a code printed from it would be a code nobody can open. */
-export function printsUnverified(cause: string): boolean {
-  return cause === "missing" || cause === "offline";
+ *  there YET - only an own server's link can come before its file; every
+ *  cloud host gives its link once the file is uploaded, so a missing file
+ *  there is a wrong link (PR #584 review) - or this device could not ask.
+ *  Every other cause would fail for every visitor too, so a code printed
+ *  from it would be a code nobody can open. No host chosen: an own
+ *  server's rule. */
+export function printsUnverified(
+  cause: string,
+  host: TourHost | null = null,
+): boolean {
+  if (cause === "offline") return true;
+  return cause === "missing" && !missingIsWrongLink(host);
 }
 
-export function linkStatusText(status: LinkStatus): string {
+function missingIsWrongLink(host: TourHost | null): boolean {
+  return host !== null && needsStarterZip(host);
+}
+
+export function linkStatusText(
+  status: LinkStatus,
+  host: TourHost | null = null,
+): string {
   switch (status.kind) {
     case "checking":
       return "Checking the link…";
     case "found":
       return "Tour found - the link works.";
     case "failed":
-      return failedText(status.cause);
+      return failedText(status.cause, host);
   }
 }
 
-function failedText(cause: string): string {
+function failedText(cause: string, host: TourHost | null): string {
+  if (cause === "missing" && missingIsWrongLink(host)) {
+    return "There is no file at this link. Check that you copied the share link of the uploaded tour.zip, shared so anyone with the link can view it.";
+  }
+  if (cause === "too-large") {
+    return "The file at this link is too large to open here. Make the tour smaller (fewer or smaller photos) and upload it again.";
+  }
   if (cause === "missing") {
     return "Not verified yet: there is no file at this link yet. That is fine if you upload it later - you can print the code now, and the link is checked again before the PDF.";
   }

@@ -28,6 +28,7 @@ import {
   printsUnverified,
   type LinkStatus,
 } from "./link-check.js";
+import type { TourHost } from "./tour-host.js";
 import { toStatsView } from "./stats-view.js";
 import { describeTourTrust } from "./tour-trust-view.js";
 import { codeTrustKey, linkTrustKey, trustStorage } from "./tour-trust.js";
@@ -118,8 +119,13 @@ export function wireArchiveOpen(deps: {
   /** A visitor's page stops the background download of a copy that
    *  carries more than visitors read (scan-pass plan S1). */
   mode: ViewerMode;
+  /** The host chosen in step 1 (`readTourHost`): a missing file is a
+   *  wrong link on a cloud host and "not there yet" on an own server
+   *  (PR #584 review). Absent: an own server's rule. */
+  host?: () => TourHost | null;
 }): ArchiveOpen {
   const { ctx, dom, cacheStore, corsProxyBaseUrl, hooks } = deps;
+  const host = (): TourHost | null => deps.host?.() ?? null;
   let objectUrls: string[] = [];
   /** An open is in flight (a real flag, cleared by the open that owns it):
    *  scan-to-open starts none meanwhile (plan §9 #6). */
@@ -381,11 +387,11 @@ export function wireArchiveOpen(deps: {
       sources,
       storage: trustStorage(),
       nowMs: Date.now(),
-      audience: deps.mode,
     }).catch(() => null);
     if (ctx.session !== opened || lines === null) return;
     dom.tourTrust.textContent = lines.join("\n");
-    // A visitor's unsigned tour without a warning has no line (UI round 1).
+    // An unsigned tour without a warning has no line (UI round 1; for the
+    // creator too since the r820 feedback, R6).
     dom.tourTrust.hidden = lines.length === 0;
   }
 
@@ -582,6 +588,10 @@ export function wireArchiveOpen(deps: {
   /** The link the last check ran for: a paste followed by the field's
    *  `change` must not check the same link twice. */
   let lastChecked: string | null = null;
+  /** The link being checked right now: "Check link" tapped while it runs
+   *  (the field's `change` fires on that same blur) is not a retry
+   *  (PR #585 review). */
+  let checking: string | null = null;
 
   /** Step 2's check (polish round M2, A13/A16): the open itself, with its
    *  outcome in the status line. A link whose file is not there yet, or
@@ -589,13 +599,22 @@ export function wireArchiveOpen(deps: {
    *  unverified - so the creator gives the link once. */
   async function checkLinkStep(url: string): Promise<void> {
     lastChecked = url;
+    checking = url;
     showLinkStatus({ kind: "checking" });
-    const outcome = await openUrl(url);
+    const outcome = await openUrl(url).finally(() => {
+      if (checking === url) checking = null;
+    });
     if (outcome.kind === "opened") {
       showLinkStatus({ kind: "found" });
     } else if (outcome.kind === "failed") {
       showLinkStatus({ kind: "failed", cause: outcome.cause });
-      if (printsUnverified(outcome.cause)) hooks.presentUnverifiedLink(url);
+      if (printsUnverified(outcome.cause, host())) {
+        // The status line is the whole message for a tolerated failure:
+        // the open's own error ("that file does not exist") would
+        // contradict its "that is fine for now" (PRs #584/#585 reviews).
+        dom.errorBox.textContent = "";
+        hooks.presentUnverifiedLink(url);
+      }
     } else if (outcome.kind === "cancelled") {
       // The creator stayed with the open tour: this link was not checked.
       lastChecked = null;
@@ -605,14 +624,14 @@ export function wireArchiveOpen(deps: {
   }
 
   function showLinkStatus(status: LinkStatus): void {
-    dom.linkStatus.textContent = linkStatusText(status);
+    dom.linkStatus.textContent = linkStatusText(status, host());
     dom.linkStatus.hidden = false;
   }
 
   dom.form.addEventListener("submit", (event) => {
     event.preventDefault();
     const url = dom.linkInput.value.trim();
-    if (url !== "") void checkLinkStep(url);
+    if (url !== "" && url !== checking) void checkLinkStep(url);
   });
   // The check runs by itself (A16): on a paste - the value lands after the
   // event, hence the deferral - and when the field is left with a new link.

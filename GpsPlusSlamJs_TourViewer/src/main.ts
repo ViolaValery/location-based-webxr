@@ -692,6 +692,8 @@ hooks.renderArEntry = arEntry.renderArEntry;
 const archive = wireArchiveOpen({
   ctx,
   mode,
+  // Step 1's host decides what a missing file at the link means.
+  host: () => readTourHost(stepStore),
   dom: {
     form: element("open-form"),
     linkInput: element("link"),

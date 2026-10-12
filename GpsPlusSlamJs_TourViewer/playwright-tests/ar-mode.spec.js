@@ -2148,6 +2148,11 @@ test("a failed open puts the page back to having no tour, not to showing the old
   // longer had, for the rest of its life: printing before hosting became a
   // one-shot per page load, and a creator whose second link failed had no
   // field to correct it in without reloading.
+  // A link on the test server is an own server's - the one host whose
+  // link can come before its file (PR #584 review).
+  await page.addInitScript(() => {
+    localStorage.setItem("tour-viewer.wizard.host", "own");
+  });
   await page.goto("/");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
@@ -2163,7 +2168,6 @@ test("a failed open puts the page back to having no tour, not to showing the old
     .getByTestId("link-input")
     .fill("http://127.0.0.1:5197/ranges-ok/nope.zip");
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("error")).not.toHaveText("");
 
   // A link with no file behind it YET is still the creator's link (polish
   // round M2, A16: an own server's link can come before its file): the
@@ -2171,6 +2175,8 @@ test("a failed open puts the page back to having no tour, not to showing the old
   await expect(page.getByTestId("link-status")).toContainText(
     "Not verified yet",
   );
+  // ...and says so alone (PRs #584/#585 reviews).
+  await expect(page.getByTestId("error")).toHaveText("");
   await expect(page.getByTestId("print-panel")).toHaveAttribute("open", "");
   await expect(page.getByTestId("print-url-shown")).toHaveText(
     "http://127.0.0.1:5197/ranges-ok/nope.zip - not verified yet",

@@ -49,7 +49,7 @@ describe("linkStatusText", () => {
       { kind: "failed", cause: "cors" },
       { kind: "failed", cause: "other" },
     ];
-    const texts = states.map(linkStatusText);
+    const texts = states.map((state) => linkStatusText(state));
     for (const text of texts) expect(text.length).toBeGreaterThan(10);
     expect(new Set(texts).size).toBe(texts.length);
   });
@@ -117,5 +117,39 @@ describe("recheckNote", () => {
       /still not reachable/i,
     );
     expect(recheckNote({ ok: false, cause: "missing" })).toMatch(/visitors/i);
+  });
+});
+
+describe("the host decides what a missing file means (PR #584 review)", () => {
+  // Why: only an own server's link can come before its file. Every cloud
+  // host hands out its link once the file is uploaded, so a missing file
+  // there is a WRONG link - a wrong Drive id, a revoked share - and a code
+  // printed from it would be dead for every visitor while the page said
+  // "that is fine if you upload it later".
+  it("lets a missing file go on to printing only for an own server, or no choice", () => {
+    expect(printsUnverified("missing", "own")).toBe(true);
+    expect(printsUnverified("missing", null)).toBe(true);
+    for (const host of ["drive", "dropbox", "onedrive", "github"] as const) {
+      expect(printsUnverified("missing", host), host).toBe(false);
+      // Offline says nothing against the link, on any host.
+      expect(printsUnverified("offline", host), host).toBe(true);
+    }
+  });
+
+  it("tells a cloud host's creator to check the link, not to upload later", () => {
+    const text = linkStatusText({ kind: "failed", cause: "missing" }, "drive");
+    expect(text).toMatch(/check/i);
+    expect(text).not.toMatch(/upload it later|print the code now/i);
+  });
+});
+
+describe("a tour too large to open (PR #585 review)", () => {
+  // Why: the archive IS a tour, just over the transport's cap - sending
+  // the creator back to the empty starter tour would throw their work away.
+  it("says to make the tour smaller, not to start over", () => {
+    const text = linkStatusText({ kind: "failed", cause: "too-large" });
+    expect(text).toMatch(/too large/i);
+    expect(text).toMatch(/smaller/i);
+    expect(text).not.toMatch(/starter/i);
   });
 });
