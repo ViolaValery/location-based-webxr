@@ -64,6 +64,9 @@ type MeasureOutcome =
  *  while a measurement is in flight) and the size offer. */
 export interface CreatorMeasuringDom {
   sizeInput: HTMLInputElement;
+  /** The closed "Settings" block the size field lives in (r820 feedback
+   *  R7): opened with step 3 when the size is what stops a session. */
+  printSettings?: { open: boolean };
   finishButton: HTMLButtonElement;
   sizeOffer: HTMLElement;
   sizeOfferText: HTMLElement;
@@ -225,6 +228,7 @@ export function wireCreatorMeasuring(deps: {
       // that does nothing. Both steps stay open: the reason in one, the
       // field that fixes it in the other.
       deps.wizard.revealStep("print");
+      if (dom.printSettings !== undefined) dom.printSettings.open = true;
       deps.render();
       return false;
     }

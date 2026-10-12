@@ -1749,8 +1749,18 @@ test("the print panel draws one tile per poster at the declared size, and prints
   await expect(page.getByTestId("print-info")).toContainText("Codes 1 to 3");
   // 18 cm: the default, the largest whole centimetre the PDF fits on A4.
   await expect(page.getByTestId("print-info")).toContainText("18cm");
-  await expect(page.getByTestId("print-info")).toContainText("100 %");
   await expect(page.getByTestId("print-info")).not.toContainText("Too large");
+  // Each tile is a small poster (polish round D-P7): the default text
+  // around its code.
+  await expect(page.getByTestId("print-tile").first()).toContainText(
+    "AR tour starts here",
+  );
+  await expect(page.getByTestId("print-tile").first()).toContainText(
+    "Scan with your phone camera",
+  );
+  // The defaults sit behind "Settings" (r820 feedback R7).
+  await expect(page.getByTestId("author-size")).toBeHidden();
+  await page.getByTestId("print-settings").locator("summary").click();
   // BARE host (ZD-9): the landing forward carries ?qr= to the viewer, so
   // printed codes never spend payload bits on a path.
   await expect(page.getByTestId("print-url-out")).toContainText(
@@ -1834,6 +1844,7 @@ test("opening a tour shows the code and the link it carries, without asking agai
 
   // Changing the code number re-renders rather than leaving a stale code
   // on screen claiming to be the new one (M3 review #8).
+  await page.getByTestId("print-settings").locator("summary").click();
   const beforeNumber = await page.getByTestId("print-url-out").textContent();
   await page.getByTestId("author-c").fill("2");
   await page.getByTestId("author-c").blur();
@@ -1904,8 +1915,16 @@ test("a refused AR entry explains itself on the page, with no session to explain
     timeout: 15000,
   });
   // Clearing the size is the real way in: the field ships with a default,
-  // and `min` never fires outside a form submit.
+  // and `min` never fires outside a form submit. It sits in the closed
+  // "Settings" block (r820 feedback R7), which is closed again afterwards:
+  // the refusal has to open it.
+  await page.getByTestId("print-settings").evaluate((details) => {
+    /** @type {HTMLDetailsElement} */ (details).open = true;
+  });
   await page.getByTestId("author-size").fill("");
+  await page.getByTestId("print-settings").evaluate((details) => {
+    /** @type {HTMLDetailsElement} */ (details).open = false;
+  });
   await enterAr(page);
   // toBeVisible FIRST, and this is the point of the test: toHaveText and
   // toContainText read textContent and pass happily for an element inside a
@@ -2073,11 +2092,15 @@ test("the print step builds a real PDF of numbered codes", async ({ page }) => {
   for (const n of [1, 2, 3]) {
     expect(text).toContain(`(Code ${String(n)} - 18cm - print at 100%)`);
   }
+  // The poster text around every code (polish round D-P7), defaults.
+  expect(text).toContain("(AR tour starts here) Tj");
+  expect(text).toContain("(Scan with your phone camera) Tj");
   // Every page actually carries ink.
   expect((text.match(/ re f/g) ?? []).length).toBeGreaterThan(100);
 
   // The failure path (async-UI rule): a size no paper can hold says which
   // size would work, and the button comes back.
+  await page.getByTestId("print-settings").locator("summary").click();
   await page.getByTestId("author-size").fill("40");
   await page.getByTestId("print-pdf").click();
   // An EXPLICIT budget, because the failure this produced pointed
@@ -2205,6 +2228,7 @@ test("the PDF button shows it is working, says when nothing was saved, and conti
     t.saveOutcome = true;
     t.holdPdfSave = false;
   });
+  await page.getByTestId("print-settings").locator("summary").click();
   await page.getByTestId("author-c").fill("4");
   await page.getByTestId("print-count").fill("2");
   await page.getByTestId("print-pdf").click();

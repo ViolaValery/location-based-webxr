@@ -125,6 +125,8 @@ export interface CreatorSetupDom {
   replaceDriveCopy: HTMLButtonElement;
   /** The printed side length - lives in the print step (DEC-F2). */
   sizeInput: HTMLInputElement;
+  /** The print step's "Settings" block holding that field (r820 R7). */
+  printSettings?: { open: boolean };
   /** The print step, opened when the size error points at it. */
   printPanel: HTMLDetailsElement;
   status: HTMLElement;

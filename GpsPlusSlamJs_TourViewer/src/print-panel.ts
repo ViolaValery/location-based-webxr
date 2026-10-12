@@ -28,6 +28,13 @@ import type { PdfTab } from "./seams.js";
 import { codeIndexFromInput, reprintOrphanWarning } from "./qr-author-mode.js";
 import { qrCodeId } from "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id";
 import { readSideM } from "./printed-side.js";
+import {
+  defaultPosterFields,
+  readPosterFields,
+  writePosterFields,
+  type PosterFields,
+  type PosterTextStore,
+} from "./poster-text.js";
 
 /**
  * Which of the two spellings of the tour link step 2 shows.
@@ -216,9 +223,18 @@ export interface PrintPanelDom {
   info: HTMLDivElement;
   /** One preview tile per poster (up to `MAX_PREVIEW_TILES`). */
   tiles: HTMLElement;
-  urlOut: HTMLDivElement;
+  /** The first poster's launch link, shown (and linked) in step 2 since
+   *  the r820 feedback (R6): what the codes carry. */
+  urlOut: HTMLAnchorElement;
   /** How many numbered posters the PDF carries. */
   countInput: HTMLInputElement;
+  /** The big - and + beside the count (r820 feedback R7). */
+  countDown: HTMLButtonElement;
+  countUp: HTMLButtonElement;
+  /** The poster text (polish round D-P7): printed with every code. */
+  posterTitle: HTMLInputElement;
+  posterExplanation: HTMLInputElement;
+  posterCallToAction: HTMLInputElement;
   /** The paper the PDF declares - it draws at absolute coordinates, so
    *  this is the one thing that has to be told. */
   paperSelect: HTMLSelectElement;
@@ -265,6 +281,12 @@ export function wirePrintPanel(deps: {
   /** The light link check (`link-check.ts`), run before the PDF while
    *  the link is unverified. Without it the PDF is built unchecked. */
   checkLink?: (url: string) => Promise<LinkCheckResult>;
+  /** The open tour's name (its `manifest.json` title), the poster title's
+   *  default. Read on each present: the manifest arrives after the open. */
+  tourTitle?: () => string | null;
+  /** Where the poster text is remembered per tour link; absent, it lasts
+   *  the page. */
+  posterStore?: PosterTextStore | undefined;
 }): PrintPanel {
   const { dom, mode } = deps;
   const onLaunchUrl = deps.onLaunchUrl ?? (() => undefined);
@@ -305,6 +327,30 @@ export function wirePrintPanel(deps: {
 
   /** The creator typed a code number for the open tour: keep it. */
   let codeTyped = false;
+
+  /** The creator typed poster text for the open tour (or it was stored):
+   *  the tour's name arriving later must not overwrite it. */
+  let posterTyped = false;
+
+  const posterInputs = [
+    dom.posterTitle,
+    dom.posterExplanation,
+    dom.posterCallToAction,
+  ] as const;
+
+  function posterFields(): PosterFields {
+    return {
+      title: dom.posterTitle.value,
+      explanation: dom.posterExplanation.value,
+      callToAction: dom.posterCallToAction.value,
+    };
+  }
+
+  function showPosterFields(fields: PosterFields): void {
+    dom.posterTitle.value = fields.title;
+    dom.posterExplanation.value = fields.explanation;
+    dom.posterCallToAction.value = fields.callToAction;
+  }
 
   function regenerate(): void {
     if (dom.urlInput.value.trim() === "") return; // nothing to encode yet
@@ -363,11 +409,15 @@ export function wirePrintPanel(deps: {
     // BEFORE any await (polish round M0b): a tab opened later is not part
     // of the tap any more, and a pop-up blocker refuses it.
     const tab = deps.openPdfTab?.() ?? null;
+    // Also before the await: a tour opened while the link is re-checked
+    // replaces the field, and the PDF is the one the creator tapped for
+    // (PR #585 review).
+    const request = printRequest(dom, posterFields());
     dom.pdfButton.disabled = true;
     dom.pdfButton.textContent = PDF_LABELS.busy;
     recheckUnverified()
       .then((note) =>
-        buildPrintPdf(dom, downloadPdf, tab).then((text) =>
+        buildPrintPdf(request, downloadPdf, tab).then((text) =>
           writeInfo(note === null ? text : `${note} ${text}`),
         ),
       )
@@ -397,6 +447,31 @@ export function wirePrintPanel(deps: {
     codeTyped = true;
   });
 
+  // The owner's wording from the start: a code can be printed before any
+  // tour opens (flows plan DEC-F2), and its posters carry the text too.
+  showPosterFields(defaultPosterFields(null));
+
+  // The poster text: kept per tour as it is typed, the tiles redrawn when
+  // a field is left.
+  for (const input of posterInputs) {
+    input.addEventListener("input", () => {
+      posterTyped = true;
+      const url = dom.urlInput.value.trim();
+      if (url !== "") writePosterFields(deps.posterStore, url, posterFields());
+    });
+    input.addEventListener("change", regenerate);
+  }
+
+  // The stepper (r820 feedback R7): whole posters, 1 to MAX_PRINTED_CODES.
+  const step = (by: number) => () => {
+    const { count } = printCountFromInput(dom.countInput.value);
+    const next = Math.min(MAX_PRINTED_CODES, Math.max(1, count + by));
+    dom.countInput.value = String(next);
+    regenerate();
+  };
+  dom.countDown.addEventListener("click", step(-1));
+  dom.countUp.addEventListener("click", step(1));
+
   return {
     presentNoTour: () => {
       // The code on screen belonged to the tour that just went away.
@@ -405,11 +480,17 @@ export function wirePrintPanel(deps: {
       dom.tiles.hidden = true;
       dom.tiles.replaceChildren();
       dom.urlOut.textContent = "";
+      dom.urlOut.removeAttribute("href");
       // A render still in flight must not paint over the cleared panel.
       renderGeneration += 1;
     },
     presentCodes: () => {
       const url = dom.urlInput.value.trim();
+      // The tour's name comes with its manifest, after the open.
+      const name = deps.tourTitle?.() ?? null;
+      if (!posterTyped && name !== null && dom.posterTitle.value === "") {
+        dom.posterTitle.value = name.trim();
+      }
       if (codeTyped || !creator || url === "") return;
       const ids = new Set(measuredCodeIds());
       nextCodeIndex(ids, async (index) =>
@@ -430,6 +511,12 @@ export function wirePrintPanel(deps: {
       // A new tour: its own numbering, until its codes say otherwise.
       codeTyped = false;
       dom.codeInput.value = "1";
+      // Its own poster text: what was typed for it before, else defaults.
+      const stored = readPosterFields(deps.posterStore, url);
+      posterTyped = stored !== null;
+      showPosterFields(
+        stored ?? defaultPosterFields(deps.tourTitle?.() ?? null),
+      );
       // The OPEN TOUR'S link wins, always. It used to be kept only when the
       // field was empty or still held a previous prefill, so as not to
       // clobber text the creator had typed (PR #434 review). Since F7 the
@@ -528,7 +615,6 @@ async function renderTiles(
   const url = dom.urlInput.value.trim();
   const tiles: HTMLElement[] = [];
   let first: string | null = null;
-  let qrVersion = 0;
   for (let i = 0; i < Math.min(count, MAX_PREVIEW_TILES); i += 1) {
     const index = codeIndex + i;
     // Sequential on purpose: each plan measures QR versions, and a dozen
@@ -555,12 +641,15 @@ async function renderTiles(
     tile.dataset["testid"] = "print-tile";
     const label = document.createElement("figcaption");
     label.textContent = `Code ${String(index)}`;
-    tile.append(canvas, label);
+    // A small poster: the text the PDF prints around the code (D-P7).
+    tile.append(
+      ...posterLines(dom, "above"),
+      canvas,
+      ...posterLines(dom, "below"),
+      label,
+    );
     tiles.push(tile);
-    if (first === null) {
-      first = plan.url;
-      qrVersion = plan.qrVersion;
-    }
+    first ??= plan.url;
   }
   if (!current() || first === null) return null;
   dom.tiles.replaceChildren(...tiles);
@@ -584,8 +673,7 @@ async function renderTiles(
   // second thing to not read.
   const orphan = await orphanWarningFor(dom, measuredCodeIds());
   writeInfo(
-    `${range}, each ${sideCss} (QR version ${String(qrVersion)}). ` +
-      "Download the PDF and print it at 100 % (actual size); each page has a 10 cm bar to check with a ruler." +
+    `${range}, ${sideCss} each.` +
       (coerced
         ? " Note: the code number was not a whole number of 1 or more, so the codes start at 1."
         : "") +
@@ -593,7 +681,31 @@ async function renderTiles(
       (orphan === null ? "" : ` ${orphan}`),
   );
   dom.urlOut.textContent = first;
+  dom.urlOut.href = first;
   return first;
+}
+
+/** The tile's lines of poster text above or below its code; an empty
+ *  field gives no line, as on the PDF. */
+function posterLines(
+  dom: PrintPanelDom,
+  where: "above" | "below",
+): HTMLElement[] {
+  const parts =
+    where === "above"
+      ? ([
+          ["print-tile-title", dom.posterTitle.value],
+          ["print-tile-explanation", dom.posterExplanation.value],
+        ] as const)
+      : ([["print-tile-cta", dom.posterCallToAction.value]] as const);
+  return parts
+    .filter(([, text]) => text.trim() !== "")
+    .map(([className, text]) => {
+      const line = document.createElement("div");
+      line.className = className;
+      line.textContent = text.trim();
+      return line;
+    });
 }
 
 /**
@@ -608,19 +720,12 @@ async function renderTiles(
  * @returns the line to show the author.
  */
 async function buildPrintPdf(
-  dom: PrintPanelDom,
+  request: PrintRequest,
   downloadPdf: (blob: Blob, filename: string) => Promise<boolean>,
   tab: PdfTab | null,
 ): Promise<string> {
-  const sideM = readSideM(dom.sizeInput);
-  const url = dom.urlInput.value.trim();
-  const { count, coerced, clamped } = printCountFromInput(dom.countInput.value);
-  // The numbering starts where the code-number field says, so a second
-  // download continues the series instead of minting another code 1. Two
-  // posters carrying the same printed text are ONE code to the level
-  // lookup, and the author would get one of the two positions at random.
-  const { codeIndex: startIndex } = codeIndexFromInput(dom.codeInput.value);
-  const paper = paperFrom(dom);
+  const { sideM, url, count, coerced, clamped, startIndex, paper, poster } =
+    request;
   const codes: PrintablePdfCode[] = [];
   for (let index = startIndex; index < startIndex + count; index += 1) {
     // Sequential on purpose: the payload builder measures QR versions, and
@@ -636,7 +741,7 @@ async function buildPrintPdf(
   }
   // Throws with the size that WOULD fit when the paper cannot hold this
   // one; that message is the useful half of the failure.
-  const bytes = buildQrPrintPdf(codes, { sideM, paper });
+  const bytes = buildQrPrintPdf(codes, { sideM, paper, poster });
   const blob = new Blob([bytes], { type: "application/pdf" });
   const filename = printPdfFilename(startIndex, count, sideM);
   const range =
@@ -653,6 +758,36 @@ async function buildPrintPdf(
   return saved
     ? `Saved ${filename} - ${range} at ${printedSideCss(sideM)}. Print it at 100% scale (no fit-to-page).${notes}`
     : `The PDF was not saved.${notes}`;
+}
+
+/** Everything a PDF is built from, read at the tap. */
+interface PrintRequest {
+  sideM: number;
+  url: string;
+  count: number;
+  coerced: boolean;
+  clamped: boolean;
+  startIndex: number;
+  paper: PaperSize;
+  poster: PosterFields;
+}
+
+function printRequest(dom: PrintPanelDom, poster: PosterFields): PrintRequest {
+  const { count, coerced, clamped } = printCountFromInput(dom.countInput.value);
+  return {
+    sideM: readSideM(dom.sizeInput),
+    url: dom.urlInput.value.trim(),
+    count,
+    coerced,
+    clamped,
+    // The numbering starts where the code-number field says, so a second
+    // download continues the series instead of minting another code 1. Two
+    // posters carrying the same printed text are ONE code to the level
+    // lookup, and the author would get one of the two positions at random.
+    startIndex: codeIndexFromInput(dom.codeInput.value).codeIndex,
+    paper: paperFrom(dom),
+    poster,
+  };
 }
 
 /** What a print run's input needed fixing, said after its outcome. */

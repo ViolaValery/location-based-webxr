@@ -162,6 +162,11 @@ const print = wirePrintPanel({
     tiles: element("print-tiles"),
     urlOut: element("print-url-out"),
     countInput: element("print-count"),
+    countDown: element("print-count-down"),
+    countUp: element("print-count-up"),
+    posterTitle: element("poster-title"),
+    posterExplanation: element("poster-explanation"),
+    posterCallToAction: element("poster-cta"),
     paperSelect: element("print-paper"),
     pdfButton: element("print-pdf"),
   },
@@ -172,6 +177,9 @@ const print = wirePrintPanel({
   // the bytes instead of the browser writing a file.
   downloadPdf: (blob, filename) => seams.downloadPdf(blob, filename),
   openPdfTab: () => seams.openPdfTab(),
+  // The poster title defaults to the tour's name (polish round D-P7).
+  tourTitle: () => ctx.tourManifest?.title ?? null,
+  posterStore: stepStoreOrUndefined(),
   // The re-check before the PDF of a link step 2 could not confirm
   // (polish round M2): the same transport an open uses, probed and let go.
   checkLink: (url) =>
@@ -418,6 +426,7 @@ const setup = wireCreatorSetup({
     finishBlock: element("finish-block"),
     replaceHelp: element("replace-help"),
     sizeInput,
+    printSettings: element<HTMLDetailsElement>("print-settings"),
     printPanel,
     status: element("setup-status"),
     finishButton: element("setup-finish"),

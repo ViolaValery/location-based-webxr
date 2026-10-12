@@ -24,18 +24,30 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
 
 ## Public API
 
-- `wirePrintPanel({ dom, mode, onLaunchUrl?, downloadPdf?, openPdfTab?, measuredCodeIds?, checkLink? }): PrintPanel`
+- `wirePrintPanel({ dom, mode, onLaunchUrl?, downloadPdf?, openPdfTab?, measuredCodeIds?, checkLink?, tourTitle?, posterStore? }): PrintPanel`
   - `openPdfTab` (`seams.openPdfTab`) - where the browser shows PDFs
     itself, a tab opened inside the tap, BEFORE any await (a pop-up blocker
     refuses one opened later), filled with the built PDF; the info line
     then says "Opened ...". Null or absent: the PDF is downloaded
     (`downloadPdf`). A failed build closes the empty tab.
-  - `PrintPanelDom { panel; urlInput; urlAsk; urlShown; sizeInput; codeInput; info; tiles; urlOut; countInput; paperSelect; pdfButton }`
+  - `PrintPanelDom { panel; urlInput; urlAsk; urlShown; sizeInput; codeInput; info; tiles; urlOut; countInput; countDown; countUp; posterTitle; posterExplanation; posterCallToAction; paperSelect; pdfButton }`
+    - `urlOut` - the first poster's launch link, an `<a>` in STEP 2 since
+      the r820 feedback (R6): what the codes carry, with the pasted link
+      wrapped inside; its block is hidden while it is empty.
+    - The poster fields (D-P7, `poster-text.ts`): filled with the tour's
+      name (`tourTitle`, its manifest title - read on present, and again
+      when the codes arrive, since the manifest comes after the open) and
+      the owner's wording; remembered per tour link in `posterStore` as
+      typed; never overwritten by a late title once typed or stored.
+    - `countDown` / `countUp` - the big -/+ of "Posters to print" (R7):
+      whole posters, 1 to `MAX_PRINTED_CODES`; an unreadable count steps
+      from 1.
     - `sizeInput` is SHARED with author mode's mint (one field, two
       consumers): the size a code is printed at is the size it is minted
       with. It is in centimetres, read through `printed-side.ts`.
     - `tiles` - one `<figure class="print-tile">` per poster (up to 12; the
-      PDF carries all of them), each a canvas and "Code n". The first tile's
+      PDF carries all of them), each a small poster: the title and
+      explanation, the canvas, the call to action and "Code n". The first tile's
       canvas keeps `data-testid="print-canvas"`, which the e2e decodes.
   - `PrintPanel.presentTour(url, { verified? })` - take the open tour's
     link, swap the field for that link as TEXT, reset the code number to 1
@@ -52,6 +64,10 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
   - The optional `checkLink` dep runs before the PDF while the link is
     unverified. The PDF is built either way; `recheckNote` goes in front of
     its info line, and a link that now opens drops its "not verified yet".
+  - **The PDF is built from what the panel held AT THE TAP** (link,
+    count, size, paper, numbering, poster text): a tour opened while the
+    link is re-checked replaces the field, and must not change the PDF the
+    creator asked for (PR #585 review).
 - `nextCodeIndex(tourCodeIds, idOfCode, limit?)` - one past the highest
   number whose code the tour holds, 1 for none. A tour files each code under
   a hash of its printed text, so each number's id is computed and looked up,
@@ -87,7 +103,8 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
   tiles. A render generation keeps a slower, older render from painting
   over a newer one.
 - **The info line carries every warning about the artifact**: the range and
-  size, the 100 % instruction with the check bar, "too large for A4/Letter:
+  size (the 100 % instruction is the step's one line of copy since the r820
+  feedback), "too large for A4/Letter:
   up to X fits" (the PDF's ceiling, `maxPrintablePdfSideM`), and the
   measurement-orphaning warning.
 - **Each poster gets its OWN payload** - `planPrintCode` with that code's
@@ -113,6 +130,12 @@ print.presentCodes(); // when the tour's codes have arrived
 
 ## Tests
 
+- `print-panel.wiring.test.ts` - the wiring over stand-in elements (PRs
+  #584/#585 reviews): the re-check before the PDF (confirmed, failed,
+  not needed, a tour opened during it and the link of the tap), the poster
+  text (defaults, the late title, typed text kept, per-tour memory, into
+  the PDF) and the stepper. The tiles need a real canvas and are left to
+  the e2e.
 - `print-panel.test.ts` - `printUrlDisplay` (with the unverified spelling),
   the PDF's inputs, the poster range, and `nextCodeIndex` (gaps, no codes,
   the limit).

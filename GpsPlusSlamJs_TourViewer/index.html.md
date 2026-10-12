@@ -50,10 +50,16 @@ screen. Everything marked `.creator-only` is hidden for a visitor
      "Open the downloaded file" button shown under a "host blocks
      browsers" error.
   3. **Print** (`#print-panel`): by PDF only since polish round M0b - a
-     PDF of N numbered posters (`#print-count`, three by default;
-     `#print-paper`; `#print-pdf`), previewed as one tile per poster
-     (`#print-tiles`); the side length in centimetres (`#author-size`, 18
-     by default). The print dialog's "fit to page" silently rescales, and a
+     PDF of N numbered posters (`#print-count` between the big - and +
+     `#print-count-down` / `#print-count-up`, three by default), each
+     carrying the poster text of `#poster-title`, `#poster-explanation`
+     and `#poster-cta` (polish round D-P7, r820 feedback R8), previewed as
+     one small poster per code (`#print-tiles`). The defaults nobody needs
+     to touch sit in the closed `#print-settings` (r820 feedback R7): the
+     side length in centimetres (`#author-size`, 18 by default; a size
+     refusal at AR start opens the block), `#print-paper` and the first
+     code number (`#author-c`). The launch link the codes carry
+     (`#print-url-out`) is shown in step 2 since the r820 feedback (R6). The print dialog's "fit to page" silently rescales, and a
      rescaled code measures the world wrong, so the page has no print
      stylesheet and no print button. The link is SHOWN
      (`#print-url-shown`), not asked for, whenever a tour is open, and the
@@ -101,15 +107,16 @@ The `data-testid` contract the e2e suite drives: `wizard`, `step-host`
 drawn `map-station-<step>`), `setup-card` (owns `setup-badge`, `setup-of`,
 `setup-dots` with `station-<step>`, `setup-nav`, `setup-back`,
 `setup-next`), `step-link` (owns
-`link-status`),
+`link-status` and `print-url-out`, the launch link in `#link-launch`),
 `starter-zip`, `link-input`, `open-button`, `open-file-button`,
 `file-input`, `file-status`, `tour-trust`, `file-advice`, `open-file-advice`,
 `storage-panel`,
 `clear-cache`, `print-panel` (owns `print-url-ask`, `print-url`,
-`print-url-shown`, `author-size`, `author-c`, `print-info`,
-`print-tiles` (its tiles `print-tile`, the first canvas `print-canvas`),
-`print-url-out`,
-`print-count`, `print-paper`, `print-pdf`, `visitor-link` - opens in a
+`print-url-shown`, `poster-text` (`poster-title`, `poster-explanation`,
+`poster-cta`), `print-count-down`, `print-count`, `print-count-up`,
+`print-settings` (`author-size`, `print-paper`, `author-c`), `print-pdf`,
+`print-info`,
+`print-tiles` (its tiles `print-tile`, the first canvas `print-canvas`), `visitor-link` - opens in a
 new tab, polish round A17), `make-your-own` (on the visitor screen: the
 setup page in a new tab, polish round A8), `step-hang`, `hang-done`, `step-measure` (owns
 `draft-offer`,
