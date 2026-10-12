@@ -56,9 +56,13 @@ test("a missing archive reports a clear error and restores the button (failure p
   await page.getByTestId("link-input").fill(`${ARCHIVE_HOST}/nope/gone.zip`);
   await page.getByTestId("open-button").click();
 
-  await expect(page.getByTestId("error")).toContainText("does not exist", {
-    timeout: 15000,
-  });
+  // An own server's link (the link decides its host, M0c review): its
+  // missing file is "not there yet", said in step 2's status line alone.
+  await expect(page.getByTestId("link-status")).toContainText(
+    "no file at this link",
+    { timeout: 15000 },
+  );
+  await expect(page.getByTestId("error")).toHaveText("");
   await expect(page.getByTestId("open-button")).toHaveText("Check link");
   await expect(page.getByTestId("open-button")).toBeEnabled();
 });
