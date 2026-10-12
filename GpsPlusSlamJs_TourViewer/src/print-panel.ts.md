@@ -108,10 +108,22 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
   under the finger (found by the PDF e2e, M0b).
 - **Every input redraws** (`change`: the size, the code number, the count,
   the paper, the typed link); nothing is drawn while there is no link.
-  Async-UI rule: the info line says "Drawing the codes…" until the tiles
-  and the line are written; a failure writes the error there and hides the
-  tiles. A render generation keeps a slower, older render from painting
-  over a newer one.
+  Async-UI rule: while the tiles redraw the info line is marked
+  `aria-busy` and dimmed, its TEXT kept ("Drawing the codes…" only on an
+  empty line), until the new line is written; a failure writes the error
+  there and hides the tiles. A render generation keeps a slower, older
+  render from painting over a newer one.
+- **The info line never gets shorter while a tour is shown** (its
+  `min-height` holds the tallest height until another tour is presented).
+  It sits under the PDF button: with the page scrolled to its bottom, a
+  shorter line (or a short "Drawing…" replacing a long one) moved the page
+  and the button between a tap's mousedown and mouseup, and the tap after
+  editing a field missed the button (found by the PDF e2e on r830, 102 px).
+- **The next PDF continues the numbering** (F4, the owner's D-R5): after a
+  PDF that was saved or opened, the first code number moves to the next
+  free one and the info line says how to print the same codes again; not
+  when nothing was printed, nor when the creator typed another number
+  while it was built.
 - **The info line carries every warning about the artifact**: the range and
   size (the 100 % instruction is the step's one line of copy since the r820
   feedback), "too large for A4/Letter:

@@ -477,6 +477,11 @@
       /* The preview tiles (polish round M0b): one per poster, the code on
          white - a literal white, not a token: a quiet zone is a SCANNING
          requirement and must stay white on any ground. */
+      /* Redrawing: the info line keeps its text (and the page its height),
+         dimmed until the new line arrives (print-panel.ts). */
+      #print-info[aria-busy="true"] {
+        opacity: 0.55;
+      }
       .print-tiles {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));

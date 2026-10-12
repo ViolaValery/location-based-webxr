@@ -286,8 +286,25 @@ export function wirePrintPanel(deps: {
   function claimInfo(): (text: string) => void {
     const generation = ++infoGeneration;
     return (text: string) => {
-      if (generation === infoGeneration) dom.info.textContent = text;
+      if (generation !== infoGeneration) return;
+      holdInfoHeight();
+      dom.info.textContent = text;
     };
+  }
+
+  /** The line under the PDF button never gets shorter while a tour is
+   *  shown: with the page scrolled to its bottom, a shorter line moved the
+   *  page, and the button with it, between a tap's mousedown and mouseup -
+   *  the tap after editing a field missed (found by the PDF e2e on r830).
+   *  Another tour lets it go (`releaseInfoHeight`). */
+  function holdInfoHeight(): void {
+    const height = dom.info.offsetHeight;
+    const held = Number.parseFloat(dom.info.style.minHeight) || 0;
+    if (height > held) dom.info.style.minHeight = `${String(height)}px`;
+  }
+
+  function releaseInfoHeight(): void {
+    dom.info.style.minHeight = "";
   }
 
   /** The creator typed a code number for the open tour: keep it. */
@@ -350,12 +367,25 @@ export function wirePrintPanel(deps: {
     dom.posterCallToAction.value = fields.callToAction;
   }
 
-  function regenerate(): void {
+  /** Redraw the tiles. `note` goes in front of the info line - the outcome
+   *  of a PDF just printed, which the redraw must not wipe. */
+  function regenerate(note = ""): void {
     if (dom.urlInput.value.trim() === "") return; // nothing to encode yet
     const generation = ++renderGeneration;
-    const writeInfo = claimInfo();
-    // Async-UI rule: the line says the codes are being drawn until they are.
-    writeInfo("Drawing the codes…");
+    const claimed = claimInfo();
+    const writeInfo = (text: string): void => {
+      claimed(note === "" ? text : `${note} ${text}`);
+      if (generation === renderGeneration)
+        dom.info.removeAttribute("aria-busy");
+    };
+    // Async-UI rule: the line shows the codes are being drawn until they
+    // are - marked busy and dimmed, its TEXT kept: the line sits under the
+    // PDF button, and replacing a long line with a short one shortened the
+    // page, which scrolled it and moved the button under the finger
+    // between mousedown and mouseup (found by the PDF e2e on r830). Only an
+    // empty line gets the words.
+    dom.info.setAttribute("aria-busy", "true");
+    if (dom.info.textContent === "") claimed("Drawing the codes…");
     renderTiles(
       dom,
       printLink(),
@@ -416,9 +446,24 @@ export function wirePrintPanel(deps: {
     dom.pdfButton.textContent = PDF_LABELS.busy;
     recheckUnverified()
       .then((note) =>
-        buildPrintPdf(request, downloadPdf, tab).then((text) =>
-          writeInfo(note === null ? text : `${note} ${text}`),
-        ),
+        buildPrintPdf(request, downloadPdf, tab).then(({ text, printed }) => {
+          const outcome = note === null ? text : `${note} ${text}`;
+          // The next PDF continues the numbering (F4, D-R5): two posters
+          // with the same number are one code. Not when the creator typed
+          // another number meanwhile, nor when nothing was printed.
+          const typedMeanwhile =
+            dom.codeInput.value.trim() !== String(request.startIndex);
+          if (!printed || typedMeanwhile) {
+            writeInfo(outcome);
+            return;
+          }
+          const next = request.startIndex + request.count;
+          dom.codeInput.value = String(next);
+          codeTyped = true;
+          regenerate(
+            `${outcome} The next PDF starts at code ${String(next)}; to print these again, set the first code number to ${String(request.startIndex)} under Settings.`,
+          );
+        }),
       )
       .catch((err: unknown) => {
         tab?.close();
@@ -443,7 +488,9 @@ export function wirePrintPanel(deps: {
     dom.paperSelect,
     dom.urlInput,
   ]) {
-    input.addEventListener("change", regenerate);
+    input.addEventListener("change", () => {
+      regenerate();
+    });
   }
   dom.codeInput.addEventListener("input", () => {
     codeTyped = true;
@@ -461,7 +508,9 @@ export function wirePrintPanel(deps: {
       const url = dom.urlInput.value.trim();
       if (url !== "") writePosterFields(deps.posterStore, url, posterFields());
     });
-    input.addEventListener("change", regenerate);
+    input.addEventListener("change", () => {
+      regenerate();
+    });
   }
 
   // The stepper (r820 feedback R7): whole posters, 1 to MAX_PRINTED_CODES.
@@ -482,6 +531,7 @@ export function wirePrintPanel(deps: {
       presentedUrl = null;
       matching = null;
       restPdfButton();
+      releaseInfoHeight();
       showLink(null);
       dom.tiles.hidden = true;
       dom.tiles.replaceChildren();
@@ -534,6 +584,7 @@ export function wirePrintPanel(deps: {
       presentedUrl = url;
       matching = null;
       restPdfButton();
+      releaseInfoHeight();
       // A new tour: its own numbering, until its codes say otherwise.
       codeTyped = false;
       dom.codeInput.value = "1";
@@ -751,7 +802,7 @@ async function buildPrintPdf(
   request: PrintRequest,
   downloadPdf: (blob: Blob, filename: string) => Promise<boolean>,
   tab: PdfTab | null,
-): Promise<string> {
+): Promise<{ text: string; printed: boolean }> {
   const { sideM, url, count, coerced, clamped, startIndex, paper, poster } =
     request;
   const codes: PrintablePdfCode[] = [];
@@ -786,13 +837,19 @@ async function buildPrintPdf(
   if (tab !== null) {
     // Shown where the browser shows PDFs; its own Save keeps the file.
     tab.show(blob);
-    return `Opened ${filename} in a new tab - ${range} at ${printedSideCss(sideM)}. Print it at 100 % (actual size) and check the 10 cm bar with a ruler.${notesFor(coerced, clamped)}`;
+    return {
+      text: `Opened ${filename} in a new tab - ${range} at ${printedSideCss(sideM)}. Print it at 100 % (actual size) and check the 10 cm bar with a ruler.${notesFor(coerced, clamped)}`,
+      printed: true,
+    };
   }
   const saved = await downloadPdf(blob, filename);
   const notes = notesFor(coerced, clamped);
-  return saved
-    ? `Saved ${filename} - ${range} at ${printedSideCss(sideM)}. Print it at 100% scale (no fit-to-page).${notes}`
-    : `The PDF was not saved.${notes}`;
+  return {
+    text: saved
+      ? `Saved ${filename} - ${range} at ${printedSideCss(sideM)}. Print it at 100% scale (no fit-to-page).${notes}`
+      : `The PDF was not saved.${notes}`,
+    printed: saved,
+  };
 }
 
 /** Everything a PDF is built from, read at the tap. */

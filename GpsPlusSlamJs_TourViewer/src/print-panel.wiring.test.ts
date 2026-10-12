@@ -68,7 +68,15 @@ function el(value = "") {
     disabled: false,
     open: false,
     replaceChildren: () => undefined,
-    removeAttribute: () => undefined,
+    attributes: new Map<string, string>(),
+    offsetHeight: 0,
+    style: { minHeight: "" },
+    setAttribute(name: string, value: string) {
+      this.attributes.set(name, value);
+    },
+    removeAttribute(name: string) {
+      this.attributes.delete(name);
+    },
     addEventListener: (type: string, handler: () => void) => {
       handlers.set(type, [...(handlers.get(type) ?? []), handler]);
     },
@@ -380,7 +388,9 @@ describe("no caption line under the codes (owner, on r821)", () => {
     spies.indexes.length = 0;
     dom.pdfButton.fire("click");
     await settled(dom);
-    expect(spies.indexes).toEqual([4, 5]);
+    // The PDF is built first; the tiles of the next run (from 6) follow.
+    expect(spies.indexes.slice(0, 2)).toEqual([4, 5]);
+    expect(spies.indexes[2] ?? 6).toBe(6);
   });
 
   it("builds the PDF with empty captions and no caption band", async () => {
@@ -393,6 +403,111 @@ describe("no caption line under the codes (owner, on r821)", () => {
     const codes = spies.pdfCodes.at(-1) as { caption: string }[];
     expect(codes.length).toBe(3);
     expect(codes.every((code) => code.caption === "")).toBe(true);
+  });
+});
+
+describe("the next PDF continues the numbering (F4, D-R5)", () => {
+  // Why (M0c review, the owner's D-R5): the first number was computed once
+  // per tour, so a second PDF in the same session printed codes 1-3 again:
+  // identical texts, one code to the level lookup, two posters in two
+  // places. After a PDF that was saved or opened, the field moves on, and
+  // the info line says how to print the same codes again.
+  it("moves the first code number on after a saved PDF, and says how to reprint", async () => {
+    const { dom, panel } = wire();
+    panel.presentTour("https://h.example/t.zip");
+    dom.pdfButton.fire("click");
+    await settled(dom);
+    expect(dom.codeInput.value).toBe("4");
+    await vi.waitFor(() => {
+      expect(dom.info.textContent).toMatch(/^Saved /);
+    });
+    expect(dom.info.textContent).toMatch(/next PDF starts at code 4/i);
+    expect(dom.info.textContent).toMatch(/first code number to 1/i);
+    // ...and the next run is built from 4.
+    spies.indexes.length = 0;
+    dom.pdfButton.fire("click");
+    await settled(dom);
+    // The PDF is built first; the tiles of the next run (from 7) follow.
+    expect(spies.indexes.slice(0, 3)).toEqual([4, 5, 6]);
+  });
+
+  it("stays put when nothing was saved", async () => {
+    const env = wire();
+    env.downloadPdf.mockResolvedValueOnce(false);
+    env.panel.presentTour("https://h.example/t.zip");
+    env.dom.pdfButton.fire("click");
+    await settled(env.dom);
+    expect(env.dom.codeInput.value).toBe("1");
+  });
+
+  it("leaves a number the creator typed during the build alone", async () => {
+    let release: (saved: boolean) => void = () => undefined;
+    const env = wire();
+    env.downloadPdf.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = resolve;
+        }),
+    );
+    env.panel.presentTour("https://h.example/t.zip");
+    env.dom.pdfButton.fire("click");
+    await vi.waitFor(() => {
+      expect(env.downloadPdf).toHaveBeenCalled();
+    });
+    env.dom.codeInput.value = "9";
+    release(true);
+    await settled(env.dom);
+    expect(env.dom.codeInput.value).toBe("9");
+  });
+});
+
+describe("the info line while the tiles redraw", () => {
+  // Why (found by the PDF e2e on r830): the line sits under the PDF
+  // button, and a long line replaced by "Drawing the codes…" shortened the
+  // page; scrolled to the bottom, the browser pulled the page up and the
+  // button moved 102 px between mousedown and mouseup, so the tap after
+  // editing a field missed it. The line keeps its text, marked busy.
+  it("keeps its text and is marked busy until the new line arrives", async () => {
+    const { dom, panel } = wire();
+    panel.presentTour("https://h.example/t.zip");
+    dom.pdfButton.fire("click");
+    await settled(dom);
+    await vi.waitFor(() => {
+      expect(dom.info.textContent).toMatch(/^Saved /);
+    });
+    const before = dom.info.textContent;
+    dom.sizeInput.value = "40";
+    dom.sizeInput.fire("change");
+    expect(dom.info.textContent).toBe(before);
+    expect(dom.info.attributes.get("aria-busy")).toBe("true");
+    await vi.waitFor(() => {
+      expect(dom.info.attributes.has("aria-busy")).toBe(false);
+    });
+  });
+});
+
+describe("the info line never shrinks under the PDF button", () => {
+  // Why (found by the PDF e2e on r830): the line sits under the PDF
+  // button; when a shorter line replaced a long one with the page
+  // scrolled to its bottom, the page moved up and so did the button - the
+  // tap that started on it ended beside it. The line keeps the tallest
+  // height it had for the shown tour.
+  it("holds its tallest height until another tour is shown", async () => {
+    const { dom, panel } = wire();
+    panel.presentTour("https://h.example/t.zip");
+    dom.info.offsetHeight = 72;
+    dom.pdfButton.fire("click");
+    await settled(dom);
+    expect(dom.info.style.minHeight).toBe("72px");
+    dom.info.offsetHeight = 24;
+    dom.sizeInput.value = "40";
+    dom.sizeInput.fire("change");
+    await vi.waitFor(() => {
+      expect(dom.info.attributes.has("aria-busy")).toBe(false);
+    });
+    expect(dom.info.style.minHeight).toBe("72px");
+    panel.presentTour("https://h.example/u.zip");
+    expect(dom.info.style.minHeight).toBe("");
   });
 });
 
