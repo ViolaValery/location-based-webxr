@@ -17,10 +17,10 @@ import {
   orphanScanCovers,
   printCountFromInput,
   printedCodeCaption,
-  nextCodeIndex,
   printPdfFilename,
   printUrlDisplay,
 } from "./print-panel.js";
+import { nextCodeIndex } from "./print-link.js";
 
 describe("printUrlDisplay (second testing session, F7)", () => {
   it("asks for the link only while no tour is open", () => {
@@ -253,14 +253,27 @@ describe("nextCodeIndex (polish round M0b)", () => {
   const idOf = (index: number) => Promise.resolve(`id-${String(index)}`);
 
   it("continues after the highest number the tour holds, gaps included", async () => {
-    expect(await nextCodeIndex(new Set(["id-1", "id-4", "id-2"]), idOf)).toBe(
-      5,
-    );
+    expect(
+      await nextCodeIndex(new Set(["id-1", "id-4", "id-2"]), idOf, 50),
+    ).toBe(5);
   });
 
   it("starts at 1 for a tour with no codes, or none of this link's", async () => {
-    expect(await nextCodeIndex(new Set(), idOf)).toBe(1);
-    expect(await nextCodeIndex(new Set(["other-link"]), idOf)).toBe(1);
+    expect(await nextCodeIndex(new Set(), idOf, 50)).toBe(1);
+    expect(await nextCodeIndex(new Set(["other-link"]), idOf, 50)).toBe(1);
+  });
+
+  // PR #586 review: each number is a launch-URL build and a hash on the
+  // main thread, run on every creator open of a tour with codes. Once every
+  // id is found no higher number can match, so the common case stops.
+  it("stops once every code the tour holds is found", async () => {
+    const asked: number[] = [];
+    const counting = (index: number) => {
+      asked.push(index);
+      return idOf(index);
+    };
+    expect(await nextCodeIndex(new Set(["id-1"]), counting, 50)).toBe(2);
+    expect(asked).toEqual([1]);
   });
 
   it("looks no further than the limit", async () => {

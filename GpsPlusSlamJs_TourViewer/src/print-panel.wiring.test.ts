@@ -89,6 +89,7 @@ function wire(
     checkLink?: (url: string) => Promise<LinkCheckResult>;
     tourTitle?: () => string | null;
     store?: ReturnType<typeof memoryStore>;
+    measuredCodeIds?: () => readonly string[];
   } = {},
 ) {
   const dom = {
@@ -121,6 +122,9 @@ function wire(
       ? {}
       : { tourTitle: options.tourTitle }),
     posterStore: options.store ?? memoryStore(),
+    ...(options.measuredCodeIds === undefined
+      ? {}
+      : { measuredCodeIds: options.measuredCodeIds }),
   });
   return { dom, panel, downloadPdf };
 }
@@ -267,6 +271,45 @@ describe("the poster text (polish round D-P7, r820 feedback R8)", () => {
     expect(again.dom.posterTitle.value).toBe("Hafenführung");
     again.panel.presentTour("https://h.example/other.zip");
     expect(again.dom.posterTitle.value).toBe("Name");
+  });
+});
+
+describe("the link the codes carry (r820 feedback R4, R5)", () => {
+  const ID = "1A4mU8eV16aaIvy6Msd76RC3_cbbftRkX";
+  const BARE = `https://drive.google.com/file/d/${ID}`;
+  const PHONE = `${BARE}/view?usp=drivesdk`;
+  const DESKTOP = `${BARE}/view?usp=sharing`;
+
+  it("prints a new tour's Drive link trimmed", async () => {
+    const { dom, panel } = wire();
+    panel.presentTour(PHONE);
+    spies.planned.length = 0;
+    dom.pdfButton.fire("click");
+    await settled(dom);
+    expect(new Set(spies.planned)).toEqual(new Set([BARE]));
+  });
+
+  // The owner's r820 case: the tour was measured from the phone's link and
+  // is re-printed from the desktop's - the codes must match the posters on
+  // the wall, numbered after them, with no warning.
+  it("prints a measured tour in the spelling its codes were printed from", async () => {
+    const plan =
+      await import("gps-plus-slam-app-framework/utils/qr-payload/qr-print-plan");
+    const { qrCodeId } =
+      await import("gps-plus-slam-app-framework/utils/qr-payload/qr-code-id");
+    const measured = [
+      await qrCodeId((await plan.planPrintCode(PHONE, { codeIndex: 1 })).url),
+    ];
+    const { dom, panel } = wire({ measuredCodeIds: () => measured });
+    panel.presentTour(DESKTOP);
+    panel.presentCodes();
+    await vi.waitFor(() => {
+      expect(dom.codeInput.value).toBe("2");
+    });
+    spies.planned.length = 0;
+    dom.pdfButton.fire("click");
+    await settled(dom);
+    expect(new Set(spies.planned)).toEqual(new Set([PHONE]));
   });
 });
 

@@ -28,6 +28,7 @@ import type { PdfTab } from "./seams.js";
 import { codeIndexFromInput, reprintOrphanWarning } from "./qr-author-mode.js";
 import { qrCodeId } from "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id";
 import { readSideM } from "./printed-side.js";
+import { printableLink, spellingOfRecord } from "./print-link.js";
 import {
   defaultPosterFields,
   readPosterFields,
@@ -118,31 +119,6 @@ const MAX_ORPHAN_SCAN_CODES = MAX_PRINTED_CODES;
  */
 export function highestPrintedCode(codeIndex: number, count: number): number {
   return codeIndex + count - 1;
-}
-
-/**
- * The first free code number for a tour (polish round M0b): one more than
- * the highest number whose code the tour holds, 1 for a tour with none. A
- * tour files each code under a hash of its printed text (`qrCodeId`), so
- * the number cannot be read back - each number's id is computed
- * (`idOfCode`) and looked up, every number up to `limit` (a gap below
- * the highest is not reused). Two posters with the same printed text are
- * ONE code to the level lookup, so more posters must continue the
- * numbering.
- */
-export async function nextCodeIndex(
-  tourCodeIds: ReadonlySet<string>,
-  idOfCode: (index: number) => Promise<string>,
-  limit: number = MAX_PRINTED_CODES,
-): Promise<number> {
-  let highest = 0;
-  if (tourCodeIds.size === 0) return 1;
-  for (let index = 1; index <= limit; index += 1) {
-    // Sequential on purpose: a hash each, on the main thread.
-    // eslint-disable-next-line no-await-in-loop
-    if (tourCodeIds.has(await idOfCode(index))) highest = index;
-  }
-  return highest + 1;
 }
 
 /** How many preview tiles the panel draws; the PDF carries every poster. */
@@ -328,6 +304,17 @@ export function wirePrintPanel(deps: {
   /** The creator typed a code number for the open tour: keep it. */
   let codeTyped = false;
 
+  /** The spelling of the link the open tour's measured codes were printed
+   *  from (r820 feedback R4), once `presentCodes` found it; null: new codes
+   *  print the trimmed link (`printableLink`, R5). */
+  let recordLink: string | null = null;
+
+  /** The link the codes carry: the spelling of record, else the field's
+   *  link trimmed. */
+  function printLink(): string {
+    return recordLink ?? printableLink(dom.urlInput.value.trim());
+  }
+
   /** The creator typed poster text for the open tour (or it was stored):
    *  the tour's name arriving later must not overwrite it. */
   let posterTyped = false;
@@ -360,6 +347,7 @@ export function wirePrintPanel(deps: {
     writeInfo("Drawing the codes…");
     renderTiles(
       dom,
+      printLink(),
       writeInfo,
       measuredCodeIds,
       () => generation === renderGeneration,
@@ -412,7 +400,7 @@ export function wirePrintPanel(deps: {
     // Also before the await: a tour opened while the link is re-checked
     // replaces the field, and the PDF is the one the creator tapped for
     // (PR #585 review).
-    const request = printRequest(dom, posterFields());
+    const request = printRequest(dom, printLink(), posterFields());
     dom.pdfButton.disabled = true;
     dom.pdfButton.textContent = PDF_LABELS.busy;
     recheckUnverified()
@@ -476,6 +464,7 @@ export function wirePrintPanel(deps: {
     presentNoTour: () => {
       // The code on screen belonged to the tour that just went away.
       unverifiedUrl = null;
+      recordLink = null;
       showLink(null);
       dom.tiles.hidden = true;
       dom.tiles.replaceChildren();
@@ -491,15 +480,21 @@ export function wirePrintPanel(deps: {
       if (!posterTyped && name !== null && dom.posterTitle.value === "") {
         dom.posterTitle.value = name.trim();
       }
-      if (codeTyped || !creator || url === "") return;
+      if (!creator || url === "") return;
       const ids = new Set(measuredCodeIds());
-      nextCodeIndex(ids, async (index) =>
-        qrCodeId((await planPrintCode(url, { codeIndex: index })).url),
+      spellingOfRecord(
+        url,
+        ids,
+        async (link, index) =>
+          qrCodeId((await planPrintCode(link, { codeIndex: index })).url),
+        MAX_PRINTED_CODES,
       )
-        .then((next) => {
-          // Nothing typed meanwhile, and still the same tour's link.
-          if (codeTyped || dom.urlInput.value.trim() !== url) return;
-          dom.codeInput.value = String(next);
+        .then(({ link, next }) => {
+          // Still the same tour's link.
+          if (dom.urlInput.value.trim() !== url) return;
+          recordLink = link;
+          // The numbering continues the tour's, unless one was typed.
+          if (!codeTyped) dom.codeInput.value = String(next);
           regenerate();
         })
         // No Web Crypto (a plain-http preview) or an unplannable link: the
@@ -508,6 +503,7 @@ export function wirePrintPanel(deps: {
     },
     presentTour: (url, options) => {
       unverifiedUrl = options?.verified === false ? url : null;
+      recordLink = null;
       // A new tour: its own numbering, until its codes say otherwise.
       codeTyped = false;
       dom.codeInput.value = "1";
@@ -563,11 +559,11 @@ export function wirePrintPanel(deps: {
  */
 async function orphanWarningFor(
   dom: PrintPanelDom,
+  url: string,
   measured: readonly string[],
 ): Promise<string | null> {
   if (measured.length === 0) return null;
   const { codeIndex } = codeIndexFromInput(dom.codeInput.value);
-  const url = dom.urlInput.value.trim();
   const { count } = printCountFromInput(dom.countInput.value);
   // A run the budget cannot cover is answered with silence, before any
   // hashing rather than after 50 rounds of it. Same outcome as the old
@@ -604,6 +600,7 @@ async function orphanWarningFor(
  */
 async function renderTiles(
   dom: PrintPanelDom,
+  url: string,
   writeInfo: (text: string) => void,
   measuredCodeIds: () => readonly string[],
   current: () => boolean,
@@ -612,7 +609,6 @@ async function renderTiles(
   const sideCss = printedSideCss(sideM); // validates
   const { codeIndex, coerced } = codeIndexFromInput(dom.codeInput.value);
   const { count } = printCountFromInput(dom.countInput.value);
-  const url = dom.urlInput.value.trim();
   const tiles: HTMLElement[] = [];
   let first: string | null = null;
   for (let i = 0; i < Math.min(count, MAX_PREVIEW_TILES); i += 1) {
@@ -671,7 +667,7 @@ async function renderTiles(
   // The orphaning warning rides the same line: it is about the artifact
   // the creator is one tap from producing, and a second channel is a
   // second thing to not read.
-  const orphan = await orphanWarningFor(dom, measuredCodeIds());
+  const orphan = await orphanWarningFor(dom, url, measuredCodeIds());
   writeInfo(
     `${range}, ${sideCss} each.` +
       (coerced
@@ -772,11 +768,15 @@ interface PrintRequest {
   poster: PosterFields;
 }
 
-function printRequest(dom: PrintPanelDom, poster: PosterFields): PrintRequest {
+function printRequest(
+  dom: PrintPanelDom,
+  url: string,
+  poster: PosterFields,
+): PrintRequest {
   const { count, coerced, clamped } = printCountFromInput(dom.countInput.value);
   return {
     sideM: readSideM(dom.sizeInput),
-    url: dom.urlInput.value.trim(),
+    url,
     count,
     coerced,
     clamped,

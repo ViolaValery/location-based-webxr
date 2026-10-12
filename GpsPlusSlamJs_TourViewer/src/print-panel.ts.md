@@ -56,9 +56,13 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
     yet or that could not be checked offline: the link reads
     "<url> - not verified yet" until a check confirms it.
   - `PrintPanel.presentCodes()` - the open tour's codes arrived
-    (`archive-open.ts`, through the `presentTourCodes` hook): the code
-    number becomes `nextCodeIndex` of the tour's code ids, unless the
-    creator typed a number for this tour meanwhile.
+    (`archive-open.ts`, through the `presentTourCodes` hook): the panel
+    finds the spelling of the link those codes were printed from
+    (`print-link.ts` `spellingOfRecord`, r820 feedback R4) and prints in
+    it from then on; the code number continues theirs unless the creator
+    typed one. Until then, and for a tour without codes, the codes carry
+    the link trimmed (`printableLink`: a Drive link to its file address,
+    R5).
   - `PrintPanel.presentNoTour()` - back to asking for the link, the tiles
     cleared.
   - The optional `checkLink` dep runs before the PDF while the link is
@@ -68,10 +72,6 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
     count, size, paper, numbering, poster text): a tour opened while the
     link is re-checked replaces the field, and must not change the PDF the
     creator asked for (PR #585 review).
-- `nextCodeIndex(tourCodeIds, idOfCode, limit?)` - one past the highest
-  number whose code the tour holds, 1 for none. A tour files each code under
-  a hash of its printed text, so each number's id is computed and looked up,
-  every number up to the limit (50); a gap below the highest is not reused.
 - `printCountFromInput(raw)` - how many posters the PDF carries:
   `{ count, coerced, clamped }`; caps at `MAX_PRINTED_CODES` (50).
 - `printPdfFilename(start, count, sideM)`, `printedCodeCaption(index, sideM)`

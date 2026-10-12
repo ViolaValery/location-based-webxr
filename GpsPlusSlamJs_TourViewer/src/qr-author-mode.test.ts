@@ -437,9 +437,12 @@ describe("printing a code that would strand an existing measurement", () => {
     // The three things a creator needs: that something is wrong, what it
     // will cost, and the way out. A warning without the last one leaves
     // them stuck at the point of no return.
-    expect(warning).toMatch(/step 4 again/i);
+    // Measuring is step 5 since polish round M2; no code "above" any more
+    // since M0b (r820 feedback R4: the old wording pointed at one).
+    expect(warning).toMatch(/measure them in step 5/i);
     expect(warning).toMatch(/original link/i);
     expect(warning).toMatch(/will not be found/i);
+    expect(warning).not.toMatch(/above/i);
   });
 
   it("warns when NO code number of the current link reaches any measurement", () => {

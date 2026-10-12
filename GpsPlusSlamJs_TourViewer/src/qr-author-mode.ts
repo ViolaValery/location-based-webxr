@@ -49,6 +49,7 @@ import {
   nameSurvivesDownload,
 } from "./content-disposition.js";
 import type { TourRelation } from "./code-tour.js";
+import { driveFileId } from "./print-link.js";
 import type { CodeTourStatus } from "./scan-open.js";
 
 /**
@@ -521,9 +522,6 @@ export function driveReplaceSteps(
   };
 }
 
-/** A Drive file id as Drive mints them; anything else is not an id. */
-const DRIVE_ID = /^[\w-]+$/;
-
 /**
  * The Drive website's address of the file behind a Drive link, or null
  * (polish round M2, step 6: the button that copies it, so the creator can
@@ -533,30 +531,11 @@ const DRIVE_ID = /^[\w-]+$/;
  * is rebuilt from it. A relative proxy path resolves against the page.
  */
 export function driveFileAddress(url: string, base?: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(
-      url,
-      base ?? (typeof location === "undefined" ? undefined : location.href),
-    );
-  } catch {
-    return null;
-  }
-  const fromPath =
-    (parsed.hostname === "drive.google.com"
-      ? /^\/file\/d\/([^/]+)/.exec(parsed.pathname)?.[1]
-      : undefined) ??
-    (parsed.hostname === "www.googleapis.com"
-      ? /^\/drive\/v\d+\/files\/([^/]+)/.exec(parsed.pathname)?.[1]
-      : undefined);
-  const driveHost =
-    parsed.hostname === "drive.google.com" ||
-    parsed.hostname === "drive.usercontent.google.com" ||
-    parsed.pathname.endsWith("/api/drive-proxy");
-  const id =
-    fromPath ?? (driveHost ? parsed.searchParams.get("id") : null) ?? null;
-  if (id === null || !DRIVE_ID.test(id)) return null;
-  return `https://drive.google.com/file/d/${id}/view`;
+  const id = driveFileId(
+    url,
+    base ?? (typeof location === "undefined" ? undefined : location.href),
+  );
+  return id === null ? null : `https://drive.google.com/file/d/${id}/view`;
 }
 
 /** The name Chrome gives a download whose name is already taken. */
@@ -629,11 +608,11 @@ export function reprintOrphanWarning(
   // warn about.
   if (measuredCodeIds.some((id) => linkCodeIds.includes(id))) return null;
   return (
-    "Warning: this tour already holds a measurement, and it belongs to a " +
-    "DIFFERENT printed code than the one above - the link must have changed " +
-    "since it was measured. Printing and hanging this code means walking " +
-    "step 4 again; the old measurement will not be found. To keep it, put " +
-    "the original link back in step 1."
+    "Note: this tour's measured codes were printed from another link. " +
+    "Posters printed from this one are new codes: the old measurement " +
+    "will not be found for them, so hang them and measure them in step 5. " +
+    "To print codes that match the posters already hanging, use the " +
+    "original link they were printed from."
   );
 }
 
