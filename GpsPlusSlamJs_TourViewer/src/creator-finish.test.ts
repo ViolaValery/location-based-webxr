@@ -267,6 +267,8 @@ async function wireFinishable(options: {
   noCodeInHand?: boolean;
   /** Told every step the finish opens. */
   onOpenStep?: (step: string) => void;
+  /** The tour's name as typed in step 3 (the poster title). */
+  tourTitle?: string | null;
 }) {
   const blob = await hostedArchive(options.hosted, options.hostedContent);
   const dom = fakeDom();
@@ -329,6 +331,9 @@ async function wireFinishable(options: {
     } as never,
     dom: dom as unknown as CreatorSetupDom,
     openDraftStore: () => Promise.resolve(undefined),
+    ...(options.tourTitle === undefined
+      ? {}
+      : { tourTitle: () => options.tourTitle ?? null }),
   });
   if (options.noCodeInHand !== true) {
     setup.codes.setInHand({ id: LEVEL_ID, json: '{"measured":true}' }, null);
@@ -1583,5 +1588,49 @@ describe("desk edits: a Finish with no AR visit (code book plan M4d, §9 D4)", (
     });
     setup.renderAuthorReadout();
     expect(dom.finishButton.textContent).toBe("Finish and save your changes");
+  });
+});
+
+describe("the tour's name at the Finish (polish round M4a)", () => {
+  // Why: the visitor's start page (V4, D-R12) leads with the tour's name,
+  // which the manifest carries as `title` - and nothing wrote it, so
+  // every tour would have shown none. The name the creator types in step 3
+  // for the posters is the tour's name.
+  it("writes the typed name as the manifest's title", async () => {
+    const { dom, ctx } = await wireFinishable({
+      hosted: [pin("a")],
+      placed: [],
+      tourTitle: "  Harbour Lights ",
+    });
+    dom.finishButton.click();
+    await settle(ctx);
+    expect(ctx.finishError).toBeNull();
+    const written = await publishedManifest(ctx.rebuiltZip!.blob);
+    expect(written.title).toBe("Harbour Lights");
+  });
+
+  it("keeps the tour's title when nothing was typed", async () => {
+    const { dom, ctx } = await wireFinishable({
+      hosted: [pin("a")],
+      placed: [],
+      manifestExtras: { title: "Castle walk" },
+      tourTitle: "   ",
+    });
+    dom.finishButton.click();
+    await settle(ctx);
+    const written = await publishedManifest(ctx.rebuiltZip!.blob);
+    expect(written.title).toBe("Castle walk");
+  });
+
+  it("writes no title when there is none either way", async () => {
+    const { dom, ctx } = await wireFinishable({
+      hosted: [pin("a")],
+      placed: [],
+      tourTitle: null,
+    });
+    dom.finishButton.click();
+    await settle(ctx);
+    const written = await publishedManifest(ctx.rebuiltZip!.blob);
+    expect(written.title).toBeUndefined();
   });
 });

@@ -92,6 +92,17 @@ export interface CreatorFinish {
   renderKeepScan(): void;
 }
 
+/** The title a finished tour carries: the name typed in step 3 when it
+ *  says something, else the title the tour had (polish round M4a: the
+ *  visitor's start page leads with it). */
+function finishTitle(
+  current: string | undefined,
+  typed: string | null,
+): string | undefined {
+  const name = typed?.trim() ?? "";
+  return name === "" ? current : name;
+}
+
 export function wireCreatorFinish(deps: {
   ctx: TourViewerSession;
   arStore: Pick<TourViewerStore, "dispatch">;
@@ -112,6 +123,9 @@ export function wireCreatorFinish(deps: {
   previews: Pick<CreatorPreviews, "keepFinishedPhoto" | "sync">;
   draft: Pick<CreatorDraft, "saveMeta">;
   sessionLive: () => boolean;
+  /** The tour's name as typed in step 3; a non-empty one becomes the
+   *  manifest's `title` (polish round M4a). */
+  tourTitle?: () => string | null;
   render: () => void;
 }): CreatorFinish {
   const { ctx, arStore, dom } = deps;
@@ -277,8 +291,10 @@ export function wireCreatorFinish(deps: {
         const captureSpots = photos.spots;
         if (ctx.session !== current) return; // re-opened meanwhile
         const deleted = [...ctx.deletedObjectIds];
+        const title = finishTitle(manifest.title, deps.tourTitle?.() ?? null);
         const written: TourManifest = {
           ...manifest,
+          ...(title === undefined ? {} : { title }),
           ...(captureSpots === undefined ? {} : { captureSpots }),
           // Never an id twice, and not for tidiness: the serializer REJECTS
           // duplicates, so one restored object that is already in the

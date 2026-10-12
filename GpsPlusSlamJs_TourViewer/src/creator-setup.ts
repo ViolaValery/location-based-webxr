@@ -215,6 +215,10 @@ export function wireCreatorSetup(deps: {
   /** The host chosen in step 1, for step 6's replace steps (polish round
    *  M2); absent in the node tests that do not need it. */
   host?: () => TourHost | null;
+  /** The tour's name as typed in step 3 (the poster title): written as the
+   *  manifest's `title` at the Finish, for the visitor's start page
+   *  (polish round M4a). Absent in the node tests that do not need it. */
+  tourTitle?: () => string | null;
 }): CreatorSetup {
   const { ctx, mode, arStore, arController, seams, wizard, dom } = deps;
   const codeTour: Pick<ScanOpen, "onDetection" | "status" | "relation"> =
@@ -654,6 +658,7 @@ export function wireCreatorSetup(deps: {
     previews,
     draft,
     sessionLive,
+    ...(deps.tourTitle === undefined ? {} : { tourTitle: deps.tourTitle }),
     render: () => {
       renderAuthorReadout();
     },

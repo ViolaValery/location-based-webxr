@@ -408,6 +408,9 @@ const setup = wireCreatorSetup({
   mode,
   // Step 6 names the host chosen in step 1 (polish round M2).
   host: () => readTourHost(stepStore),
+  // The tour's name, typed in step 3 for the posters, becomes its title
+  // at the Finish (polish round M4a: the visitor's start page shows it).
+  tourTitle: () => element<HTMLInputElement>("poster-title").value,
   codeTour: {
     onDetection: (text) => {
       scanOpen?.onDetection(text);

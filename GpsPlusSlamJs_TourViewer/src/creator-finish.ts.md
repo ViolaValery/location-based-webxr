@@ -43,6 +43,11 @@ M4 makes it write every code of the book, not only the one in hand.
 
 ## Invariants & assumptions
 
+- **The tour's title** (polish round M4a): the name typed in step 3 for
+  the posters (`deps.tourTitle`, trimmed) becomes the manifest's `title`
+  when it says something; otherwise the tour keeps the title it had. The
+  visitor's start page (V4) leads with it.
+
 - **Finish** (`finishReadiness`): needs something to write (`hasWork`,
   code book plan M4d: a code the book would write, a changed or deleted
   object, or in AR a code in hand), an open tour AND
