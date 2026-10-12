@@ -14,6 +14,9 @@ D-P7) and each code's caption.
   Latin-1 map to themselves, a no-break space to a space, the typographic
   characters WinAnsi keeps in 0x80-0x9F (euro, curly quotes, dashes,
   ellipsis, ...) to their slots. Everything else is DROPPED.
+- `winAnsiText(text): string` - the text the PDF prints for `text`: what
+  `toWinAnsi` keeps, read back. The Tour Viewer previews the poster with
+  it, so a preview never shows a letter the PDF leaves off (M0c review).
 - `pdfLiteral(codes): string` - the contents of a `( ... )` string: `(`,
   `)` and `\` escaped, bytes above 0x7E as three-digit octal escapes.
   Always printable ASCII.

@@ -116,6 +116,27 @@ export function toWinAnsi(text: string): number[] {
   return out;
 }
 
+/** WinAnsi's 0x80-0x9F slots back to their Unicode characters. */
+const WIN_ANSI_HIGH_CHARS: ReadonlyMap<number, string> = new Map(
+  [...WIN_ANSI_HIGH].map(([unicode, byte]) => [
+    byte,
+    String.fromCodePoint(unicode),
+  ])
+);
+
+/**
+ * The text the PDF prints for `text`: what `toWinAnsi` keeps, read back
+ * (a no-break space as a space). The print step previews the posters with
+ * it, so a preview never shows a letter the PDF leaves off (M0c review).
+ */
+export function winAnsiText(text: string): string {
+  let out = '';
+  for (const code of toWinAnsi(text)) {
+    out += WIN_ANSI_HIGH_CHARS.get(code) ?? String.fromCharCode(code);
+  }
+  return out;
+}
+
 /**
  * The contents of a PDF literal string `( ... )` for WinAnsi bytes: the
  * three delimiters escaped, bytes above 0x7E as octal escapes. The result

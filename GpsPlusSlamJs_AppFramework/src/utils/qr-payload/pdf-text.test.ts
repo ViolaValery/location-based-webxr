@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
-import { pdfLiteral, textWidthEm, toWinAnsi, wrapText } from './pdf-text';
+import {
+  pdfLiteral,
+  textWidthEm,
+  toWinAnsi,
+  winAnsiText,
+  wrapText,
+} from './pdf-text';
 
 describe('toWinAnsi', () => {
   // Why: a poster title is typed by the creator, often in German. The PDF's
@@ -23,6 +29,27 @@ describe('toWinAnsi', () => {
   it('drops what the font cannot show, and control characters', () => {
     expect(toWinAnsi('Tour 🎉\u0007ok')).toEqual(toWinAnsi('Tour ok'));
     expect(toWinAnsi('東京')).toEqual([]);
+  });
+});
+
+describe('winAnsiText (M0c review, finding 8b)', () => {
+  // Why: the print step's preview tiles must show what the PDF prints - a
+  // title the font cannot show in full ("Łódź") previewed whole and
+  // printed "ód".
+  it('is the text the PDF prints', () => {
+    expect(winAnsiText('Łódź')).toBe('ód');
+    expect(winAnsiText('Hafenführung – €5')).toBe('Hafenführung – €5');
+    expect(winAnsiText('東京')).toBe('');
+  });
+
+  it('round-trips every printable WinAnsi character (property)', () => {
+    fc.assert(
+      fc.property(fc.string({ unit: 'binary', maxLength: 30 }), (s) => {
+        const once = winAnsiText(s);
+        expect(winAnsiText(once)).toBe(once);
+        expect(toWinAnsi(once)).toEqual(toWinAnsi(s));
+      })
+    );
   });
 });
 

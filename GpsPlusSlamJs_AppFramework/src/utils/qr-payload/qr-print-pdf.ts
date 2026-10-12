@@ -156,6 +156,9 @@ const TEXT_MIN_SCALE = 0.3;
 const KEEP_SETS: readonly (readonly PosterPart[])[] = [
   ['title', 'explanation', 'callToAction'],
   ['title', 'callToAction'],
+  // A title that cannot fit (one long word at a small size) keeps the
+  // explanation (M0c review, finding 8a).
+  ['explanation', 'callToAction'],
   ['callToAction'],
 ];
 
@@ -482,7 +485,10 @@ function stackText(
   // A line's ink reaches about 0.8 em above its baseline and 0.25 em
   // below it (Helvetica's ascender and descender, rounded up); lines of
   // one part sit LINE_HEIGHT_EM apart, parts a little further.
-  const ascent = 0.8;
+  // 0.96 em: an accented capital (Å, Ü) rises above the plain ascender
+  // (M0c review, finding 7); text at the top of the sheet must not reach
+  // into the margin with it.
+  const ascent = 0.96;
   const descent = 0.25;
   // Above the box, built upward from its top: the explanation's last line
   // first, the title's first line last.
@@ -665,7 +671,7 @@ function pageContent(
     // zone exists to prevent. At the SYMBOL's left edge, not the box's: the
     // box may reach into the margin, the caption is ink and may not.
     parts.push('0 0 0 rg');
-    parts.push('BT /F1 9 Tf');
+    parts.push(`BT /F1 ${pt(captionEmMm(code.caption, plan))} Tf`);
     parts.push(
       `${pt(placement.xMm + quietMm)} ${pt(placement.yMm + plan.poster.captionDyMm)} Td (${pdfLiteral(toWinAnsi(code.caption))}) Tj`
     );
@@ -673,6 +679,26 @@ function pageContent(
   }
   parts.push(...checkBar(plan.checkBar));
   return parts.join('\n');
+}
+
+/** The caption's full size: 9 pt. */
+const CAPTION_EM_MM = (9 * 25.4) / 72;
+
+/**
+ * The caption's font size (em, mm): 9 pt, or smaller so the caption is no
+ * wider than its code's symbol. It starts at the symbol's left edge, which
+ * is inside the margin, so it then stays inside the margin and inside its
+ * own column; at 9 pt a "Code 12 - 3 cm - print at 100%" ran over its
+ * neighbours and off the sheet (M0c review, finding 4).
+ */
+export function captionEmMm(
+  caption: string,
+  plan: Pick<PrintPdfPlan, 'sideMm'>
+): number {
+  const widthEm = textWidthEm(toWinAnsi(caption), 'regular');
+  return widthEm === 0
+    ? CAPTION_EM_MM
+    : Math.min(CAPTION_EM_MM, plan.sideMm / widthEm);
 }
 
 /**

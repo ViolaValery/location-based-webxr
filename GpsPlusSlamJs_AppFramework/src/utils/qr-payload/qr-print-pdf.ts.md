@@ -112,13 +112,24 @@ is the property that matters for something a camera has to measure.
   to the code. It never costs the code anything: the ceiling and the
   refusal are decided without it. What gives way, in order: the text's
   size (down to 30 %), then a row of codes per page, then a part - the
-  explanation first, the title next, the call to action last. A title or
+  explanation first, the title next, the call to action last (a title
+  that cannot fit at all - one long word on a small code - leaves the
+  explanation and the call to action, M0c review). A title or
   explanation under about 6 pt (2.2 mm em) is dropped; the call to action
   is held at that size instead, so it goes only when two lines of it no
   longer fit the code. Measured over 3-18 cm with all three texts: every
   size keeps all three, and a page loses at most one row (3, 4, 6, 7, 10
   and 11 cm lose one; 5, 8, 9 and 12-18 cm none). The text is ink: it stays inside
-  the margin, off every quiet zone and above the check bar.
+  the margin, off every quiet zone and above the check bar; its layout
+  reserves 0.96 em above the baseline, where an accented capital (Å, Ü)
+  reaches (M0c review - 0.8 em let a German title's umlauts into the
+  margin at the top of an 18 cm A4 poster).
+- **The caption is fitted to its code** (`captionEmMm`): 9 pt, or smaller
+  so it is no wider than the symbol, so it stays inside the margin and its
+  own column; at 9 pt a 3 cm code's caption ran over its neighbours and
+  off the sheet (M0c review, since M0b). In A4 codes per page, the text
+  costs: 3 cm 25 to 20, 4 cm 16 to 12, 6-7 cm 6 to 4, 10-11 cm 2 to 1;
+  Letter also 9 cm 4 to 2 (measured after the ascent change).
 - At 16 cm a page holds one code; at 8 cm four; at 5 cm a dozen or more.
 
 ## Examples

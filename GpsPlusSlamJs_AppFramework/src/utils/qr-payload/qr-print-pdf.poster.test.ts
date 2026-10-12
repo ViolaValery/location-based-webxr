@@ -16,12 +16,13 @@ import fc from 'fast-check';
 
 import {
   buildQrPrintPdf,
+  captionEmMm,
   maxPrintablePdfSideM,
   planPrintPdf,
   type PosterText,
   type PrintablePdfCode,
 } from './qr-print-pdf.js';
-import { pdfLiteral, toWinAnsi } from './pdf-text.js';
+import { pdfLiteral, textWidthEm, toWinAnsi } from './pdf-text.js';
 
 const POSTER: PosterText = {
   title: 'Harbour Lights',
@@ -182,7 +183,9 @@ describe('the poster text in the plan', () => {
                 // The line's box: a descender below the baseline, the
                 // ascender above it.
                 const y0 = p.yMm + line.dyMm - 0.25 * line.emMm;
-                const y1 = p.yMm + line.dyMm + 0.8 * line.emMm;
+                // 0.96 em: an accented capital (Å, Ü) rises above the
+                // plain ascender (M0c review, finding 7).
+                const y1 = p.yMm + line.dyMm + 0.96 * line.emMm;
                 expect(x0).toBeGreaterThanOrEqual(margin - eps);
                 expect(x1).toBeLessThanOrEqual(
                   plan.paper.widthMm - margin + eps
@@ -207,6 +210,65 @@ describe('the poster text in the plan', () => {
         }
       )
     );
+  });
+});
+
+describe('the caption under each code (M0c review, finding 4)', () => {
+  // Why: the caption ("Code 12 - 3 cm - print at 100%") was drawn at 9 pt
+  // whatever the code's size; at 2-3 cm it ran over its neighbours and off
+  // the sheet, at 4 cm into the margin. It is ink: inside the margin and
+  // inside its own code's column, at every legal size.
+  it('stays inside the margin and its own column at every size (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 12 }),
+        fc.double({ min: 0.01, max: 0.18, noNaN: true }),
+        fc.constantFrom<'a4' | 'letter'>('a4', 'letter'),
+        (count, sideM, paper) => {
+          const plan = planPrintPdf(count, { sideM, paper, poster: POSTER });
+          const quiet = (plan.blockMm - plan.sideMm) / 2;
+          const eps = 1e-6;
+          for (const page of plan.pages) {
+            for (const [i, p] of page.entries()) {
+              const caption = `Code ${String(i + 12)} - ${String(
+                Math.round(sideM * 1000) / 10
+              )} cm - print at 100%`;
+              const em = captionEmMm(caption, plan);
+              const width = textWidthEm(toWinAnsi(caption), 'regular') * em;
+              const x0 = p.xMm + quiet;
+              expect(x0).toBeGreaterThanOrEqual(6 - eps);
+              expect(x0 + width).toBeLessThanOrEqual(
+                Math.min(plan.paper.widthMm - 6, x0 + plan.sideMm) + eps
+              );
+              expect(em).toBeLessThanOrEqual((9 * 25.4) / 72 + eps);
+            }
+          }
+        }
+      )
+    );
+  });
+
+  it('keeps the full 9 pt where it fits', () => {
+    const plan = planPrintPdf(1, { sideM: 0.18 });
+    expect(captionEmMm('Code 1 - 18 cm - print at 100%', plan)).toBeCloseTo(
+      (9 * 25.4) / 72,
+      9
+    );
+  });
+});
+
+describe('a title that cannot fit (M0c review, finding 8a)', () => {
+  // Why: the drop order is explanation, then title, then call to action;
+  // a title too long to wrap at a small size took the explanation with it.
+  it('keeps the explanation and the call to action', () => {
+    const plan = planPrintPdf(1, {
+      sideM: 0.04,
+      poster: {
+        ...POSTER,
+        title: 'Stadtfuehrungsrundgangsbeschreibung',
+      },
+    });
+    expect(parts(plan)).toEqual(['explanation', 'callToAction']);
   });
 });
 

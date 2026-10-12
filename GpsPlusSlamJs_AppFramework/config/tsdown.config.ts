@@ -337,6 +337,9 @@ const entryFiles = [
   // by the Tour Viewer's print panel, and shaped so the recorder can print
   // the same sheet without a second implementation.
   'src/utils/qr-payload/qr-print-pdf.ts',
+  // Its text encoding: the Tour Viewer previews the poster text as the PDF
+  // prints it (M0c review).
+  'src/utils/qr-payload/pdf-text.ts',
   'src/utils/qr-payload/qr-code-id.ts',
   'src/utils/qr-payload/qr-code-origin.ts',
   // QR anchor minting + level schema + tracking controller — deep-importable
