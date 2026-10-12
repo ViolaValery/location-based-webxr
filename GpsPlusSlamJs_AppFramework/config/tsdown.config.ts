@@ -337,6 +337,8 @@ const entryFiles = [
   // by the Tour Viewer's print panel, and shaped so the recorder can print
   // the same sheet without a second implementation.
   'src/utils/qr-payload/qr-print-pdf.ts',
+  // The one Drive file-id parser (DEC-H3), deep-imported by the Tour Viewer.
+  'src/utils/drive-file-id.ts',
   // Its text encoding: the Tour Viewer previews the poster text as the PDF
   // prints it (M0c review).
   'src/utils/qr-payload/pdf-text.ts',

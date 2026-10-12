@@ -11,12 +11,9 @@ printed in.
 
 ## Public API
 
-- `driveFileId(url, base?)` - the Drive file id from any spelling:
-  `/file/d/<id>/...`, `open?id=`, `uc?id=`, the usercontent download, the
-  Drive API path, the site worker's proxy (`/api/drive-proxy?id=`, resolved
-  against `base`); null for anything else or an id with other characters
-  than letters, digits, `-` and `_`. `driveFileAddress` (step 6's Drive
-  button, `qr-author-mode.ts`) is built on it: one parser.
+- The Drive file id comes from the framework's
+  `utils/drive-file-id.ts` `driveFileId`, the one parser (follow-up F3,
+  DEC-H3); this module has none of its own.
 - `printableLink(url)` - a Drive file link as
   `https://drive.google.com/file/d/<id>`; anything else unchanged.
 - `linkSpellings(url)` - the spellings a tour's measured codes may carry:

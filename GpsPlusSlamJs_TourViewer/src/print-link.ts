@@ -9,41 +9,7 @@
  * @see print-link.ts.md
  */
 
-/** A Drive file id: letters, digits, `-` and `_`. */
-const DRIVE_ID = /^[\w-]+$/;
-
-/** The hosts whose links name a Drive file by its id. */
-const DRIVE_HOSTS: ReadonlySet<string> = new Set([
-  "drive.google.com",
-  "drive.usercontent.google.com",
-]);
-
-/**
- * The Drive file id of a link in any of its spellings - `/file/d/<id>/...`,
- * `open?id=`, `uc?id=`, the usercontent download, the Drive API path, the
- * site worker's proxy (`/api/drive-proxy?id=`) - or null.
- */
-export function driveFileId(url: string, base?: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url, base);
-  } catch {
-    return null;
-  }
-  const fromPath =
-    (parsed.hostname === "drive.google.com"
-      ? /^\/file\/d\/([^/]+)/.exec(parsed.pathname)?.[1]
-      : undefined) ??
-    (parsed.hostname === "www.googleapis.com"
-      ? /^\/drive\/v\d+\/files\/([^/]+)/.exec(parsed.pathname)?.[1]
-      : undefined);
-  const byQuery =
-    DRIVE_HOSTS.has(parsed.hostname) ||
-    parsed.pathname.endsWith("/api/drive-proxy");
-  const id =
-    fromPath ?? (byQuery ? parsed.searchParams.get("id") : null) ?? null;
-  return id !== null && DRIVE_ID.test(id) ? id : null;
-}
+import { driveFileId } from "gps-plus-slam-app-framework/utils/drive-file-id";
 
 /** The spelling a NEW code prints: a Drive file link trimmed to the file's
  *  address; any other link as it is. */

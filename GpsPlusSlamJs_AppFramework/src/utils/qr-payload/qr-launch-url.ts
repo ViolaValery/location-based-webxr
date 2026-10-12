@@ -42,6 +42,7 @@ import {
 } from './codec-dictionary';
 import { encodeBase32Up } from './base32up';
 import { compressBytes } from './compression';
+import { driveFileId } from '../drive-file-id';
 
 /** Not exported on purpose (knip): surfaces via `QrLaunchPlan.strategy`. */
 type QrLaunchStrategy =
@@ -246,14 +247,10 @@ function templateUrl(query: string, dataUrl: string): string | null {
   return QUERY_UNSAFE.test(payload) ? null : query + payload;
 }
 
-/** `D/<id>` for a Drive file link: `/file/d/<id>`, `open?id=` or
- *  `uc?id=` on drive.google.com. */
+/** `D/<id>` for a Drive file link in any spelling (`driveFileId`). */
 function driveShortUrl(query: string, dataUrl: string): string | null {
-  const url = new URL(dataUrl);
-  if (url.hostname !== 'drive.google.com') return null;
-  const id =
-    /^\/file\/d\/([^/]+)/.exec(url.pathname)?.[1] ?? url.searchParams.get('id');
-  return id !== null && /^[\w-]+$/.test(id) ? `${query}D/${id}` : null;
+  const id = driveFileId(dataUrl);
+  return id === null ? null : `${query}D/${id}`;
 }
 
 /** Bare remainder under the configured asset prefix. */

@@ -126,8 +126,8 @@ and the mint itself — raw-WebXR stable pose → GPS-world NUE →
   behind any Drive form a link takes (`/file/d/<id>/` on drive.google.com,
   `?id=` on the open, download and proxy forms, the API's path), or null:
   another host, no id, or an id outside Drive's alphabet (letters, digits, `_` and `-`).
-  The id comes from `print-link.ts` `driveFileId`, the one Drive-link
-  parser. Step 6's
+  The id comes from the framework's `utils/drive-file-id.ts`, the one
+  Drive-link parser. Step 6's
   copy button (polish round M2) hands it to the Drive website.
 - `driveReplaceSteps(name, nameKnown)` - the numbered Drive steps shown
   after the save: an optional rename/check-the-name step, then a check that

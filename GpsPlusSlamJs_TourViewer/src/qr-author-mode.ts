@@ -49,7 +49,7 @@ import {
   nameSurvivesDownload,
 } from "./content-disposition.js";
 import type { TourRelation } from "./code-tour.js";
-import { driveFileId } from "./print-link.js";
+import { driveFileId } from "gps-plus-slam-app-framework/utils/drive-file-id";
 import type { CodeTourStatus } from "./scan-open.js";
 
 /**
