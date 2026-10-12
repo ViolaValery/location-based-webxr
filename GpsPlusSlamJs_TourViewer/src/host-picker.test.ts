@@ -44,6 +44,13 @@ class FakeNode {
   }
 }
 
+/** A list item's words: its text runs and links in order. */
+function textOf(node: FakeNode): string {
+  return node.children.length === 0
+    ? node.textContent
+    : node.children.map(textOf).join("");
+}
+
 function memoryStore(initial: Record<string, string> = {}) {
   const items = new Map(Object.entries(initial));
   return {
@@ -81,7 +88,10 @@ function setup(store?: ReturnType<typeof memoryStore>) {
 }
 
 describe("wireHostPicker", () => {
-  it("renders one radio tile per host, in the module's order, none checked on a first visit", () => {
+  // PR #585 review: `role="radio"` promised arrow keys and one tab stop
+  // the tiles never had, and a radio cannot be un-chosen - which a second
+  // tap does (P6). Toggle buttons in a group say what they are.
+  it("renders one toggle tile per host, in the module's order, none pressed on a first visit", () => {
     const { dom } = setup(memoryStore());
     expect(dom.tiles.children.map((t) => t.dataset.host)).toEqual(
       TOUR_HOSTS.map((h) => h.id),
@@ -90,8 +100,8 @@ describe("wireHostPicker", () => {
       TOUR_HOSTS.map((h) => h.label),
     );
     for (const t of dom.tiles.children) {
-      expect(t.getAttribute("role")).toBe("radio");
-      expect(t.getAttribute("aria-checked")).toBe("false");
+      expect(t.getAttribute("role")).toBeNull();
+      expect(t.getAttribute("aria-pressed")).toBe("false");
     }
     expect(dom.steps.hidden).toBe(true);
     expect(dom.starter.hidden).toBe(true);
@@ -104,12 +114,10 @@ describe("wireHostPicker", () => {
     tile("dropbox").fire("click");
     expect(readTourHost(store)).toBe("dropbox");
     expect(
-      dom.tiles.children.map((t) => t.getAttribute("aria-checked")),
+      dom.tiles.children.map((t) => t.getAttribute("aria-pressed")),
     ).toEqual(["false", "true", "false", "false", "false"]);
     expect(dom.steps.hidden).toBe(false);
-    expect(dom.steps.children.map((li) => li.textContent)).toEqual([
-      ...hostSteps("dropbox"),
-    ]);
+    expect(dom.steps.children.map(textOf)).toEqual([...hostSteps("dropbox")]);
     expect(dom.continueButton.hidden).toBe(false);
   });
 
@@ -124,7 +132,7 @@ describe("wireHostPicker", () => {
   it("brings a stored choice back selected after a reload", () => {
     const store = memoryStore({ "tour-viewer.wizard.host": "github" });
     const { dom, tile } = setup(store);
-    expect(tile("github").getAttribute("aria-checked")).toBe("true");
+    expect(tile("github").getAttribute("aria-pressed")).toBe("true");
     expect(dom.steps.children).toHaveLength(hostSteps("github").length);
     expect(dom.continueButton.hidden).toBe(false);
   });
@@ -172,7 +180,7 @@ describe("a second tap deselects (prototype verdict P6)", () => {
     tile("drive").fire("click");
     tile("drive").fire("click");
     expect(
-      dom.tiles.children.map((t) => t.getAttribute("aria-checked")),
+      dom.tiles.children.map((t) => t.getAttribute("aria-pressed")),
     ).toEqual(["false", "false", "false", "false", "false"]);
     expect(dom.steps.hidden).toBe(true);
     expect(dom.starter.hidden).toBe(true);
@@ -186,5 +194,21 @@ describe("a second tap deselects (prototype verdict P6)", () => {
     tile("drive").fire("click");
     tile("github").fire("click");
     expect(readTourHost(store)).toBe("github");
+  });
+});
+
+describe("the host's name opens the host (r820 feedback R2)", () => {
+  it("renders it as a link opening in a new tab", () => {
+    const { dom, tile } = setup(memoryStore());
+    tile("drive").fire("click");
+    const links = dom.steps.children
+      .flatMap((li) => li.children)
+      .filter((node) => node.tagName === "a");
+    expect(links).toHaveLength(1);
+    const [link] = links;
+    expect(link?.textContent).toBe("Google Drive");
+    expect(link?.getAttribute("href")).toBe("https://drive.google.com/");
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.getAttribute("rel")).toBe("noopener");
   });
 });

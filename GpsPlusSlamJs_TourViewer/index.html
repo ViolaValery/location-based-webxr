@@ -96,7 +96,7 @@
         margin: var(--space-3) 0 0;
         max-width: 48rem;
       }
-      .host-tile[aria-checked="true"] {
+      .host-tile[aria-pressed="true"] {
         box-shadow: var(--shadow-pressed);
         color: var(--accent);
       }
@@ -1026,7 +1026,11 @@
       body[data-mode="creator"] main .btn.setup-ghost:not(#ar-root *) {
         background: transparent;
       }
-      body[data-mode="creator"] .host-tile[aria-checked="true"] {
+      /* As specific as the pill rule above (its :not(#ar-root *) counts an
+         id), or the chosen host looked like the others (found r821). */
+      body[data-mode="creator"]
+        main
+        .btn.host-tile[aria-pressed="true"]:not(#ar-root *) {
         border-color: var(--map-route);
         background: var(--map-route-soft);
         color: var(--ink);
@@ -1890,7 +1894,7 @@
                 <div
                   id="host-tiles"
                   class="host-tiles"
-                  role="radiogroup"
+                  role="group"
                   aria-label="Where your tour lives"
                   data-testid="host-tiles"
                 ></div>
@@ -2254,8 +2258,8 @@
                 <p class="step-copy hint--dim">
                   Fix the printed code where the tour starts: flat on a wall or
                   a post, at about chest height, in a spot a phone can film
-                  squarely from a metre away. It stays there; visitors scan it
-                  to open the tour and again in AR to be placed exactly.
+                  squarely from a metre away. Visitors scan it to open the tour,
+                  and again in AR to be placed exactly.
                 </p>
                 <div class="step-body">
                   <button
@@ -2343,9 +2347,8 @@
             <p class="step-copy hint--dim creator-only" hidden>
               Now the tour itself: stand at the hung code, start creating, and
               walk the route, placing text pins and photos where they belong.
-              The phone measures the code as you begin and lines the tour up
-              with GPS as you walk. When you are done, the tour file is saved to
-              this phone, and the last step shows how to put it in place.
+              When you are done, the tour file is saved to this phone, and the
+              last step shows how to put it in place.
             </p>
             <!-- The troubleshooting recording (authoring recording plan
              2026-09-28-0953, M1a). OPT-IN and page-side: the switch arms it

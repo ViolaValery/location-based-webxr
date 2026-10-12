@@ -13,7 +13,7 @@
 
 import {
   TOUR_HOSTS,
-  hostSteps,
+  hostStepParts,
   needsStarterZip,
   readTourHost,
   writeTourHost,
@@ -29,9 +29,13 @@ interface PickerNode<T> {
   replaceChildren(...nodes: T[]): void;
 }
 
-interface TileNode {
+/** A node the picker creates: a tile, a list item, a text run or a link.
+ *  Generic in itself so the steps' list items can hold the others. */
+interface TileNode<T> {
   textContent: string | null;
-  type: string;
+  replaceChildren(...nodes: T[]): void;
+  /** A button's type; a text run has none. */
+  type?: string;
   className: string;
   readonly dataset: Record<string, string | undefined>;
   setAttribute(name: string, value: string): void;
@@ -44,7 +48,7 @@ interface ClickableNode {
 }
 
 export interface HostPickerDom<T> {
-  /** The radiogroup the tiles are rendered into. */
+  /** The group the toggle tiles are rendered into. */
   tiles: PickerNode<T>;
   /** The chosen host's steps (an `<ol>`); hidden until a choice. */
   steps: PickerNode<T>;
@@ -53,11 +57,11 @@ export interface HostPickerDom<T> {
   continueButton: ClickableNode;
 }
 
-export function wireHostPicker<T extends TileNode>(deps: {
+export function wireHostPicker<T extends TileNode<T>>(deps: {
   dom: HostPickerDom<T>;
   store: TourHostStore | undefined;
   /** `document.createElement`, injectable for the tests. */
-  createElement: (tag: "button" | "li") => T;
+  createElement: (tag: "button" | "li" | "span" | "a") => T;
   /** Continue was tapped with a host chosen. */
   onContinue: (host: TourHost) => void;
 }): void {
@@ -72,7 +76,9 @@ export function wireHostPicker<T extends TileNode>(deps: {
     tile.className = "btn btn--prose host-tile";
     tile.textContent = label;
     tile.dataset.host = id;
-    tile.setAttribute("role", "radio");
+    // Toggle buttons, not radios (PR #585 review): a second tap lets the
+    // choice go (P6), which a radio cannot do, and a radiogroup promises
+    // arrow keys and one tab stop these never had.
     tile.addEventListener("click", () => {
       // A second tap on the chosen host lets it go (prototype verdict P6).
       chosen = chosen === id ? null : id;
@@ -85,7 +91,7 @@ export function wireHostPicker<T extends TileNode>(deps: {
 
   function render(): void {
     for (const { id, tile } of tiles) {
-      tile.setAttribute("aria-checked", String(id === chosen));
+      tile.setAttribute("aria-pressed", String(id === chosen));
     }
     if (chosen === null) {
       dom.steps.hidden = true;
@@ -93,9 +99,24 @@ export function wireHostPicker<T extends TileNode>(deps: {
       dom.continueButton.hidden = true;
       return;
     }
-    const items = hostSteps(chosen).map((text) => {
+    const items = hostStepParts(chosen).map((parts) => {
       const li = createElement("li");
-      li.textContent = text;
+      li.replaceChildren(
+        ...parts.map((part) => {
+          if (part.href === undefined) {
+            const run = createElement("span");
+            run.textContent = part.text;
+            return run;
+          }
+          // The host in a new tab: the setup page keeps its place.
+          const link = createElement("a");
+          link.textContent = part.text;
+          link.setAttribute("href", part.href);
+          link.setAttribute("target", "_blank");
+          link.setAttribute("rel", "noopener");
+          return link;
+        }),
+      );
       return li;
     });
     dom.steps.replaceChildren(...items);

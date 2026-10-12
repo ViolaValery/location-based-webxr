@@ -83,7 +83,9 @@ export interface SetupMapDom {
   route: SVGGeometryElement;
   reveal: SVGPathElement;
   stations: SVGGElement;
-  /** The poster at the route's start: pinned up once "Hang" is done. */
+  /** The poster at the route's start: shown hung while the open step is
+   *  past "Hang". It follows the open step, not progress - opening step 1
+   *  again takes it down (see the sidecar). */
   start?: SVGGElement;
   /** The end flag: up at the completion step. */
   endFlag?: SVGGElement;

@@ -14,6 +14,11 @@ offered). Plan:
 
 - `TOUR_HOSTS` - `{ id, label }` in display order; `type TourHost` is the id.
 - `isTourHost(value)` - a type guard for stored or external values.
+- `hostStepParts(host)` - the same steps as runs of text, the host's name
+  in the step that sends the creator there as `{ text, href }` to the
+  host's site (r820 feedback R2): drive.google.com, dropbox.com/home,
+  onedrive.live.com, github.com; an own server has none. The words are
+  exactly `hostSteps`' (tested).
 - `hostSteps(host)` - the host's numbered steps, the last one pointing at the
   link step. The own server's names the two headers a browser needs
   (`Access-Control-Allow-Origin: *`, `Accept-Ranges: bytes`; the site's

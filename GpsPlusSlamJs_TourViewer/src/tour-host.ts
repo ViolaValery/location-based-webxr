@@ -47,7 +47,7 @@ const HOST_STEPS: Readonly<Record<TourHost, readonly string[]>> = {
   ],
   github: [
     "Download the empty starter tour below (tour.zip).",
-    'Add it to a public repository ("Add file", "Upload files").',
+    'Add it to a public repository on GitHub ("Add file", "Upload files").',
     "Open the file on GitHub and copy its address from the browser.",
     "Continue and paste that link.",
   ],
@@ -60,6 +60,45 @@ const HOST_STEPS: Readonly<Record<TourHost, readonly string[]>> = {
 
 export function hostSteps(host: TourHost): readonly string[] {
   return HOST_STEPS[host];
+}
+
+/** Where each cloud host is opened to upload (r820 feedback R2). */
+const HOST_HOME: Readonly<Record<TourHost, string | null>> = {
+  drive: "https://drive.google.com/",
+  dropbox: "https://www.dropbox.com/home",
+  onedrive: "https://onedrive.live.com/",
+  github: "https://github.com/",
+  own: null,
+};
+
+/** A run of a step's words, or the host's name as a link to the host. */
+export interface HostStepPart {
+  text: string;
+  href?: string;
+}
+
+/**
+ * The host's steps with the host's name, in the step that sends the
+ * creator there, as a link to the host's site (r820 feedback R2: "at least
+ * Google Drive as a link, opening drive.google.com in a second tab"). The
+ * words are exactly `hostSteps`'; an own server has no link.
+ */
+export function hostStepParts(
+  host: TourHost,
+): readonly (readonly HostStepPart[])[] {
+  const home = HOST_HOME[host];
+  const label = TOUR_HOSTS.find((h) => h.id === host)?.label ?? "";
+  let linked = false;
+  return HOST_STEPS[host].map((text) => {
+    const at = home === null || linked ? -1 : text.indexOf(label);
+    if (home === null || at < 0) return [{ text }];
+    linked = true;
+    return [
+      { text: text.slice(0, at) },
+      { text: label, href: home },
+      { text: text.slice(at + label.length) },
+    ].filter((part) => part.text !== "");
+  });
 }
 
 /** How the saved zip replaces the hosted one under the same link, so the

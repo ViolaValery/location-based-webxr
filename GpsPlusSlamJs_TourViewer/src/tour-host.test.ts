@@ -19,6 +19,7 @@ import {
   needsStarterZip,
   readTourHost,
   writeTourHost,
+  hostStepParts,
 } from "./tour-host.js";
 
 function memoryStore() {
@@ -130,5 +131,48 @@ describe("clearing the stored host", () => {
     writeTourHost(store, "drive");
     writeTourHost(store, null);
     expect(readTourHost(store)).toBeNull();
+  });
+});
+
+describe("the host's name opens the host (r820 feedback R2)", () => {
+  // Why: the owner, at step 1 with Drive chosen, had no way into Drive
+  // from the steps that tell them to upload there - "at least Google Drive
+  // as a link, opening drive.google.com in a second tab".
+  it("links the host's name in the step that sends the creator there", () => {
+    expect(hostStepParts("drive")[1]).toEqual([
+      { text: "Upload it into a folder of its own in " },
+      { text: "Google Drive", href: "https://drive.google.com/" },
+      { text: ' (e.g. "My tour").' },
+    ]);
+  });
+
+  it("gives every cloud host one link to its own site, and an own server none", () => {
+    const homes = {
+      drive: "https://drive.google.com/",
+      dropbox: "https://www.dropbox.com/home",
+      onedrive: "https://onedrive.live.com/",
+      github: "https://github.com/",
+    } as const;
+    for (const [host, href] of Object.entries(homes)) {
+      const links = hostStepParts(host as keyof typeof homes)
+        .flat()
+        .filter((part) => part.href !== undefined);
+      expect(links, host).toEqual([
+        { text: TOUR_HOSTS.find((h) => h.id === host)?.label, href },
+      ]);
+    }
+    expect(
+      hostStepParts("own")
+        .flat()
+        .some((part) => part.href !== undefined),
+    ).toBe(false);
+  });
+
+  it("says the same words as the plain steps", () => {
+    for (const { id } of TOUR_HOSTS) {
+      expect(
+        hostStepParts(id).map((parts) => parts.map((p) => p.text).join("")),
+      ).toEqual([...hostSteps(id)]);
+    }
   });
 });

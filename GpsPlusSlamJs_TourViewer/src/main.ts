@@ -259,7 +259,9 @@ const wizard = wireWizard({
 // Step 1's host tiles (polish round M2, A6/A7): the choice is stored with
 // the wizard's other state, and Continue moves on to the link.
 if (mode === "creator") {
-  wireHostPicker<HTMLButtonElement | HTMLLIElement>({
+  wireHostPicker<
+    HTMLButtonElement | HTMLLIElement | HTMLSpanElement | HTMLAnchorElement
+  >({
     dom: {
       tiles: element("host-tiles"),
       steps: element("host-steps"),

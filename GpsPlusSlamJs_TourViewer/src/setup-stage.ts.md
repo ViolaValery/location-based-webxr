@@ -19,10 +19,18 @@ through `wizard.openStep`. Plan: polish-round plan, "M2b - the L5 look".
     the stage;
   - `openStep` - `wizard.openStep`; `createElement` - for the dots
     (injected so the tests run in node);
-  - `map` (optional) - `{ route, reveal, stations }`: the route path, the
-    mask path that reveals it, and the group the stations are drawn into.
-    Drawn only where the browser can measure the route
+  - `map` (optional) - `{ route, reveal, stations, start?, endFlag? }`:
+    the route path, the mask path that reveals it, the group the stations
+    are drawn into, the poster at the route's start (`data-hung`) and the
+    flag at its end (positioned at the route's end, `data-on` at the last
+    step). Drawn only where the browser can measure the route
     (`getTotalLength`, `getPointAtLength`).
+  - **The map shows the OPEN STEP's position, not progress** (PR #585
+    review): `stationView` marks every step after the open one `todo`, so
+    going back to step 1 shortens the drawn route and takes the poster down
+    although the creator did hang it. `setup-stations.test.ts` pins that as
+    intended - the map is a "you are here", and nothing on the page tracks
+    what was done.
 - `SetupStage.render()` - redraw from the steps' open state.
 - Dots carry `data-testid="station-<step>"`, map stations
   `data-testid="map-station-<step>"`; both open their step.

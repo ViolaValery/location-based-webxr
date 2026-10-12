@@ -27,7 +27,7 @@ test.describe("a first visit", () => {
   }) => {
     await page.goto("/?nocache=1");
     await expect(page.getByTestId("step-host")).toHaveAttribute("open", "");
-    const tiles = page.getByTestId("host-tiles").getByRole("radio");
+    const tiles = page.getByTestId("host-tiles").getByRole("button");
     await expect(tiles).toHaveText([
       "Google Drive",
       "Dropbox",
@@ -40,12 +40,30 @@ test.describe("a first visit", () => {
     await expect(page.getByTestId("starter-zip")).toBeHidden();
     await expect(page.getByTestId("host-continue")).toBeHidden();
 
+    const unchosen = await tiles
+      .filter({ hasText: "Dropbox" })
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
     await tiles.filter({ hasText: "Dropbox" }).click();
     await expect(tiles.filter({ hasText: "Dropbox" })).toHaveAttribute(
-      "aria-checked",
+      "aria-pressed",
       "true",
     );
+    // The chosen tile LOOKS chosen: its style keys on the state attribute,
+    // which changed name once already (PR #585 review).
+    await expect
+      .poll(() =>
+        tiles
+          .filter({ hasText: "Dropbox" })
+          .evaluate((el) => getComputedStyle(el).backgroundColor),
+      )
+      .not.toBe(unchosen);
     await expect(page.getByTestId("host-steps")).toContainText("Dropbox");
+    // r820 feedback R2: the host's name opens the host, in a new tab.
+    const home = page
+      .getByTestId("host-steps")
+      .getByRole("link", { name: "Dropbox" });
+    await expect(home).toHaveAttribute("href", "https://www.dropbox.com/home");
+    await expect(home).toHaveAttribute("target", "_blank");
     await expect(page.getByTestId("starter-zip")).toBeVisible();
 
     // An own server's link can come before its file: no starter zip, and
