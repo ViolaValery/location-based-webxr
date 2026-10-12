@@ -12,6 +12,9 @@ wired into its logic: every interaction is faked.
   authoring overlay. The app takes H1, with an action strip.
 - `scan-1-centre-card/`, `scan-2-viewfinder/`, `scan-3-coach-mark/` - the
   visitor's scan overlay. The app takes S1.
+- `visitor-1-poster/` ... `visitor-4-one-tap/` - the visitor's start page
+  (after scanning a poster), four directions; made 2026-10-12, verdict
+  pending.
 
 **Kept, the chosen and the unchosen** (owner, 2026-10-11 evening): another
 developer may prefer a variant the owner did not choose and ask their own
