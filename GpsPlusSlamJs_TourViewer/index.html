@@ -675,35 +675,49 @@
         color: var(--ink-dim);
         margin: 0;
       }
+      /* The intro's spacing is set here, not inherited: the design system
+         zeroes paragraph and list margins, and the L5 prototype's gaps
+         between the lede, the reasons and the button vanished in the port
+         (r820 feedback R1; setup-flow.spec.js pins them). */
       .setup-lede {
         font-size: 1.06rem;
         line-height: 1.5;
         color: var(--ink-dim);
         max-width: 33em;
+        margin: 0 0 var(--space-3);
       }
+      /* Four reasons, two per row (the owner's L5 choice), each wrapping
+         under its own text. */
       .setup-why {
         list-style: none;
         padding: 0;
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--space-1) var(--space-3);
+        margin: 0 0 var(--space-4);
+        max-width: 36em;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-2) var(--space-4);
         color: var(--ink-dim);
+      }
+      .setup-why li {
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
       }
       .setup-why li::before {
         content: "";
-        display: inline-block;
+        flex: none;
         width: 6px;
         height: 6px;
         border-radius: 50%;
         background: var(--map-route);
-        margin-right: 7px;
-        vertical-align: 2px;
+        transform: translateY(-2px);
       }
       .setup-cta {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: var(--space-2) var(--space-3);
+        margin: 0;
       }
       .setup-intro-art {
         margin: 0;

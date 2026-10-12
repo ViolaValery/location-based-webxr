@@ -18,7 +18,11 @@ screen. Everything marked `.creator-only` is hidden for a visitor
 
   **The L5 look since polish round M2b** (the owner's prototype verdict,
   D-P1): on the creator page an intro (`#setup-intro`: the opening, the
-  "why" list with the privacy line, "Follow the route"), then the stage
+  "why" list with the privacy line - four reasons two per row, as in the
+  L5 prototype, with the gaps set in the page's own CSS because the design
+  system zeroes paragraph and list margins (r820 feedback R1;
+  `setup-flow.spec.js` pins rows and gaps at three viewports) - and
+  "Follow the route"), then the stage
   (`#setup-stage`): the illustrated map (`#setup-map`, an example route
   with six stations drawn by `setup-stage.ts`; ids prefixed `map-`)
   beside the step card (`#setup-card`) on a wide or landscape screen, above
