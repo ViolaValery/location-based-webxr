@@ -91,8 +91,8 @@ describe('the poster text in the plan', () => {
       );
     }
     // Where the bare grid leaves room between its rows, the text takes
-    // that room and no row goes (measured: 5, 7, 8 and 9 cm; 3, 4, 6 and
-    // 10 cm lose one).
+    // that room and no row goes (measured: 5, 8, 9 and 12-18 cm; 3, 4, 6,
+    // 7, 10 and 11 cm lose one).
     for (const sideM of [0.05, 0.08]) {
       expect(planPrintPdf(12, { sideM, poster: POSTER }).rows).toBe(
         planPrintPdf(12, { sideM }).rows

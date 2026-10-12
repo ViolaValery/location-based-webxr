@@ -116,8 +116,8 @@ is the property that matters for something a camera has to measure.
   explanation under about 6 pt (2.2 mm em) is dropped; the call to action
   is held at that size instead, so it goes only when two lines of it no
   longer fit the code. Measured over 3-18 cm with all three texts: every
-  size keeps all three, and a page loses at most one row (3, 4, 6 and
-  10 cm lose one; 5, 7, 8, 9 cm none). The text is ink: it stays inside
+  size keeps all three, and a page loses at most one row (3, 4, 6, 7, 10
+  and 11 cm lose one; 5, 8, 9 and 12-18 cm none). The text is ink: it stays inside
   the margin, off every quiet zone and above the check bar.
 - At 16 cm a page holds one code; at 8 cm four; at 5 cm a dozen or more.
 

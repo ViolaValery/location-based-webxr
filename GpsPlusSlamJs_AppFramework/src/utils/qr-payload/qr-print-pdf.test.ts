@@ -209,6 +209,30 @@ describe('planPrintPdf', () => {
     }
   });
 
+  // Why (PR #586 review): a comment and the sidecar once called the grid
+  // "top-anchored" while the code centred it; nothing pinned either. The
+  // stack sits midway between the check bar's band and the highest a box
+  // top may sit (the sheet's edge band, as the quiet zone is blank paper).
+  it('centres a page of codes vertically above the check bar', () => {
+    for (const [count, sideM] of [
+      [1, 0.1],
+      [3, 0.08],
+      [5, 0.05],
+    ] as const) {
+      const plan = planPrintPdf(count, { sideM });
+      const page = plan.pages[0] ?? [];
+      const top = Math.max(...page.map((p) => p.yMm + plan.blockMm));
+      const bottom = Math.min(...page.map((p) => p.yMm)) - 8; // the caption
+      const quiet = (plan.blockMm - plan.sideMm) / 2;
+      const ceiling = 297 - Math.max(0, 6 - quiet);
+      const floor = plan.checkBar.yMm + plan.checkBar.bandMm;
+      expect(ceiling - top, `${String(count)} at ${String(sideM)}`).toBeCloseTo(
+        bottom - floor,
+        6
+      );
+    }
+  });
+
   it('A4 and Letter are the real sheets, not rounded ones', () => {
     // Pinned because a wrong MediaBox is a page the printer rescales, and
     // rescaling is the exact failure this whole file exists to avoid.

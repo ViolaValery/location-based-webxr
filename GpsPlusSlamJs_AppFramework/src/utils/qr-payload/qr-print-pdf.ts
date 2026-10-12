@@ -369,10 +369,12 @@ function gridFor(
   const edge = Math.max(0, margin - quietMm);
   const columns = Math.floor((paper.width - 2 * edge + gap) / (blockMm + gap));
   // A box top may reach the sheet's edge band; text above it may not.
-  const blockTopMm = Math.min(
-    paper.height - edge,
-    paper.height - margin - extra.aboveMm
-  );
+  // Only text above it brings the margin in: without, the box keeps the
+  // whole edge band (the M0b rule that fits 18 cm on A4).
+  const blockTopMm =
+    extra.aboveMm > 0
+      ? Math.min(paper.height - edge, paper.height - margin - extra.aboveMm)
+      : paper.height - edge;
   const floorMm = margin + CHECK_BAR_BAND_MM;
   const rowMm = blockMm + extra.belowMm + caption;
   const rows = Math.floor(
