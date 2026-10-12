@@ -154,7 +154,8 @@ test("the plain page is the creator's setup; a ?qr= launch is the visitor's scre
 
   await openAsVisitor(page, RANGES_ARCHIVE);
   await expect(page.getByTestId("visitor-screen")).toBeVisible();
-  await expect(page.getByTestId("visitor-screen")).toContainText("camera");
+  // What AR needs is behind "What happens?" since V4 (polish round M4a).
+  await expect(page.getByTestId("visitor-more")).toContainText(/camera/i);
   // The way from a tour to making one (polish round A8): the setup page,
   // in a new tab so the tour stays open.
   const own = page.getByTestId("make-your-own");

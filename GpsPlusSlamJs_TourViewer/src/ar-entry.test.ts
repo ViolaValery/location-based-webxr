@@ -52,11 +52,14 @@ function harness(
     records?: boolean;
     enableOk?: boolean;
     mode?: "visitor" | "creator";
+    locationPending?: () => boolean;
+    copyText?: (text: string) => Promise<void>;
   } = {},
 ) {
   // The entry flags a running session on `document.body.dataset`; the
   // package tests run in node, so the page body is stood in.
   vi.stubGlobal("document", { body: { dataset: {} } });
+  vi.stubGlobal("location", { href: "https://example.test/tour/?qr=abc" });
   const ctx = createTourViewerSession();
   const dispose = vi.fn();
   let enabled: EnableGpsArConfig | null = null;
@@ -106,6 +109,7 @@ function harness(
     }),
     startDepthCapture: vi.fn(),
     stopDepthCapture: vi.fn(),
+    copyText: vi.fn(options.copyText ?? (() => Promise.resolve())),
   };
   const entry = wireArEntry({
     ctx,
@@ -115,7 +119,7 @@ function harness(
     gpsHandler: () => undefined,
     seams: seams as unknown as TourViewerSeams,
     locationGate: {
-      pending: () => false,
+      pending: options.locationPending ?? (() => false),
       busy: () => false,
       request: () => Promise.resolve(),
     } as never,
@@ -423,5 +427,74 @@ describe("the status line's channels (U1 milestone review #8, #9)", () => {
     h.ctx.scanGate = { kind: "passed", via: "code" };
     h.entry.renderArStatus();
     expect(h.dom.arStatus.dataset.gate).toBe("passed-code");
+  });
+});
+
+describe("the visitor's step marker (polish round M4a, the owner's V4)", () => {
+  // Why: the round button carries "1 of 2" while its tap only asks for the
+  // location, and "2 of 2" after it, so the first tap reads as progress;
+  // a visitor whose location was already allowed sees no marker at all.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("moves from 1 of 2 to 2 of 2 across the location tap", async () => {
+    let pending = true;
+    const h = harness({ locationPending: () => pending });
+    expect(h.dom.enterArButton.dataset["step"]).toBe("1 of 2");
+    await h.enter();
+    pending = false;
+    h.entry.renderArEntry();
+    expect(h.dom.enterArButton.dataset["step"]).toBe("2 of 2");
+  });
+
+  it("carries no marker when the location was already allowed", () => {
+    const h = harness();
+    expect(h.dom.enterArButton.dataset["step"]).toBeUndefined();
+  });
+});
+
+describe("a visitor's phone without AR copies the link (polish round M4a, V4)", () => {
+  // Why: a visitor who scanned the poster with a phone that cannot run AR
+  // had a dead grey button. V4 makes it the way on: copy this page's link
+  // and open it on a phone that can. The async-UI rule asks for the
+  // outcome on the button, and a failure on the page's error channel.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("copies the page's link and says so", async () => {
+    const h = harness({ arStatus: "unsupported" });
+    expect(h.dom.enterArButton.textContent).toBe("Copy link");
+    expect(h.dom.enterArButton.disabled).toBe(false);
+    // The page's CSS steps the round button down on this state.
+    expect(h.dom.enterArButton.dataset["arState"]).toBe("unsupported");
+    await h.enter();
+    expect(h.seams.copyText).toHaveBeenCalledWith(
+      "https://example.test/tour/?qr=abc",
+    );
+    expect(h.dom.enterArButton.textContent).toBe("Link copied");
+    expect(h.arController.enable).not.toHaveBeenCalled();
+  });
+
+  it("shows the busy state while the copy runs, and a failure on the error line", async () => {
+    let fail: (err: Error) => void = () => undefined;
+    const h = harness({
+      arStatus: "unsupported",
+      copyText: () => new Promise((_, reject) => (fail = reject)),
+    });
+    h.dom.enterArButton.click();
+    expect(h.dom.enterArButton.textContent).toBe("Copying…");
+    expect(h.dom.enterArButton.disabled).toBe(true);
+    fail(new Error("denied"));
+    await settle();
+    expect(h.dom.enterArButton.textContent).toBe("Copy link");
+    expect(h.dom.enterArButton.disabled).toBe(false);
+    expect(h.dom.errorBox.textContent).toMatch(/address bar/);
+  });
+
+  it("hides the AR hint, which would describe a session that cannot start", () => {
+    const h = harness({ arStatus: "unsupported" });
+    expect(h.dom.arHint.hidden).toBe(true);
   });
 });

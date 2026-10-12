@@ -106,7 +106,10 @@ lives here.
   link whose file is not there yet, or that could not be checked offline:
   printed as given, marked unverified - polish round M2, A16),
   `presentTourCodes` (the open tour's codes arrived: the print step
-  continues their numbering - polish round M0b), `beginAuthorVisit` / `endAuthorVisit` - the
+  continues their numbering - polish round M0b), `presentTourInfo(manifest,
+loadImage)` (the open tour's manifest settled, or null on teardown: the
+  visitor's start page shows its name, subline and cover, read from the
+  zip by archive path - polish round M4a), `beginAuthorVisit` / `endAuthorVisit` - the
   creator's AR visit start and its settle, M2c), no-ops until their owner
   module is wired.
   (`QrController` and `QrDebugView` are module-private: reached through

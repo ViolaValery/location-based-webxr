@@ -22,7 +22,17 @@ identical here — they diverge in M3/M4.
   U2, review F2; it used to sit disabled as "Tour running" / "Setting up in
   AR"); error: "Try again" (the cause is the status line's, in
   plain words, `visitor-status.ts`; it used to be "Retry - " plus the raw
-  browser error, UI round 1, U1, review F5).
+  browser error, UI round 1, U1, review F5); unsupported: "Copy link",
+  enabled, for a VISITOR (the owner's V4, polish round M4a: `ar-entry.ts`
+  copies the page's link for a phone that has AR), "AR not supported on
+  this device" disabled for a creator.
+- `COPY_LINK_LABELS` - that button's idle / busy / done labels and the
+  failure sentence (async-UI rule).
+- `visitorStep(mode, state, location, hadLocationStep): string | null` -
+  pure: the step marker V4's round button carries ("1 of 2" while a
+  visitor's tap only asks for the location, "2 of 2" for the start once
+  that was asked in this visit). Null for a creator, outside `ready`, and
+  for a visitor whose location was already allowed (one tap, no steps).
 - `buildArEnableConfig(hooks: ArEnableHooks): EnableGpsArConfig` -
   `hooks.requestHitTest` asks for the WebXR `hit-test` feature (the
   creator's reticle; without it the reticle never shows) - hooks:

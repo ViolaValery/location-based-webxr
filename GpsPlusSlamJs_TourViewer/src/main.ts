@@ -64,6 +64,8 @@ import { createViewingLog } from "./viewing-log.js";
 import { wireVisitorStations } from "./visitor-stations.js";
 import { relocationRequested } from "./tour-relocation.js";
 import { wireVisitorScreen } from "./visitor-screen.js";
+import { wireVisitorStart } from "./visitor-start.js";
+import { pictureProblem } from "./image-cap.js";
 import { driveProxyBaseUrl } from "./drive-proxy-url.js";
 import { stepStoreOrUndefined, wireWizard } from "./wizard.js";
 
@@ -313,6 +315,7 @@ const visitor = wireVisitorScreen({
   seams,
   dom: {
     screen: element("visitor-screen"),
+    more: element("visitor-more"),
     measureStep,
     creatorOnly: Array.from(
       document.querySelectorAll<HTMLElement>(".creator-only"),
@@ -324,6 +327,28 @@ const visitor = wireVisitorScreen({
     hooks.renderArEntry();
   },
 });
+
+// The visitor's start page leads with the tour's name, a line and one of
+// its photos (polish round M4a, the owner's V4); a creator never sees it.
+if (mode === "visitor") {
+  const visitorStart = wireVisitorStart({
+    dom: {
+      title: element("visitor-title"),
+      subline: element("visitor-subline"),
+      cover: element("visitor-cover"),
+      coverImage: element<HTMLImageElement>("visitor-cover-image"),
+    },
+    createObjectUrl: (blob) => URL.createObjectURL(blob),
+    revokeObjectUrl: (url) => {
+      URL.revokeObjectURL(url);
+    },
+    checkPicture: pictureProblem,
+  });
+  hooks.presentTourInfo = (manifest, loadImage) => {
+    if (manifest === null) visitorStart.clear();
+    else visitorStart.present(manifest, loadImage);
+  };
+}
 
 // The setup page's station row and map (polish round M2b, the L5 look):
 // wired after the visitor screen, which reveals the creator-only parts,

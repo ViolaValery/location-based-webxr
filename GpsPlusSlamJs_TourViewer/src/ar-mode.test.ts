@@ -13,6 +13,7 @@ import type { Object3D } from "three";
 import {
   CAMERA_FRAME_INTERVAL_MS,
   arButtonView,
+  visitorStep,
   buildArEnableConfig,
   endTourArRuntime,
   startTourArRuntime,
@@ -294,7 +295,10 @@ function fakeDepsFor(): { deps: TourArRuntimeDeps } {
 describe("arButtonView", () => {
   it.each([
     ["checking", "visitor", "Checking AR support…", true],
-    ["unsupported", "visitor", "AR not supported on this device", true],
+    // A visitor's phone without AR copies the link for one that has it
+    // (polish round M4a, the owner's V4); a creator's says what it is.
+    ["unsupported", "visitor", "Copy link", false],
+    ["unsupported", "creator", "AR not supported on this device", true],
     ["ready", "visitor", "Start the tour", false],
     ["ready", "creator", "Start creating", false],
     ["starting", "visitor", "Starting…", true],
@@ -339,5 +343,48 @@ describe("arButtonView", () => {
     );
     expect(view.disabled).toBe(false);
     expect(view.label).toBe("Try again");
+  });
+});
+
+describe("visitorStep (polish round M4a, the owner's V4)", () => {
+  // Why: a visitor's first tap only asks for the location (the browser's
+  // prompt would otherwise eat the tap that starts AR, DEC-N2); V4 makes
+  // that a visible "1 of 2" / "2 of 2" on the button, so the first tap
+  // reads as progress, not as a tap that did nothing.
+  const ready = { status: "ready" } as never;
+  const idle = { pending: false, busy: false };
+
+  it("counts the location tap as step 1 and the start as step 2", () => {
+    expect(
+      visitorStep("visitor", ready, { pending: true, busy: false }, false),
+    ).toBe("1 of 2");
+    expect(
+      visitorStep("visitor", ready, { pending: true, busy: true }, true),
+    ).toBe("1 of 2");
+    expect(visitorStep("visitor", ready, idle, true)).toBe("2 of 2");
+  });
+
+  it("shows no step when the location was never asked, for a creator, or outside ready", () => {
+    expect(visitorStep("visitor", ready, idle, false)).toBeNull();
+    expect(
+      visitorStep("creator", ready, { pending: true, busy: false }, true),
+    ).toBeNull();
+    for (const status of [
+      "checking",
+      "unsupported",
+      "starting",
+      "running",
+      "error",
+    ]) {
+      expect(
+        visitorStep(
+          "visitor",
+          { status } as never,
+          { pending: true, busy: false },
+          true,
+        ),
+        status,
+      ).toBeNull();
+    }
   });
 });

@@ -84,8 +84,21 @@ screen. Everything marked `.creator-only` is hidden for a visitor
      the save, the summary and `#replace-help`), opened by the Finish
      (polish round M2, B9). Until then `.done-pending` says what the step
      is for; page CSS hides it once the block shows.
-- The visitor screen (`#visitor-screen`): the consent copy above the AR
-  section; the Start button is `#enter-ar`.
+- The visitor's start page in the owner's V4 look (polish round M4a,
+  D-R12/D-R14; reference `public/prototypes/visitor-4-one-tap/`):
+  `#visitor-screen` (kicker, `#visitor-cover` one photo, `#visitor-title`,
+  `#visitor-subline` - written by `visitor-start.ts`), then `#ar-root`
+  restyled as the action (the status sentence above, the round
+  `#enter-ar` with its ring and `data-step` marker, `#ar-hint` as the
+  one line under it, by flex `order`), then `#visitor-more` after the
+  stage ("What happens?" `#visitor-what` and `make-your-own`). All of it
+  is scoped to `body[data-mode="visitor"]:not([data-ar-active="true"])`:
+  in a session `#ar-root` is the overlay and keeps the sheet's HUD look.
+  The paper palette is the creator page's (`:root:has(...)`), extended to
+  the visitor. Fluid sizes are custom properties on the visitor body
+  (the lint's css-tree grammar knows neither `clamp()` nor `dvh`); a
+  phone held sideways gets two columns. `playwright-tests/visitor-start.spec.js`
+  pins the layout at 412x915, 360x640 and 915x412.
 - Below the steps, creator-only: the Storage section (`#storage-panel`,
   summary "Other settings" - something you normally do not open, F9).
 - Shared: `#error`, `#ar-root` (the DOM-overlay root: hint, status line,

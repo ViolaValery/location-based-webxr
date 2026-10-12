@@ -145,6 +145,9 @@ export function wireArchiveOpen(deps: {
     ctx.currentLevels = null;
     ctx.currentLevelTexts = null;
     ctx.tourManifest = null;
+    hooks.presentTourInfo(null, () =>
+      Promise.reject(new Error("no tour is open")),
+    );
     // The closing tour's story and HUD (tour kit plan K4).
     hooks.stopStations();
     ctx.rebuiltZip = null;
@@ -452,6 +455,9 @@ export function wireArchiveOpen(deps: {
           if (ctx.session !== opened) return;
           ctx.tourManifest = manifest;
           ctx.tourManifestStatus = "settled";
+          hooks.presentTourInfo(manifest, (path) =>
+            opened.loadEntry(`${opened.manifestWrap}${path}`),
+          );
           ctx.scanEntries = new Set(
             manifest === null
               ? []

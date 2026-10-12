@@ -68,6 +68,31 @@ const STATIC_BUTTON_VIEWS: Record<
   stopping: { label: "Stopping…", disabled: true },
 };
 
+/** The visitor's Copy link button on a phone without AR (async-UI rule:
+ *  busy while the clipboard answers, then the outcome). */
+export const COPY_LINK_LABELS = {
+  idle: "Copy link",
+  busy: "Copying…",
+  done: "Link copied",
+  failed: "Could not copy the link. Copy it from the address bar instead.",
+} as const;
+
+/** The ready button: a creator starts; a visitor first allows the
+ *  location (DEC-N2), shown busy while the browser asks. */
+function readyButtonView(
+  mode: ViewerMode,
+  location: { pending: boolean; busy: boolean },
+): ArButtonView {
+  if (mode === "creator") return { label: "Start creating", disabled: false };
+  if (location.busy) {
+    return { label: "Getting your location…", disabled: true };
+  }
+  return {
+    label: location.pending ? "Allow location" : "Start the tour",
+    disabled: false,
+  };
+}
+
 /** Pure state → button mapping (MinimalExample's `buttonView` pattern).
  *  `location` is the visitor screen's gate (DEC-N2): while pending, a ready
  *  button asks for the location first; while busy, it says so and is
@@ -81,19 +106,14 @@ export function arButtonView(
   },
 ): ArButtonView {
   switch (state.status) {
+    case "unsupported":
+      // A visitor's way on: this page's link, for a phone that has AR
+      // (polish round M4a, the owner's V4); ar-entry.ts does the copy.
+      return mode === "visitor"
+        ? { label: COPY_LINK_LABELS.idle, disabled: false }
+        : STATIC_BUTTON_VIEWS.unsupported;
     case "ready":
-      if (mode === "visitor" && location.busy) {
-        return { label: "Getting your location…", disabled: true };
-      }
-      return {
-        label:
-          mode === "creator"
-            ? "Start creating"
-            : location.pending
-              ? "Allow location"
-              : "Start the tour",
-        disabled: false,
-      };
+      return readyButtonView(mode, location);
     case "running":
       // The way out of AR (UI round 1, U2, review F2). The creator's work
       // stays in the draft; the page then leads with saving it.
@@ -114,6 +134,21 @@ export function arButtonView(
     default:
       return STATIC_BUTTON_VIEWS[state.status];
   }
+}
+
+/** The step a visitor's button is on (polish round M4a, the owner's V4):
+ *  "1 of 2" while its tap only asks for the location (DEC-N2), "2 of 2"
+ *  for the start after that was asked in this visit, and null otherwise -
+ *  a visitor whose location was already allowed has one tap, not two. */
+export function visitorStep(
+  mode: ViewerMode,
+  state: EnableGpsArState,
+  location: { pending: boolean; busy: boolean },
+  hadLocationStep: boolean,
+): string | null {
+  if (mode !== "visitor" || state.status !== "ready") return null;
+  if (location.pending) return "1 of 2";
+  return hadLocationStep ? "2 of 2" : null;
 }
 
 /** The app-side hooks the enable configuration forwards into. */

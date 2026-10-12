@@ -28,6 +28,8 @@ import {
 
 import {
   arButtonView,
+  COPY_LINK_LABELS,
+  visitorStep,
   buildArEnableConfig,
   type ArEnableHooks,
   endTourArRuntime,
@@ -102,6 +104,9 @@ export function wireArEntry(deps: {
     hooks,
   } = deps;
   const authorMode = mode === "creator";
+  /** Whether this visit's first tap asked for the location: the button
+   *  then reads as step 2 of 2 (polish round M4a, the owner's V4). */
+  let hadLocationStep = false;
   /** Whether THIS session's depth sampler was started (a recorded entry). */
   let depthRunning = false;
   /** The device fixes' extent, for the ?debug=1 GPS line (polish round C4). */
@@ -273,12 +278,19 @@ export function wireArEntry(deps: {
   }
 
   function renderArState(state: EnableGpsArState): void {
-    const view = arButtonView(state, mode, {
+    const location = {
       pending: locationGate.pending(),
       busy: locationGate.busy(),
-    });
+    };
+    const view = arButtonView(state, mode, location);
     dom.enterArButton.disabled = view.disabled;
     dom.enterArButton.textContent = view.label;
+    // The state for the page's CSS (the visitor's V4 restyles a phone
+    // without AR), and the step marker its round button carries.
+    dom.enterArButton.dataset["arState"] = state.status;
+    const step = visitorStep(mode, state, location, hadLocationStep);
+    if (step === null) delete dom.enterArButton.dataset["step"];
+    else dom.enterArButton.dataset["step"] = step;
     // The printed size is CAPTURED at AR entry (the solves use it) — editing
     // it mid-session would stamp a size the pose was never solved with
     // (milestone review #3).
@@ -303,7 +315,10 @@ export function wireArEntry(deps: {
     // over the camera feed for the whole session. The hint explains the
     // button before a press; during a session it would be a start-screen
     // instruction pinned over live video (milestone review, 2026-09-05).
-    dom.arHint.hidden = sessionActive;
+    // A visitor's phone without AR gets no "once AR starts" hint: the
+    // status line says what to do instead (polish round M4a, V4).
+    dom.arHint.hidden =
+      sessionActive || (!authorMode && state.status === "unsupported");
     renderArStatus();
   }
 
@@ -385,10 +400,30 @@ export function wireArEntry(deps: {
     hooks.renderAuthorReadout();
   }
 
+  /** The visitor's Copy link tap (async-UI rule: busy, then the outcome;
+   *  a failure on the error line, with the address bar as the way out). */
+  function copyLink(): void {
+    const button = dom.enterArButton;
+    button.disabled = true;
+    button.textContent = COPY_LINK_LABELS.busy;
+    seams.copyText(location.href).then(
+      () => {
+        button.disabled = false;
+        button.textContent = COPY_LINK_LABELS.done;
+      },
+      () => {
+        button.disabled = false;
+        button.textContent = COPY_LINK_LABELS.idle;
+        dom.errorBox.textContent = COPY_LINK_LABELS.failed;
+      },
+    );
+  }
+
   async function enterAr(): Promise<void> {
     // The visitor's location-only tap (DEC-N2): request, re-label, and let
     // the next tap start the session inside its own user activation.
     if (locationGate.pending()) {
+      hadLocationStep = true;
       await locationGate.request();
       return;
     }
@@ -509,6 +544,10 @@ export function wireArEntry(deps: {
       arController.disable().catch((err: unknown) => {
         dom.errorBox.textContent = describeOpenError(err);
       });
+      return;
+    }
+    if (!authorMode && arController.getState().status === "unsupported") {
+      copyLink();
       return;
     }
     // Inside the tap, before any await: the stories' one audio element

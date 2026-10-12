@@ -613,7 +613,8 @@
          the camera, is back on the sheet's tokens (the dark HUD, D-P1).
          The route red is the page's own token, never --accent, so the
          HUD's accent does not move. */
-      :root:has(body[data-mode="creator"]:not([data-ar-active="true"])) {
+      :root:has(body[data-mode="creator"]:not([data-ar-active="true"])),
+      :root:has(body[data-mode="visitor"]:not([data-ar-active="true"])) {
         color-scheme: light;
 
         --ink: #2a2824;
@@ -1054,6 +1055,329 @@
         background: var(--map-route-soft);
         color: var(--ink);
       }
+
+      /* ===== The visitor's start page in the V4 look (polish round M4a) =====
+         The owner chose "minimal, one tap" (D-R12) with one photo of the
+         tour (D-R14): the name large at the top, the round button low in
+         the thumb zone, one line under it, the rest behind "What
+         happens?". Only while no session runs: in AR, #ar-root is the
+         overlay over the camera and keeps the sheet's HUD look. The
+         reference is public/prototypes/visitor-4-one-tap/. */
+      body[data-mode="visitor"] > header {
+        display: none;
+      }
+      body[data-ar-active="true"] #visitor-more,
+      body[data-ar-active="true"] #visitor-screen {
+        display: none;
+      }
+      body[data-mode="visitor"]:not([data-ar-active="true"]) {
+        /* The fluid sizes live here: the lint's css-tree grammar knows
+           neither clamp() nor dvh, and custom properties are not
+           validated (the Landing page disables the rule per line). */
+        --visitor-dial: clamp(156px, 25dvh, 204px);
+        --visitor-height: 100dvh;
+        --visitor-kicker-gap: clamp(16px, 6dvh, 72px);
+        --visitor-cover-height: clamp(120px, 24dvh, 230px);
+        --visitor-title-size: clamp(44px, 16vw, 68px);
+        --visitor-title-size-small: clamp(36px, 11vw, 52px);
+        --visitor-subline-size: clamp(18px, 5vw, 21px);
+        --visitor-label-size: clamp(19px, 5.4vw, 23px);
+
+        display: flex;
+        flex-direction: column;
+        min-height: var(--visitor-height);
+        max-width: 440px;
+        padding: calc(40px + env(safe-area-inset-top))
+          calc(24px + env(safe-area-inset-right))
+          calc(14px + env(safe-area-inset-bottom))
+          calc(24px + env(safe-area-inset-left));
+      }
+      body[data-mode="visitor"]:not([data-ar-active="true"]) > main {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+      }
+      body[data-mode="visitor"]:not([data-ar-active="true"]) #visitor-screen {
+        flex: 1;
+      }
+      .visitor-kicker {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 var(--visitor-kicker-gap);
+        color: var(--accent-ink);
+        font-size: 12.5px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .visitor-kicker svg {
+        width: 30px;
+        height: 30px;
+        flex: none;
+      }
+      .visitor-cover {
+        margin: 0 0 22px;
+      }
+      #visitor-cover-image {
+        display: block;
+        width: 100%;
+        height: var(--visitor-cover-height);
+        object-fit: cover;
+        border-radius: 18px;
+      }
+      #visitor-title {
+        margin: 0;
+        font-family: var(--map-serif);
+        font-size: var(--visitor-title-size);
+        font-weight: 600;
+        line-height: 0.94;
+        letter-spacing: -0.025em;
+        /* stylelint-disable-next-line csstree/validator -- text-wrap is valid CSS; the bundled css-tree grammar predates it. */
+        text-wrap: balance;
+        overflow-wrap: anywhere;
+        text-transform: none;
+      }
+      /* With a photo above it the name steps down, so the button stays
+         in the thumb zone. */
+      #visitor-screen:has(#visitor-cover:not([hidden])) #visitor-title {
+        font-size: var(--visitor-title-size-small);
+        line-height: 1;
+      }
+      .visitor-rule {
+        display: block;
+        width: 44px;
+        height: 3px;
+        margin: 22px 0 14px;
+        border-radius: 2px;
+        background: var(--map-route);
+      }
+      .visitor-subline {
+        margin: 0;
+        color: var(--ink-dim);
+        font-size: var(--visitor-subline-size);
+        line-height: 1.35;
+      }
+
+      /* The action: the status sentence above (a reason, when there is
+         one), the round button, the hint as the one line under it. */
+      body[data-mode="visitor"]:not([data-ar-active="true"]) #ar-root {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: var(--space-3) 0 0;
+        text-align: center;
+      }
+      body[data-mode="visitor"]:not([data-ar-active="true"]) #ar-status {
+        max-width: 340px;
+        margin: 0 0 18px;
+        font-size: 16px;
+        text-shadow: none;
+      }
+      body[data-mode="visitor"]:not([data-ar-active="true"]) #ar-status:empty {
+        display: none;
+      }
+      body[data-mode="visitor"]:not([data-ar-active="true"]) #enter-ar {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        order: 1;
+        width: calc(var(--visitor-dial) - 28px);
+        height: calc(var(--visitor-dial) - 28px);
+        margin: 14px;
+        /* Wide side padding: the label wraps to two short lines, as V4. */
+        padding: 16px 26px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--map-route);
+        color: #fff;
+        font-size: var(--visitor-label-size);
+        font-weight: 700;
+        line-height: 1.12;
+        letter-spacing: normal;
+        text-transform: none;
+        opacity: 1;
+        box-shadow:
+          0 0 0 10px var(--paper),
+          0 0 0 13.5px var(--map-line),
+          0 10px 26px rgb(154 52 18 / 28%);
+      }
+      body[data-mode="visitor"]:not([data-ar-active="true"])
+        #enter-ar:focus-visible {
+        outline: 3px solid var(--ink);
+        outline-offset: 18px;
+      }
+      /* "1 of 2" / "2 of 2" while the first tap asks for the location
+         (visitorStep in ar-mode.ts). */
+      body[data-mode="visitor"]:not([data-ar-active="true"])
+        #enter-ar[data-step]::before {
+        content: attr(data-step);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        opacity: 0.86;
+      }
+      /* Busy (checking, getting the location, starting): the ring turns. */
+      body[data-mode="visitor"]:not([data-ar-active="true"])
+        #enter-ar:disabled {
+        cursor: progress;
+        font-size: 16px;
+      }
+      body[data-mode="visitor"]:not([data-ar-active="true"])
+        #enter-ar:disabled::after {
+        content: "";
+        position: absolute;
+        inset: -13.5px;
+        border: 3.5px solid transparent;
+        border-top-color: var(--map-route);
+        border-radius: 50%;
+        animation: visitor-ring 1.1s linear infinite;
+      }
+
+      @keyframes visitor-ring {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      /* A phone without AR: the button steps down and copies the link;
+         the reason above it leads. */
+      body[data-mode="visitor"]:not([data-ar-active="true"])
+        #enter-ar[data-ar-state="unsupported"] {
+        --visitor-dial: clamp(132px, 18dvh, 156px);
+
+        background: var(--ink);
+        font-size: 18px;
+        box-shadow: 0 10px 24px rgb(23 25 28 / 24%);
+      }
+      body[data-mode="visitor"]:not([data-ar-active="true"]) #ar-hint {
+        order: 2;
+        max-width: 330px;
+        margin: 20px 0 0;
+        color: var(--ink-dim);
+        font-size: 15px;
+        line-height: 1.4;
+        text-shadow: none;
+      }
+      #visitor-what {
+        width: 100%;
+        max-width: 360px;
+        margin: 8px auto 0;
+        text-align: center;
+      }
+      #visitor-more #visitor-what > summary {
+        display: inline-flex;
+        align-items: center;
+        min-height: 48px;
+        padding: 0 14px;
+        border-radius: 999px;
+        color: var(--accent-ink);
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        list-style: none;
+      }
+      #visitor-more #visitor-what > summary::after {
+        content: "";
+        width: 7px;
+        height: 7px;
+        margin: -3px 0 0 8px;
+        border-right: 2px solid currentcolor;
+        border-bottom: 2px solid currentcolor;
+        transform: rotate(45deg);
+      }
+      #visitor-more #visitor-what[open] > summary::after {
+        margin-top: 4px;
+        transform: rotate(-135deg);
+      }
+      .visitor-what-body {
+        display: grid;
+        gap: 14px;
+        margin: 4px 0 6px;
+        padding: 18px 18px 16px;
+        border: 1px solid var(--map-line);
+        border-radius: 18px;
+        background: var(--map-card);
+        font-size: 15px;
+        line-height: 1.45;
+        text-align: left;
+      }
+      .visitor-facts {
+        display: grid;
+        gap: 12px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .visitor-facts b,
+      .visitor-after b {
+        display: block;
+      }
+      .visitor-facts span,
+      .visitor-after span,
+      .visitor-needs {
+        color: var(--ink-dim);
+        font-size: 14px;
+      }
+      .visitor-after {
+        margin: 0;
+        padding-top: 14px;
+        border-top: 1px solid var(--map-line);
+      }
+      .visitor-needs {
+        margin: 0;
+        font-size: 13px;
+      }
+      .visitor-foot {
+        margin: 22px 0 0;
+        color: var(--ink-dim);
+        font-size: 13.5px;
+        text-align: center;
+      }
+      .visitor-foot a {
+        display: inline-block;
+        padding: 12px 4px;
+        color: var(--accent-ink);
+        font-weight: 600;
+        text-underline-offset: 3px;
+      }
+
+      /* A phone without AR loses "What happens?": it describes a session
+         this phone cannot start (V4's recovery states). */
+      body[data-mode="visitor"]:has(#enter-ar[data-ar-state="unsupported"])
+        #visitor-what {
+        display: none;
+      }
+      /* A phone held sideways: the name left, the action right, so the
+         button is on the first screen. */
+      @media (orientation: landscape) and (height <= 520px) {
+        body[data-mode="visitor"]:not([data-ar-active="true"]) {
+          --visitor-title-size: 44px;
+          --visitor-kicker-gap: 16px;
+
+          max-width: 860px;
+          padding-top: calc(20px + env(safe-area-inset-top));
+        }
+        body[data-mode="visitor"]:not([data-ar-active="true"]) > main {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          grid-template-rows: auto 1fr;
+          column-gap: 32px;
+          align-items: start;
+        }
+        body[data-mode="visitor"]:not([data-ar-active="true"]) #visitor-screen {
+          grid-row: 1 / span 2;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        body[data-mode="visitor"]:not([data-ar-active="true"])
+          #enter-ar:disabled::after {
+          animation: none;
+        }
+      }
     </style>
   </head>
   <body class="page">
@@ -1068,26 +1392,52 @@
            flash before the script runs (M2 review #5). -->
     </header>
     <main>
-      <!-- The visitor's one screen (DEC-N2): what the tour needs and the
-           Start button (#enter-ar, below in #ar-root). -->
-      <section id="visitor-screen" hidden data-testid="visitor-screen">
-        <h2>Start the tour</h2>
-        <p>
-          This tour runs in augmented reality on your phone. It needs the
-          camera, to show the tour over what you see, and your location, to
-          place it. Nothing is uploaded. Tap the button below; if the browser
-          asks, allow both.
+      <!-- The visitor's one screen (DEC-N2), in the owner's V4 look
+           (polish round M4a, D-R12): the tour's name, one line and one
+           photo here; the round Start button is #enter-ar, below in
+           #ar-root; what it needs is behind "What happens?" in
+           #visitor-more, after the stage. -->
+      <section
+        id="visitor-screen"
+        hidden
+        data-testid="visitor-screen"
+        aria-labelledby="visitor-title"
+      >
+        <p class="visitor-kicker">
+          <!-- A light and its beam: the page's small mark. -->
+          <svg viewBox="0 0 30 30" aria-hidden="true">
+            <path d="M15 15L29 8v14z" fill="currentcolor" opacity=".2" />
+            <path d="M15 15L29 11.5v7z" fill="currentcolor" opacity=".35" />
+            <circle cx="15" cy="15" r="4.2" fill="currentcolor" />
+            <circle
+              cx="15"
+              cy="15"
+              r="8.5"
+              fill="none"
+              stroke="currentcolor"
+              stroke-width="1.4"
+              opacity=".45"
+            />
+          </svg>
+          AR walking tour
         </p>
-        <p class="hint--dim">
-          Want to make a tour like this one?
-          <a
-            href="./"
-            target="_blank"
-            rel="noopener"
-            data-testid="make-your-own"
-            >Make your own tour</a
-          >
-        </p>
+        <!-- One photo of the tour (D-R14), written by visitor-start.ts. -->
+        <figure
+          id="visitor-cover"
+          class="visitor-cover"
+          data-testid="visitor-cover"
+          hidden
+        >
+          <img id="visitor-cover-image" alt="" />
+        </figure>
+        <h2 id="visitor-title" data-testid="visitor-title">An AR tour</h2>
+        <span class="visitor-rule" aria-hidden="true"></span>
+        <p
+          id="visitor-subline"
+          class="visitor-subline"
+          data-testid="visitor-subline"
+          hidden
+        ></p>
       </section>
       <!-- The setup page in the L5 look (polish round M2b, the owner's
            prototype verdict P1-P5): an intro, then the stage - the map of
@@ -2906,6 +3256,48 @@
           <ul id="gallery" data-testid="gallery" hidden></ul>
         </div>
       </div>
+      <section id="visitor-more" hidden data-testid="visitor-more">
+        <details id="visitor-what">
+          <summary>What happens?</summary>
+          <div class="visitor-what-body">
+            <ul class="visitor-facts">
+              <li>
+                <b>Camera</b>
+                <span>Shows the tour over what you see.</span>
+              </li>
+              <li>
+                <b>Location</b>
+                <span>Places the tour where you stand.</span>
+              </li>
+              <li>
+                <b>Stays on your phone</b>
+                <span>Nothing is uploaded. No sign-up, no account.</span>
+              </li>
+            </ul>
+            <p class="visitor-after">
+              <b>Once AR starts</b>
+              <span
+                >Point your phone at the code on the poster and keep it in view
+                while you move slowly. The tour appears when the code is
+                recognised.</span
+              >
+            </p>
+            <p class="visitor-needs">
+              Runs in Chrome on an Android phone with AR. Nothing to install.
+            </p>
+          </div>
+        </details>
+        <p class="visitor-foot">
+          Want to make a tour like this one?
+          <a
+            href="./"
+            target="_blank"
+            rel="noopener"
+            data-testid="make-your-own"
+            >Make your own tour</a
+          >
+        </p>
+      </section>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

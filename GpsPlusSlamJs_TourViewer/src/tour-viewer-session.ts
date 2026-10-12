@@ -143,6 +143,13 @@ export interface TourViewerHooks {
   /** The open tour's codes arrived: the print step continues their
    *  numbering (polish round M0b). */
   presentTourCodes(): void;
+  /** The open tour's manifest arrived (null: no tour any more): the
+   *  visitor's start page shows its name, its subline and its cover,
+   *  read from the zip by its archive path (polish round M4a). */
+  presentTourInfo(
+    manifest: TourManifest | null,
+    loadImage: (path: string) => Promise<Blob>,
+  ): void;
   /** A tour closed: the finish step's page-side state is stale. */
   resetFinishStep(): void;
   /** A creator's AR visit is running (its world group exists): show the
@@ -205,6 +212,7 @@ export function createUnwiredHooks(): TourViewerHooks {
     presentLocalTour: () => undefined,
     presentUnverifiedLink: () => undefined,
     presentTourCodes: () => undefined,
+    presentTourInfo: () => undefined,
     resetFinishStep: () => undefined,
     beginAuthorVisit: () => undefined,
     endAuthorVisit: () => undefined,

@@ -219,21 +219,29 @@ test.describe("the L5 look (polish round M2b)", () => {
     expect(await paper()).not.toBe("#f4eedf");
   });
 
-  test("keeps the visitor's screen out of the paper look", async ({ page }) => {
+  // The visitor's start page wears the paper look too since the owner
+  // chose V4 (polish round M4a, D-R12); a running session does not.
+  test("gives the visitor's start page the paper look, and AR the sheet's", async ({
+    page,
+  }) => {
     await page.goto(
       `/?qr=${encodeURIComponent("http://127.0.0.1:5197/ranges-ok/tour.zip")}`,
     );
     await expect(page.getByTestId("visitor-screen")).toBeVisible();
     await expect(page.getByTestId("setup-intro")).toBeHidden();
     await expect(page.getByTestId("setup-map")).toBeHidden();
-    expect(
-      await page.evaluate(() =>
+    const paper = () =>
+      page.evaluate(() =>
         getComputedStyle(document.documentElement)
           .getPropertyValue("--paper")
           .trim()
           .toLowerCase(),
-      ),
-    ).not.toBe("#f4eedf");
+      );
+    expect(await paper()).toBe("#f4eedf");
+    await page.evaluate(() => {
+      document.body.dataset["arActive"] = "true";
+    });
+    expect(await paper()).not.toBe("#f4eedf");
   });
 });
 

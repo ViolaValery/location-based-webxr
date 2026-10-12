@@ -104,7 +104,9 @@ listed in `index.html.md`. The concerns and their modules:
   `presentTourForPrint`, and `presentLocalTour` - a FILE-opened tour, tour
   kit plan K0: the print step keeps asking for a link and a creator's
   wizard opens step 3, or stays in step 5, without remembering a link;
-  and `presentUnverifiedLink` - step 2's link printed unverified),
+  and `presentUnverifiedLink` - step 2's link printed unverified;
+  and, for a visitor only, `presentTourInfo` - `visitor-start.ts`'s
+  page, with `URL.createObjectURL` and `pictureProblem` for the cover),
   and callers read the hooks at call time - which
   is what keeps the modules free of import cycles (`check:cycles` is in
   the gate). A hook read before its owner is wired is the no-op from
