@@ -293,3 +293,32 @@ describe('the poster text in the file', () => {
     expect(plan.poster.captionDyMm).toBeLessThan(cta?.dyMm ?? 0);
   });
 });
+
+describe('a code without a caption (owner, on r821)', () => {
+  // Why: the owner did not want the "Code 2 - 18cm - print at 100%" line
+  // on the poster. An empty caption draws nothing - not even an empty
+  // text object - and captionMm 0 gives its band back to the layout.
+  it('draws no caption for an empty one', () => {
+    const text = new TextDecoder('latin1').decode(
+      buildQrPrintPdf([checkerboard(21, '')], { sideM: 0.1, captionMm: 0 })
+    );
+    expect(text).not.toContain('() Tj');
+    expect((text.match(/ Tj/g) ?? []).length).toBe(1); // the check bar's line
+  });
+
+  // The band goes to the layout: never fewer codes per page, and at some
+  // sizes more (a 10 cm A4 page holds two with all three texts).
+  it('gives the caption band back with captionMm 0', () => {
+    for (let cm = 3; cm <= 18; cm += 1) {
+      const sideM = cm / 100;
+      const withBand = planPrintPdf(12, { sideM, poster: POSTER });
+      const without = planPrintPdf(12, { sideM, poster: POSTER, captionMm: 0 });
+      expect(without.perPage, `${String(cm)} cm`).toBeGreaterThanOrEqual(
+        withBand.perPage
+      );
+    }
+    expect(
+      planPrintPdf(2, { sideM: 0.1, poster: POSTER, captionMm: 0 }).perPage
+    ).toBe(2);
+  });
+});

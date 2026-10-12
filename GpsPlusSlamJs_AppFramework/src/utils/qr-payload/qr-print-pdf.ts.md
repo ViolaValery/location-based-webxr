@@ -107,7 +107,9 @@ is the property that matters for something a camera has to measure.
   escaped.
 - **The poster text** (D-P7/D-P8): the title (bold) over the explanation
   above each code's quiet box, the call to action below it, the code's
-  caption below that; every line centred on its box. Sizes are a share of
+  caption below that (an empty caption draws nothing; with `captionMm: 0`
+  its band goes to the layout - the Tour Viewer prints none since the
+  owner's verdict on r821); every line centred on its box. Sizes are a share of
   the SYMBOL side (title 11 %, the other two 7.5 %), so the text is scaled
   to the code. It never costs the code anything: the ceiling and the
   refusal are decided without it. What gives way, in order: the text's

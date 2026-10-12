@@ -670,10 +670,14 @@ function pageContent(
     // never inside it: ink inside the quiet zone is exactly what the quiet
     // zone exists to prevent. At the SYMBOL's left edge, not the box's: the
     // box may reach into the margin, the caption is ink and may not.
+    // An empty caption draws nothing (the Tour Viewer prints none since the
+    // owner's verdict on r821; it passes captionMm 0 to free the band).
+    const caption = toWinAnsi(code.caption);
+    if (caption.length === 0) continue;
     parts.push('0 0 0 rg');
     parts.push(`BT /F1 ${pt(captionEmMm(code.caption, plan))} Tf`);
     parts.push(
-      `${pt(placement.xMm + quietMm)} ${pt(placement.yMm + plan.poster.captionDyMm)} Td (${pdfLiteral(toWinAnsi(code.caption))}) Tj`
+      `${pt(placement.xMm + quietMm)} ${pt(placement.yMm + plan.poster.captionDyMm)} Td (${pdfLiteral(caption)}) Tj`
     );
     parts.push('ET');
   }
