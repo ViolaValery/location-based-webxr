@@ -50,6 +50,22 @@ function fakeHooks(): ArEnableHooks {
 }
 
 describe("buildArEnableConfig", () => {
+  // Why (follow-up F11): an origin reset is told to whoever holds raw
+  // WebXR geometry (the mesh cursor's grid). The solver's half - the
+  // restart dispatch - is the 2026-10-02 follow-up's, so nothing here
+  // dispatches it.
+  it("tells the hook when tracking restarts at a new origin, and dispatches nothing", () => {
+    const onTrackingRestarted = vi.fn();
+    const hooks = { ...fakeHooks(), onTrackingRestarted };
+    const config = buildArEnableConfig(hooks);
+    config.callbacks?.tracking?.onRestarted?.({} as never);
+    expect(onTrackingRestarted).toHaveBeenCalledTimes(1);
+    expect(hooks.trackingStore.dispatch).not.toHaveBeenCalled();
+    expect(
+      buildArEnableConfig(fakeHooks()).callbacks?.tracking?.onRestarted,
+    ).toBeUndefined();
+  });
+
   it("pins the M2 isolation flags: camera + texture ON, depth OFF", () => {
     const config = buildArEnableConfig(fakeHooks());
 

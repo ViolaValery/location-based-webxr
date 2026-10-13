@@ -30,6 +30,11 @@ now? }) → MeshSurface` - composes the framework's pieces:
     or null; also notes the frame gap (one pick per frame). One `Raycaster`, reused.
   - `stats()` - `{ frame: FrameTimesSummary | null, triangles }` (the framework's
     `createFrameTimes` over the last 120 gaps).
+  - `reset()` - clears the grid and the mesh (follow-up F11): after a
+    WebXR origin reset their cells sit in a frame that no longer exists.
+    The next samples build it anew. A worker response already in flight
+    may still apply the old frame's mesh until the next re-mesh (at most
+    a second later), which replaces it.
   - `dispose()` - stops the feed, frees the mesh and the worker (idempotent).
 - `surfacePointFromHit(hit)` - a raycast hit as a world point and the face's world normal,
   or null.
@@ -86,6 +91,8 @@ surface.dispose();
   - the frame-time readout; dispose once; `MESH_DEPTH`;
   - composed for real (grid, sink, synchronous mesher, subscriber): a floor fed twice
     through the store is picked within 3 cm of its height, facing up, and every mesh is
-    hidden.
+    hidden; after `reset()` nothing is picked, and a lower floor fed
+    after it is picked at its own height (mutation-checked: without the
+    grid's clear the old floor is hit).
 - `ar-entry.test.ts` / `playwright-tests/ar-mode.spec.js` - the wiring behind `?mesh=1`,
   including a throwing `startMeshSurface` that leaves the session running on the hit-test.

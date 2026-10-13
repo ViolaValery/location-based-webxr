@@ -23,6 +23,14 @@ GpsPlusSlamJs_TourViewer/src` finds nothing outside tests). Its own
   the alignment blends the two frames until the old fixes are outvoted. The
   placed tour drifts or jumps by the reset's offset for that time.
 
+## Since 2026-10-13: the restart callback exists, for the mesh only
+
+The AR config now passes the framework's `tracking.onRestarted`
+(`ar-mode.ts` `onTrackingRestarted`, polish-round follow-up F11), which
+clears the `?mesh=1` cursor's grid. It deliberately does NOT dispatch
+`odometryTrackingRestarted`: that is still this document's decision, and
+step 2 below now only adds the dispatch to an existing callback.
+
 ## What the moved-code check does about it today
 
 The check ends every pin at a frame change, and since M5c review M4 a reset
