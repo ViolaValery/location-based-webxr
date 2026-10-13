@@ -47,7 +47,8 @@ since the code book plan's M2 split; its sidecar holds the rules that
 were here. What stays is the Finish's side:
 
 - **The Finish's file** (what it writes, the baked photo spots, the walk
-  left out, the listed series continued): `creator-finish.ts`.
+  left out, the listed series continued): `creator-finish.ts`, its rules
+  in `finish-rebuild.ts` (M6 E0, shared with the desktop editor).
 - **The save cannot be forgotten** (UI round 1, U2, `finish-guard.ts`):
   after a Finish the save button is scrolled into view and focused; on a
   phone, Finish steps aside while the rebuilt file waits for its save

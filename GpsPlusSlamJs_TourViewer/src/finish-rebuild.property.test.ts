@@ -8,9 +8,13 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { packFilesAsZip } from "gps-plus-slam-app-framework/storage";
-import { readStoredCentralDirectory } from "gps-plus-slam-app-framework/test-utils/zip-central-directory";
+import {
+  readStoredCentralDirectory,
+  readStoredEntryBytes,
+} from "gps-plus-slam-app-framework/test-utils/zip-central-directory";
 import {
   createEmptyTourManifest,
+  parseTourManifest,
   serializeTourManifest,
   type TourObject,
 } from "gps-plus-slam-app-framework/ar/tour-manifest";
@@ -77,21 +81,28 @@ describe("rebuildFinishedTour (property)", () => {
             keepScan: false,
             previous: null,
           });
-          const ids = result!.written.objects.map((o) => o.id);
+          // Read from the zip's bytes, not the in-memory report (E0 review #1).
+          const bytes = new Uint8Array(await result!.blob.arrayBuffer());
+          const carried = parseTourManifest(
+            JSON.parse(
+              new TextDecoder().decode(
+                readStoredEntryBytes(bytes, "tour.json"),
+              ),
+            ),
+          );
+          const ids = carried.objects.map((o) => o.id);
           expect(new Set(ids).size).toBe(ids.length);
           const expected = [
             ...HOSTED.filter((id) => !deleted.includes(id)),
             ...added,
           ];
           expect(ids).toEqual(expected);
-          const byId = new Map(result!.written.objects.map((o) => [o.id, o]));
+          const byId = new Map(carried.objects.map((o) => [o.id, o]));
           // A deletion wins over an edit of the same id.
           for (const id of edited.filter((e) => !deleted.includes(e))) {
             expect(byId.get(id)).toMatchObject({ label: `edited ${id}` });
           }
-          const names = readStoredCentralDirectory(
-            new Uint8Array(await result!.blob.arrayBuffer()),
-          ).map((e) => e.name);
+          const names = readStoredCentralDirectory(bytes).map((e) => e.name);
           for (const id of HOSTED) {
             // Only a deletion takes a photo's file; an edit keeps it.
             expect(names.includes(`content/${id}.jpg`)).toBe(

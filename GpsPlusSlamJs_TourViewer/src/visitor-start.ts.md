@@ -47,7 +47,7 @@ plus a small wiring that writes the page and loads the photo from the zip.
 - Only wired for a visitor (`main.ts`); a creator never sees the page and
   never pays for the photo read.
 - The manifest's title is written at the creator's Finish from the step-3
-  poster title (`creator-finish.ts`, `finishTitle`).
+  poster title (`finish-rebuild.ts`, `finishTitle`, which the Finish calls).
 
 ## Examples
 

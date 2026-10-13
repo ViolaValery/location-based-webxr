@@ -258,7 +258,8 @@ export function wireCreatorFinish(deps: {
         const finished = await rebuildFinishedTour({
           tour: current,
           manifest,
-          placed: ctx.placedObjects,
+          // A snapshot: placements land in this list during the rebuild.
+          placed: [...ctx.placedObjects],
           deleted,
           levels,
           title: deps.tourTitle?.() ?? null,

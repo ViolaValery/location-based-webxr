@@ -52,7 +52,9 @@ export interface FinishInput {
   /** The manifest the tour carries now (after any earlier rebuild). */
   readonly manifest: TourManifest;
   /** Objects placed or edited, each replacing its id's record; a photo
-   *  with bytes writes them as its content file. */
+   *  with bytes writes them as its content file. Read synchronously at the
+   *  call, before the first await: pass a snapshot, never a list the page
+   *  keeps changing (E0 review #6). */
   readonly placed: readonly {
     readonly object: TourObject;
     readonly blob?: Blob;
@@ -67,8 +69,9 @@ export interface FinishInput {
   readonly captureSpots?: TourCaptureSpots;
   /** Keep the entries visitors never read (the walk, S-D10). */
   readonly keepScan: boolean;
-  /** The last rebuild of this open tour, or null for the first. */
-  readonly previous: PreviousFinish | null;
+  /** The last rebuild of this open tour; null or absent for the first,
+   *  which reads the tour and inflates it under its budget. */
+  readonly previous?: PreviousFinish | null;
   /** The clock for the series version's `createdAt`. */
   readonly now?: () => Date;
   /** False once the caller no longer wants the result (the tour was
@@ -120,7 +123,10 @@ async function fileRecordOf(
 export async function rebuildFinishedTour(
   input: FinishInput,
 ): Promise<FinishedTour | null> {
-  const { tour, manifest, previous } = input;
+  const { tour, manifest } = input;
+  // One expression for "is there a previous rebuild": the read and the
+  // budget rule below must never disagree (E0 review #8).
+  const previous = input.previous ?? null;
   const entryNames = tour.entries.map((e) => e.filename);
   // The session derived this prefix when it opened the zip; deriving
   // it a second time here is how the writer and the reader drifted
@@ -195,9 +201,10 @@ export async function rebuildFinishedTour(
   // batch's content entries - rebuilding from the hosted zip again
   // would write a manifest referencing photos the archive does not
   // contain (PR #435 review, the second half of the second-finish
-  // bug). A tour close clears the rebuilt zip, so a re-opened tour
-  // starts from what is actually hosted.
-  const source = previous?.blob ?? (await tour.readWholeArchive());
+  // bug). A caller passes no previous rebuild for a tour it has just
+  // opened, so that one starts from what is actually hosted.
+  const source =
+    previous === null ? await tour.readWholeArchive() : previous.blob;
   if (input.shouldContinue?.() === false) return null;
   // The series' list, continued: the same series id, the next
   // version, and the hash of every file this zip will hold - the

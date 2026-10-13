@@ -18,7 +18,8 @@ signature, a broken series list (M6 design §5, cold review #2). Design:
   - `input.manifest` - the manifest the tour carries now (after any
     earlier rebuild; an empty one for a tour without).
   - `input.placed` - objects placed or edited (`{ object, blob? }`); a
-    photo with bytes writes them as its content file.
+    photo with bytes writes them as its content file. Read synchronously
+    at the call: pass a snapshot, not a list the page keeps changing.
   - `input.deleted` - ids to delete.
   - `input.levels` - code levels to write (`LevelText`, in order).
   - `input.title` - the typed name; one that says something (trimmed)
@@ -26,7 +27,8 @@ signature, a broken series list (M6 design §5, cold review #2). Design:
   - `input.captureSpots` - the recorded photos' spots, when there are any.
   - `input.keepScan` - keep the entries visitors never read.
   - `input.previous` - the last rebuild of this open tour
-    (`{ blob, signedManifest? }`) or null.
+    (`{ blob, signedManifest? }`); null or omitted for the first, which
+    reads the tour and inflates it under `tour.budget`.
   - `input.now` - the clock for a series version's `createdAt`.
   - `input.shouldContinue` - checked after the read, before the rebuild:
     false returns null and rebuilds nothing (the tour was closed).
@@ -48,7 +50,10 @@ signature, a broken series list (M6 design §5, cold review #2). Design:
   (`finish-entries.ts`); photos at `${wrap}${image}`.
 - **Signatures and lists:** a signature never survives (it cannot cover
   the rewritten files); a LISTED tour's `manifest.json` continues as the
-  series' next version (`successorManifest`: same series id, version + 1,
+  series' next version (`successorManifest`: same series id, the
+  version the tour was OPENED with + 1 - a rebuild chained on `previous`
+  stays there, so one page load mints one version however often it
+  saves; a reload of the written file bumps again,
   every file's hash - the kept ones from the input's list or
   `previous.signedManifest`, the written ones hashed here). An unlisted
   tour carrying the name drops it.
@@ -56,6 +61,7 @@ signature, a broken series list (M6 design §5, cold review #2). Design:
   `keepScan`, and never without `captureSpots` (the walk is then the only
   way to place the photos).
 - **Newest bytes:** `previous.blob` when given, else
+  (null or omitted, one expression for both the read and the budget)
   `tour.readWholeArchive()` - rebuilding from the hosted zip again would
   drop the previous batch's content files (PR #435 review). The hosted
   zip is untrusted and inflates under `tour.budget`; a previous rebuild is
@@ -83,6 +89,14 @@ if (finished !== null) save(finished.blob);
 deleted photo's file removed, the level replaced inside the wrap), the
 title rule, a listed tour's series continued (reopened: listed, next
 version, whole-archive check passes), the previous rebuild as input (no
-read), and `shouldContinue` stopping before the rebuild. The phone's
+read), `shouldContinue` stopping before the rebuild, the walk left out
+with spots and kept with `keepScan` or without spots, a signed tour's
+signature dropped, the hosted zip under the budget (also with `previous`
+omitted) and a previous rebuild without it, and a chained rebuild of a
+listed tour staying at the open-time version + 1. Every check reads the
+zip's bytes (`tour.json`, the level), never only the returned
+`written`. `finish-rebuild.property.test.ts` sweeps mixes of edits,
+additions and deletions: each id once, edits in place, a deleted
+photo's file gone, kept ones present, the zip opens again. The phone's
 wiring around it stays pinned by `creator-finish.test.ts` and
 `authoring-settle.test.ts`.
