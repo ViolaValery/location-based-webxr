@@ -59,7 +59,9 @@ start a session.
   permission query answers `"prompt"` (the browser WILL ask) it becomes
   "Your browser will ask for your location - tap Allow. Then Start the
   tour."; a `"denied"` site keeps the first line, because its tap shows
-  the settings copy instead of a prompt.
+  the settings copy instead of a prompt, and a request DENIED at the tap
+  puts the first line back (the browser will not ask again - M4 review
+  #3).
 
 ## Examples
 

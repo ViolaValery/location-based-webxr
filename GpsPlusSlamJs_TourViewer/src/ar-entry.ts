@@ -112,6 +112,8 @@ export function wireArEntry(deps: {
   /** Whether this visit's first tap asked for the location: the button
    *  then reads as step 2 of 2 (polish round M4a, the owner's V4). */
   let hadLocationStep = false;
+  /** A Copy link tap is running: it owns the button's label until then. */
+  let copying = false;
   /** Whether THIS session's depth sampler was started (a recorded entry). */
   let depthRunning = false;
   /** The device fixes' extent, for the ?debug=1 GPS line (polish round C4). */
@@ -295,20 +297,38 @@ export function wireArEntry(deps: {
     }).join("\n");
   }
 
+  /** The entry button: its label (left alone while a copy runs - the copy
+   *  owns it until it settles), the state for the page's CSS (V4 restyles
+   *  a phone without AR), and the step marker of V4's round button, which
+   *  the accessible name carries too: generated content would be read run
+   *  into the label (M4 review #11). */
+  function renderButton(
+    state: EnableGpsArState,
+    location: { pending: boolean; busy: boolean },
+  ): void {
+    const button = dom.enterArButton;
+    const view = arButtonView(state, mode, location);
+    if (!copying) {
+      button.disabled = view.disabled;
+      button.textContent = view.label;
+    }
+    button.dataset["arState"] = state.status;
+    const step = visitorStep(mode, state, location, hadLocationStep);
+    if (step === null) {
+      delete button.dataset["step"];
+      button.removeAttribute("aria-label");
+    } else {
+      button.dataset["step"] = step;
+      button.setAttribute("aria-label", `${view.label}, step ${step}`);
+    }
+  }
+
   function renderArState(state: EnableGpsArState): void {
     const location = {
       pending: locationGate.pending(),
       busy: locationGate.busy(),
     };
-    const view = arButtonView(state, mode, location);
-    dom.enterArButton.disabled = view.disabled;
-    dom.enterArButton.textContent = view.label;
-    // The state for the page's CSS (the visitor's V4 restyles a phone
-    // without AR), and the step marker its round button carries.
-    dom.enterArButton.dataset["arState"] = state.status;
-    const step = visitorStep(mode, state, location, hadLocationStep);
-    if (step === null) delete dom.enterArButton.dataset["step"];
-    else dom.enterArButton.dataset["step"] = step;
+    renderButton(state, location);
     // The printed size is CAPTURED at AR entry (the solves use it) — editing
     // it mid-session would stamp a size the pose was never solved with
     // (milestone review #3).
@@ -422,19 +442,30 @@ export function wireArEntry(deps: {
    *  a failure on the error line, with the address bar as the way out). */
   function copyLink(): void {
     const button = dom.enterArButton;
+    copying = true;
     button.disabled = true;
     button.textContent = COPY_LINK_LABELS.busy;
-    seams.copyText(location.href).then(
-      () => {
+    // Inside the chain: without a clipboard (an http page, some in-app
+    // browsers) the seam throws before it returns a promise (M4 review #1).
+    Promise.resolve()
+      .then(() => seams.copyText(location.href))
+      .then(
+        () => {
+          button.textContent = COPY_LINK_LABELS.done;
+          // An earlier failed copy's advice is out of date now.
+          if (dom.errorBox.textContent === COPY_LINK_LABELS.failed) {
+            dom.errorBox.textContent = "";
+          }
+        },
+        () => {
+          button.textContent = COPY_LINK_LABELS.idle;
+          dom.errorBox.textContent = COPY_LINK_LABELS.failed;
+        },
+      )
+      .finally(() => {
+        copying = false;
         button.disabled = false;
-        button.textContent = COPY_LINK_LABELS.done;
-      },
-      () => {
-        button.disabled = false;
-        button.textContent = COPY_LINK_LABELS.idle;
-        dom.errorBox.textContent = COPY_LINK_LABELS.failed;
-      },
-    );
+      });
   }
 
   async function enterAr(): Promise<void> {
@@ -445,6 +476,8 @@ export function wireArEntry(deps: {
       await locationGate.request();
       return;
     }
+    // The start the two steps led to: a later start is one tap again.
+    hadLocationStep = false;
     ctx.cameraFrameCount = 0;
     // A refused AUTHOR pipeline (bad size, no detector) keeps AR unstarted —
     // the message is already in the author panel, where the author is

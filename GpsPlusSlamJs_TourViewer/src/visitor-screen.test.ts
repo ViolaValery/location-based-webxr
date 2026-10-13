@@ -162,6 +162,9 @@ describe("wireVisitorScreen", () => {
     await expect(screen.locationGate.request()).resolves.toBe("denied");
     expect(screen.locationGate.pending()).toBe(true);
     expect(d.errorBox.textContent).toMatch(/allow location/i);
+    // The browser will not ask again after a denial: the line under the
+    // button must not say it will (M4 review #3).
+    expect(d.arHint.textContent).not.toMatch(/browser will ask/i);
 
     await expect(screen.locationGate.request()).resolves.toBe("granted");
     expect(screen.locationGate.pending()).toBe(false);

@@ -84,6 +84,13 @@ describe("visitorStartView", () => {
     expect(
       visitorStartView(tour({ stations: [station, station] })).subline,
     ).toBe("2 places to discover");
+    // Its stations are its places: the objects they show are not counted
+    // twice (M4 review #10).
+    expect(
+      visitorStartView(
+        tour({ stations: [station, station], objects: [pin("a"), pin("b")] }),
+      ).subline,
+    ).toBe("2 places to discover");
   });
 
   it("takes the tour's first photo as the cover, and none without a photo", () => {
@@ -122,21 +129,47 @@ describe("visitorStartView", () => {
     ).toBe("content/b.jpg");
   });
 
-  // The cover is read from the zip by its path: only a photo object's own
-  // image may be named, whatever else the manifest holds.
-  it("only ever names a photo object's own image (property)", () => {
+  // The cover is read from the zip by its path: only the tour's own photos
+  // may be named - a photo object's image, else a capture spot's - never
+  // anything else the manifest holds (M4 review #8: capture spots were
+  // never generated here).
+  it("only ever names one of the tour's own photos (property)", () => {
+    const capture = (i: number) => ({
+      image: `images/frame-${String(i)}.png`,
+      geo: { lat: 47, lon: 8, alt: 400, rotation: [0, 0, 0, 1] },
+    });
     fc.assert(
       fc.property(
         fc.array(fc.constantFrom("pin", "photo"), { maxLength: 8 }),
-        (kinds) => {
+        fc.nat({ max: 4 }),
+        (kinds, captureCount) => {
           const objects = kinds.map((kind, i) =>
             kind === "pin" ? pin(`p${String(i)}`) : photo(`f${String(i)}`),
           );
-          const { coverPath } = visitorStartView(tour({ objects }));
-          const photos = objects.filter((o) => o.kind === "photo");
-          expect(coverPath).toBe(
-            photos.length === 0 ? null : (photos[0] as { image: string }).image,
+          const captures = Array.from({ length: captureCount }, (_, i) =>
+            capture(i),
           );
+          const manifest = tour({
+            objects,
+            ...(captureCount === 0
+              ? {}
+              : {
+                  captureSpots: {
+                    fixes: 4,
+                    gpsAccuracyMedianM: 3,
+                    captures,
+                  },
+                }),
+          } as unknown as Partial<TourManifest>);
+          const { coverPath } = visitorStartView(manifest);
+          const own = [
+            ...objects.flatMap((o) =>
+              o.kind === "photo" ? [(o as { image: string }).image] : [],
+            ),
+            ...captures.map((c) => c.image),
+          ];
+          // The first of them, in that order, or none when there is none.
+          expect(coverPath).toBe(own[0] ?? null);
         },
       ),
     );

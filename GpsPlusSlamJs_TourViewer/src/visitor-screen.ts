@@ -163,7 +163,9 @@ export function wireVisitorScreen(deps: {
         pending = gateAfterRequest(outcome);
         const notice = locationRequestNotice(outcome);
         dom.errorBox.textContent = notice.error;
-        if (notice.hint !== null) dom.arHint.textContent = notice.hint;
+        // A denial gets the plain line back: the browser will not ask
+        // again, so "your browser will ask" would be wrong (M4 review #3).
+        dom.arHint.textContent = notice.hint ?? VISITOR_HINT;
         renderArEntry();
         return outcome;
       },

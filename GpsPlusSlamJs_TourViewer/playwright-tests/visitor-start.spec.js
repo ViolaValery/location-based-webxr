@@ -135,6 +135,28 @@ test("a tour with photos shows one of them above its name", async ({
         .evaluate((img) => /** @type {HTMLImageElement} */ (img).naturalWidth),
     )
     .toBeGreaterThan(0);
-  // No name in this tour: it still reads as a tour.
-  await expect(page.getByTestId("visitor-title")).toHaveText("An AR tour");
+  // No name in this tour: it still reads as a tour - and it is the
+  // page's heading (the header's is hidden for a visitor, M4 review #11).
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "An AR tour",
+  );
+});
+
+test("a tour with a photo still puts the button on a small phone's first screen", async ({
+  page,
+}) => {
+  // Why (M4 review #8): the photo adds about a quarter of the screen above
+  // the name; the layout tests above use the sample, which has none.
+  await page.setViewportSize({ width: 360, height: 640 });
+  await openAsNewVisitor(page, BAKED);
+  await expect(page.getByTestId("visitor-cover")).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(page.getByTestId("enter-ar")).toHaveText("Allow location", {
+    timeout: 10000,
+  });
+  const l = await layout(page);
+  expect(l.button.top).toBeGreaterThanOrEqual(0);
+  expect(l.button.bottom).toBeLessThanOrEqual(l.height);
+  expect(l.title.bottom).toBeLessThanOrEqual(l.button.top);
 });

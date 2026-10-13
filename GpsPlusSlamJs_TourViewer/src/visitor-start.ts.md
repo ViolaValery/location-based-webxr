@@ -13,9 +13,10 @@ plus a small wiring that writes the page and loads the photo from the zip.
   pure.
   - `title`: the manifest's `title`, trimmed; `"An AR tour"` when it has
     none, an empty one, or no manifest yet.
-  - `subline`: `"N places to discover"` (`"1 place …"`), counting the
-    tour's stations, objects and baked capture spots; `null` when there are
-    none.
+  - `subline`: `"N places to discover"` (`"1 place …"`): a tour of
+    stations counts its stations (the objects they show are not places of
+    their own); any other tour its objects and baked capture spots; `null`
+    when there are none.
   - `coverPath`: the first placed `photo` object's `image`, else the first
     capture spot's `image` (a tour made from a recording), else `null`.
 - `wireVisitorStart({ dom, createObjectUrl, revokeObjectUrl, checkPicture }): VisitorStart`
@@ -33,7 +34,8 @@ plus a small wiring that writes the page and loads the photo from the zip.
 
 - **Only the tour's own photos can be the cover:** the path always comes
   from a photo object or a capture spot, never from anything else the zip
-  holds (a property test pins it).
+  holds (a property test over pins, photos and capture spots pins the
+  choice: the first own photo, placed photos first).
 - **A newer tour wins:** each `present` / `clear` bumps a generation; a
   cover that finishes loading for an older tour is dropped (checked both
   after the read and after the picture check).

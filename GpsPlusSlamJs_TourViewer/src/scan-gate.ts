@@ -111,7 +111,6 @@ export function reconsiderScanGate(
     : gate;
 }
 
-/** Whether placement may run under this gate. */
 /** Whether the visitor's scan card shows (polish round M4b, the owner's
  *  S1): a visitor's running session whose gate waits for the code. It
  *  closes by itself the moment the gate passes, however it passed. */
@@ -125,6 +124,7 @@ export function scanCardShown(
   );
 }
 
+/** Whether placement may run under this gate. */
 export function gateAllowsPlacement(gate: ScanGate): boolean {
   return gate.kind === "passed" || gate.kind === "not-required";
 }

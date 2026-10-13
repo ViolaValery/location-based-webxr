@@ -396,6 +396,38 @@ describe("a cleared link clears the posters (PR #595 review)", () => {
   });
 });
 
+describe("a tour that goes away takes its poster text with it (M4 review #2)", () => {
+  // Why: since the Finish writes the poster title as the tour's name, a
+  // title left over from the previous tour would rename the next one - a
+  // tour opened from a file keeps no link to load its own text by.
+  it("clears the previous tour's poster title, and the next tour's name fills it", () => {
+    let name: string | null = null;
+    const { dom, panel } = wire({ tourTitle: () => name });
+    panel.presentTour("https://h.example/a.zip");
+    dom.posterTitle.value = "Harbour Lights";
+    dom.posterTitle.fire("input");
+    panel.presentNoTour();
+    expect(dom.posterTitle.value).toBe("");
+    name = "Castle walk";
+    panel.presentCodes();
+    expect(dom.posterTitle.value).toBe("Castle walk");
+  });
+});
+
+describe("a cleared link lets the info line's height go (M4 review #5)", () => {
+  // Why: the line holds its height so the PDF button above it never moves
+  // under a finger; with the posters gone, an empty held block is a gap.
+  it("does not hold the old line's height once the field is empty", () => {
+    const { dom } = wire({});
+    dom.urlInput.value = "https://h.example/tour.zip";
+    dom.info.offsetHeight = 48;
+    dom.info.textContent = "Codes 1 to 3, 18 cm each.";
+    dom.urlInput.value = "";
+    dom.urlInput.fire("change");
+    expect(dom.info.style.minHeight).toBe("");
+  });
+});
+
 describe("no caption line under the codes (owner, on r821)", () => {
   // Why: the owner did not want "Code 2 - 18cm - print at 100%" on the
   // poster; the 10 cm bar carries the 100 % instruction and the file name
@@ -413,7 +445,10 @@ describe("no caption line under the codes (owner, on r821)", () => {
     await settled(dom);
     // The PDF is built first; the tiles of the next run (from 6) follow.
     expect(spies.indexes.slice(0, 2)).toEqual([4, 5]);
-    expect(spies.indexes[2] ?? 6).toBe(6);
+    // Whatever the redraw plans continues from the next number (F4); the
+    // old `indexes[2] ?? 6` passed when nothing was redrawn (M4 review #8).
+    expect(dom.codeInput.value).toBe("6");
+    expect(spies.indexes.slice(2).every((index) => index >= 6)).toBe(true);
   });
 
   it("builds the PDF with empty captions and no caption band", async () => {

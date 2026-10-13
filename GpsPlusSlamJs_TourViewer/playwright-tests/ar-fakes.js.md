@@ -78,7 +78,7 @@ camera, so `installTourViewerArFakes(page)` installs
   rendered that id (`pickTargets` records the ids it was offered; the stub
   scene has no geometry, the real raycast is `object-pick.test.ts`'s);
   `timers` + `fireTimers()` are the scan
-  gate's escape clock (the `schedule` seam), so a spec fires the 45 s
+  gate's escape clock (the `schedule` seam), so a spec fires it
   without waiting. The stations (tour kit plan K4): `createWayfindingHud`
   keeps the page's targets getter as `hud` (`{ getTargets, disposed }`)
   and counts `hudStarts`; `createAudioElement` returns a fake element

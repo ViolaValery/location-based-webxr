@@ -608,8 +608,9 @@
          The owner chose the "spatial path" prototype (verdict P1, D-P1).
          The paper palette is set on the design system's OWN tokens, so the
          atoms (buttons, fields, steps) follow it - the way the sheet's
-         light block works - and only on the creator page, and only while
-         no AR session runs: during a session #ar-root, the overlay over
+         light block works - on the creator page and, since the owner's
+         V4 (polish round M4a, D-R12), the visitor's start page, and only
+         while no AR session runs: during a session #ar-root, the overlay over
          the camera, is back on the sheet's tokens (the dark HUD, D-P1).
          The route red is the page's own token, never --accent, so the
          HUD's accent does not move. */
@@ -1350,9 +1351,10 @@
         #visitor-what {
         display: none;
       }
-      /* A phone held sideways: the name left, the action right, so the
-         button is on the first screen. */
-      @media (orientation: landscape) and (height <= 520px) {
+      /* Held sideways: the name left, the action right, so the button is
+         on the first screen. Up to 600 px tall, so a small landscape
+         tablet gets it too (M4 review #9); the scan card keeps S1's 520. */
+      @media (orientation: landscape) and (height <= 600px) {
         body[data-mode="visitor"]:not([data-ar-active="true"]) {
           --visitor-title-size: 44px;
           --visitor-kicker-gap: 16px;
@@ -1585,7 +1587,8 @@
         >
           <img id="visitor-cover-image" alt="" />
         </figure>
-        <h2 id="visitor-title" data-testid="visitor-title">An AR tour</h2>
+        <!-- The page's heading: the header's h1 is hidden for a visitor. -->
+        <h1 id="visitor-title" data-testid="visitor-title">An AR tour</h1>
         <span class="visitor-rule" aria-hidden="true"></span>
         <p
           id="visitor-subline"

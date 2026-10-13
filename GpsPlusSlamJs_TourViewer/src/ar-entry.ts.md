@@ -58,7 +58,10 @@ since the flows plan M6.
     without AR the click copies `location.href` through `seams.copyText`
     ("Copying…" disabled, then "Link copied"; a failure restores "Copy
     link" and puts the address-bar advice in `errorBox`) - the owner's
-    V4, polish round M4a.
+    V4, polish round M4a. The copy runs inside a promise chain (a missing
+    clipboard throws synchronously), owns the button's label until it
+    settles (a render meanwhile does not hand it back), and a working copy
+    clears an earlier failure's advice (M4 milestone review #1).
   - `renderArStatus` also renders the visitor's scan card (`dom.scanCard`,
     `dom.scanCardLine`, optional; the owner's S1, polish round M4b): shown
     while `scanCardShown` holds, carrying the visitor's sentence, with the
@@ -67,7 +70,10 @@ since the flows plan M6.
   - The render also writes `data-ar-state` (the controller status, for
     the page CSS: V4 steps the round button down on `unsupported`) and
     `data-step` (`visitorStep`: "1 of 2" / "2 of 2", removed otherwise)
-    on the button, and hides the hint for a visitor's `unsupported` state
+    on the button - with an `aria-label` "<label>, step 1 of 2" while it
+    shows, since generated content would be read run into the label; the
+    marker counts the two taps of one start and is dropped once that
+    start runs (M4 review #6, #11) - and hides the hint for a visitor's `unsupported` state
     (it would describe a session that cannot start).
 
 ## Moved-code veto inputs (D20, M5c)

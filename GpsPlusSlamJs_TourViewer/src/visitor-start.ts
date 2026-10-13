@@ -11,7 +11,7 @@ import type { TourManifest } from "gps-plus-slam-app-framework/ar/tour-manifest"
 export interface VisitorStartView {
   /** The tour's name; "An AR tour" when it has none (yet). */
   title: string;
-  /** "3 places to discover" (its stations, objects and recorded photos), or
+  /** "3 places to discover" (its stations, else its objects and recorded photos), or
    *  null for a tour with nothing placed. */
   subline: string | null;
   /** The cover: the tour's first placed photo, else its first recorded
@@ -22,12 +22,14 @@ export interface VisitorStartView {
 /** A tour without a name still reads as a tour. */
 const UNNAMED = "An AR tour";
 
-/** "N places to discover": its stations, objects and recorded photos. */
+/** "N places to discover": a tour of stations counts its stations (the
+ *  objects they show are not places of their own - M4 review #10); any
+ *  other tour its objects and recorded photos. */
 function sublineFor(manifest: TourManifest): string | null {
   const count =
-    manifest.stations.length +
-    manifest.objects.length +
-    (manifest.captureSpots?.captures.length ?? 0);
+    manifest.stations.length > 0
+      ? manifest.stations.length
+      : manifest.objects.length + (manifest.captureSpots?.captures.length ?? 0);
   if (count === 0) return null;
   return `${String(count)} ${count === 1 ? "place" : "places"} to discover`;
 }

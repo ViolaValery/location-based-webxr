@@ -36,6 +36,13 @@ function el() {
     disabled: false,
     value: "",
     dataset: {} as Record<string, string>,
+    attributes: new Map<string, string>(),
+    setAttribute(name: string, value: string) {
+      this.attributes.set(name, value);
+    },
+    removeAttribute(name: string) {
+      this.attributes.delete(name);
+    },
     addEventListener: (type: string, handler: () => void) =>
       handlers.set(type, handler),
     click: () => handlers.get("click")?.(),
@@ -63,8 +70,10 @@ function harness(
   const ctx = createTourViewerSession();
   const dispose = vi.fn();
   let enabled: EnableGpsArConfig | null = null;
+  /** The controller's status, settable so a test can walk a session. */
+  const ar = { status: options.arStatus ?? "ready" };
   const arController = {
-    getState: () => ({ status: options.arStatus ?? "ready" }),
+    getState: () => ({ status: ar.status }),
     subscribe: () => () => undefined,
     refreshSupport: () => Promise.resolve(),
     enable: vi.fn((config: EnableGpsArConfig) => {
@@ -141,6 +150,9 @@ function harness(
     seams,
     arController,
     enabledConfig: () => enabled,
+    setArStatus(status: string) {
+      ar.status = status;
+    },
     async enter() {
       dom.enterArButton.click();
       await settle();
@@ -488,6 +500,8 @@ describe("a visitor's phone without AR copies the link (polish round M4a, V4)", 
     h.dom.enterArButton.click();
     expect(h.dom.enterArButton.textContent).toBe("Copying…");
     expect(h.dom.enterArButton.disabled).toBe(true);
+    // The copy starts inside the chain, a microtask after the tap.
+    await settle();
     fail(new Error("denied"));
     await settle();
     expect(h.dom.enterArButton.textContent).toBe("Copy link");
@@ -539,6 +553,103 @@ describe("the visitor's scan card (polish round M4b, the owner's S1)", () => {
     h.ctx.scanGate = { kind: "scanning", escapeOffered: false };
     h.entry.renderArStatus();
     expect(h.dom.scanCard.hidden).toBe(false);
+    expect(h.dom.arStatus.hidden).toBe(false);
+  });
+});
+
+describe("the visitor's button after the M4 review", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Why (review #1): without a clipboard (an http page, some in-app
+  // browsers) the seam throws before it returns a promise; the button
+  // stayed "Copying…" and disabled, and nothing was said.
+  it("recovers from a clipboard that throws at once, and says so", async () => {
+    const h = harness({
+      arStatus: "unsupported",
+      copyText: () => {
+        throw new Error("no clipboard");
+      },
+    });
+    await h.enter();
+    expect(h.dom.enterArButton.textContent).toBe("Copy link");
+    expect(h.dom.enterArButton.disabled).toBe(false);
+    expect(h.dom.errorBox.textContent).toMatch(/address bar/);
+  });
+
+  it("clears an earlier failure once a copy works, and keeps its label through a re-render", async () => {
+    let fail = true;
+    let finish: () => void = () => undefined;
+    const h = harness({
+      arStatus: "unsupported",
+      copyText: () =>
+        fail
+          ? Promise.reject(new Error("denied"))
+          : new Promise<void>((resolve) => (finish = resolve)),
+    });
+    await h.enter();
+    expect(h.dom.errorBox.textContent).toMatch(/address bar/);
+    fail = false;
+    h.dom.enterArButton.click();
+    // A render while the copy runs (the permission query answering) must
+    // not hand the button back mid-copy.
+    h.entry.renderArEntry();
+    expect(h.dom.enterArButton.textContent).toBe("Copying…");
+    expect(h.dom.enterArButton.disabled).toBe(true);
+    await settle();
+    finish();
+    await settle();
+    expect(h.dom.enterArButton.textContent).toBe("Link copied");
+    expect(h.dom.errorBox.textContent).toBe("");
+  });
+
+  // Why (review #6): the marker counts the two taps of ONE start; after a
+  // session the visitor's next start is a single tap again.
+  it("drops the step marker once the session it led to has started", async () => {
+    let pending = true;
+    const h = harness({ locationPending: () => pending, enableOk: true });
+    await h.enter();
+    pending = false;
+    h.entry.renderArEntry();
+    expect(h.dom.enterArButton.dataset["step"]).toBe("2 of 2");
+    await h.enter();
+    h.entry.renderArEntry();
+    expect(h.dom.enterArButton.dataset["step"]).toBeUndefined();
+  });
+
+  // Why (review #11): the marker is generated content, which a screen
+  // reader would read run into the label ("1 of 2Allow location").
+  it("names the step in the button's accessible name", () => {
+    const h = harness({ locationPending: () => true });
+    expect(h.dom.enterArButton.attributes.get("aria-label")).toBe(
+      "Allow location, step 1 of 2",
+    );
+    const plain = harness();
+    expect(plain.dom.enterArButton.attributes.has("aria-label")).toBe(false);
+  });
+});
+
+describe("the scan card when the session ends under it (M4 review #8)", () => {
+  // Why: the card hides the status line while it shows; a session that
+  // ends while the gate still scans must take the card away AND give the
+  // line back, or the visitor is left on the start page with no status.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("closes the card and restores the line", async () => {
+    const h = harness({ enableOk: true });
+    await h.enter();
+    h.setArStatus("running");
+    h.ctx.scanGate = { kind: "scanning", escapeOffered: false };
+    h.entry.renderArStatus();
+    expect(h.dom.scanCard.hidden).toBe(false);
+    expect(h.dom.arStatus.hidden).toBe(true);
+    h.setArStatus("ready");
+    h.enabledConfig()!.callbacks?.onSessionEnd?.({ requestedByApp: false });
+    await settle();
+    expect(h.dom.scanCard.hidden).toBe(true);
     expect(h.dom.arStatus.hidden).toBe(false);
   });
 });

@@ -367,8 +367,6 @@ export function wirePrintPanel(deps: {
     dom.posterCallToAction.value = fields.callToAction;
   }
 
-  /** Redraw the tiles. `note` goes in front of the info line - the outcome
-   *  of a PDF just printed, which the redraw must not wipe. */
   /** No link to encode: the posters, their line and the link under them
    *  go, and a render still in flight must not paint them back. */
   function clearTiles(): void {
@@ -379,13 +377,17 @@ export function wirePrintPanel(deps: {
     dom.urlOut.removeAttribute("href");
   }
 
+  /** Redraw the tiles. `note` goes in front of the info line - the outcome
+   *  of a PDF just printed, which the redraw must not wipe. */
   function regenerate(note = ""): void {
     if (dom.urlInput.value.trim() === "") {
       // A cleared field: the previous link's posters went with it (PR
       // #595 review - they stayed on screen).
       clearTiles();
-      releaseInfoHeight();
+      // Written first (the writer holds the line's height), then let go:
+      // with no posters below there is no button to keep still.
       claimInfo()("");
+      releaseInfoHeight();
       dom.info.removeAttribute("aria-busy");
       return;
     }
@@ -552,6 +554,12 @@ export function wirePrintPanel(deps: {
       releaseInfoHeight();
       showLink(null);
       clearTiles();
+      // Its poster text went with it: the Finish writes the title as the
+      // tour's name, so a left-over title would rename the next tour,
+      // which may come from a file with no link to load its own by (M4
+      // review #2). The next tour's name fills it (`presentCodes`).
+      posterTyped = false;
+      showPosterFields(defaultPosterFields(null));
     },
     presentCodes: () => {
       // The tour's name comes with its manifest, after the open.
