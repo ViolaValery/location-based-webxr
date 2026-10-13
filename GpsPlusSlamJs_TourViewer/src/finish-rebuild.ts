@@ -36,13 +36,13 @@ import { scanEntryNames } from "./tour-read-set.js";
 import type { TourSession } from "./tour-session.js";
 
 /** The open tour, as far as a rebuild reads it. */
-export type FinishTour = Pick<
+type FinishTour = Pick<
   TourSession,
   "entries" | "manifestWrap" | "integrity" | "budget" | "readWholeArchive"
 >;
 
 /** A previous rebuild of the same open tour: the newest bytes. */
-export interface PreviousFinish {
+interface PreviousFinish {
   readonly blob: Blob;
   readonly signedManifest?: SignedTourManifest;
 }
