@@ -18,7 +18,7 @@ wired into its logic: every interaction is faked.
 - `editor-1-left-rail/`, `editor-2-right-inspector/`,
   `editor-3-bottom-strip/` - the desktop editor (M6, before E1), all "full
   map, floating panels", differing in where the list and the editing card
-  sit; made 2026-10-13, verdict pending.
+  sit; made 2026-10-13. The app takes `editor-1-left-rail`.
 
 **Kept, the chosen and the unchosen** (owner, 2026-10-11 evening): another
 developer may prefer a variant the owner did not choose and ask their own
