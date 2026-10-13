@@ -14,7 +14,7 @@
  * that had the symptom. Only the device (QR controller, reticle, camera)
  * is stood in.
  */
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   buildObjectPoints,
   projectViewPoint,
@@ -125,6 +125,15 @@ vi.mock(
  * The default 5 s would make them fail on load alone, never on behaviour.
  */
 const SLOW_MS = 30_000;
+
+// The library's geo maths (minting a pin's pose, `worldNueToGps`) is
+// licensed, and building a store activates it. Fixtures mint pins BEFORE
+// their test builds a harness (`withHostedTour([hostedPin(...)])`), so
+// without this a test passed only after an earlier one had built a store
+// and failed alone (follow-up F8).
+beforeAll(() => {
+  createTourViewerStore();
+});
 
 const SIZE_M = 0.16;
 const ZERO = { lat: 47.5, lon: 8.7 };
