@@ -82,7 +82,10 @@ were here. What stays is the Finish's side:
     so nothing reset after it reads the closing tour's codes), `presentDraftForTour` (a tour
     opened AND its manifest settled - "spent" is a question about that
     manifest, so it cannot be asked earlier), `beginAuthorVisit`,
-    `endAuthorVisit`, and `selectInView` (M4: a tap in AR - an XR select
+    `endAuthorVisit`, `finishNow` (polish round M3, Q-Done: the creator's
+    Done in AR starts a Finish through `CreatorFinish.start`; in a session
+    the panel's Finish is hidden, and comes back as the retry after a
+    failed finish), and `selectInView` (M4: a tap in AR - an XR select
     the overlay did not cancel - selects the object the `pickObjectInView`
     seam names among the rendered previews for the tap's target ray, or
     the screen centre when it is null; or clears the selection on a miss;

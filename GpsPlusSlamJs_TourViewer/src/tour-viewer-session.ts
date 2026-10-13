@@ -124,6 +124,10 @@ export interface TourViewerHooks {
    *  location gate, which resolves asynchronously). */
   renderArEntry(): void;
   renderAuthorReadout(): void;
+  /** A creator's Done in AR (polish round M3, Q-Done): start the finish
+   *  if one can start now; false when it cannot (the button then just
+   *  leaves). */
+  finishFromAr(): boolean;
   tryPlaceTour(): void;
   startAuthorPipeline(): boolean;
   startViewerPipeline(): boolean;
@@ -213,6 +217,7 @@ export function createUnwiredHooks(): TourViewerHooks {
     presentUnverifiedLink: () => undefined,
     presentTourCodes: () => undefined,
     presentTourInfo: () => undefined,
+    finishFromAr: () => false,
     resetFinishStep: () => undefined,
     beginAuthorVisit: () => undefined,
     endAuthorVisit: () => undefined,

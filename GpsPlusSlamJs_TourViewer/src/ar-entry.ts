@@ -307,7 +307,10 @@ export function wireArEntry(deps: {
     location: { pending: boolean; busy: boolean },
   ): void {
     const button = dom.enterArButton;
-    const view = arButtonView(state, mode, location);
+    const view = arButtonView(state, mode, location, {
+      running: ctx.finishing,
+      failed: ctx.finishError !== null,
+    });
     if (!copying) {
       button.disabled = view.disabled;
       button.textContent = view.label;
@@ -592,6 +595,12 @@ export function wireArEntry(deps: {
     // During a session the button is the way out (UI round 1, U2): the
     // session end runs the same teardown as the back gesture.
     if (arController.getState().status === "running") {
+      // A creator's Done finishes when it can (polish round M3, Q-Done);
+      // the finish ends the session itself once the zip is written.
+      if (authorMode && ctx.finishError === null && hooks.finishFromAr()) {
+        renderArState(arController.getState());
+        return;
+      }
       arController.disable().catch((err: unknown) => {
         dom.errorBox.textContent = describeOpenError(err);
       });

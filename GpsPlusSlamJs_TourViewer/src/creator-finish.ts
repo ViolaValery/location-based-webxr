@@ -87,6 +87,9 @@ export interface CreatorFinish {
    *  none running. The ONE rule the button and the click share (M2
    *  review #2): M4 changes readiness, and two copies could disagree. */
   canStart(): boolean;
+  /** Start a Finish now if `canStart()`; whether one started (the
+   *  creator's Done in AR, polish round M3). */
+  start(): boolean;
   /** Show the keep-the-walk switch only for a tour with something
    *  visitors never read, on the page, with no rebuilt file waiting. */
   renderKeepScan(): void;
@@ -127,6 +130,8 @@ export function wireCreatorFinish(deps: {
    *  manifest's `title` (polish round M4a). */
   tourTitle?: () => string | null;
   render: () => void;
+  /** Re-render the AR button when a finish ends (polish round M3). */
+  renderArEntry?: () => void;
 }): CreatorFinish {
   const { ctx, arStore, dom } = deps;
   /** The open tour's entries a visitor never reads, kept for the tour and
@@ -233,9 +238,12 @@ export function wireCreatorFinish(deps: {
     );
   }
 
-  dom.finishButton.addEventListener("click", () => {
+  /** Start a Finish if one can start now - the panel's button and the
+   *  creator's Done in AR (polish round M3, Q-Done) share this; false when
+   *  none could start. */
+  function start(): boolean {
     const current = ctx.session;
-    if (current === null || !canStart()) return;
+    if (current === null || !canStart()) return false;
     // The visit still running is settled BEFORE anything is read for the
     // zip (plan §3.2): its objects and its code are written as settled, not
     // as tapped. A visit already over was settled at its end.
@@ -536,9 +544,17 @@ export function wireCreatorFinish(deps: {
         ctx.finishing = false;
         ctx.finishProgress = "";
         deps.render();
+        // The AR button reads the finish (Saving…, Close AR after a
+        // failure), and nothing else re-renders it when a finish ends.
+        deps.renderArEntry?.();
       }
     })();
+    return true;
+  }
+
+  dom.finishButton.addEventListener("click", () => {
+    start();
   });
 
-  return { renderKeepScan, readiness, canStart };
+  return { renderKeepScan, readiness, canStart, start };
 }

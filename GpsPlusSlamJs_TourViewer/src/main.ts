@@ -431,6 +431,9 @@ const summary = createSummaryPanel({
 const setup = wireCreatorSetup({
   ctx,
   mode,
+  renderArEntry: () => {
+    hooks.renderArEntry();
+  },
   // Step 6 names the host chosen in step 1 (polish round M2).
   host: () => readTourHost(stepStore),
   // The tour's name, typed in step 3 for the posters, becomes its title
@@ -516,6 +519,7 @@ window.addEventListener("beforeunload", (event) => {
 hooks.beginAuthorVisit = setup.beginAuthorVisit;
 hooks.endAuthorVisit = setup.endAuthorVisit;
 hooks.selectInView = setup.selectInView;
+hooks.finishFromAr = () => setup.finishNow();
 hooks.presentNoTour = () => {
   print.presentNoTour();
 };

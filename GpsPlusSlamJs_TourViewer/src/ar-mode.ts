@@ -77,6 +77,22 @@ export const COPY_LINK_LABELS = {
   failed: "Could not copy the link. Copy it from the address bar instead.",
 } as const;
 
+/** The way out of AR (UI round 1, U2, review F2). A visitor's is "Exit
+ *  AR". A creator's is the ONE button of the session (polish round M3,
+ *  Q-Done, B6): "Done" finishes when a finish can run, else leaves
+ *  (`ar-entry.ts`; the draft keeps every change either way); "Saving…"
+ *  while the zip is written; "Close AR" after a failed finish, so a finish
+ *  that keeps failing cannot trap the creator (the panel's Finish is the
+ *  retry). */
+function runningButtonView(
+  mode: ViewerMode,
+  finish: { running: boolean; failed: boolean },
+): ArButtonView {
+  if (mode !== "creator") return { label: "Exit AR", disabled: false };
+  if (finish.running) return { label: "Saving…", disabled: true };
+  return { label: finish.failed ? "Close AR" : "Done", disabled: false };
+}
+
 /** The ready button: a creator starts; a visitor first allows the
  *  location (DEC-N2), shown busy while the browser asks. */
 function readyButtonView(
@@ -104,6 +120,11 @@ export function arButtonView(
     pending: false,
     busy: false,
   },
+  /** A creator's finish: running (the zip is being written) or failed. */
+  finish: { running: boolean; failed: boolean } = {
+    running: false,
+    failed: false,
+  },
 ): ArButtonView {
   switch (state.status) {
     case "unsupported":
@@ -115,15 +136,7 @@ export function arButtonView(
     case "ready":
       return readyButtonView(mode, location);
     case "running":
-      // The way out of AR (UI round 1, U2, review F2). The creator's work
-      // stays in the draft; the page then leads with saving it.
-      return {
-        // One label for both: "your work stays on this phone" was a
-        // promise the page cannot keep without a draft backup (U2
-        // milestone review #3); the page after AR leads with the save.
-        label: "Exit AR",
-        disabled: false,
-      };
+      return runningButtonView(mode, finish);
     case "error":
       return {
         // The reason is the status line's, in plain words (UI round 1,

@@ -53,15 +53,20 @@ since the flows plan M6.
     `?debug=1` reads `visitorStatus`'s one plain sentence; the creator and
     `?debug=1` keep the technical `arStatusLine`. `data-state` carries `visitorStatus`'s state for a visitor (none for a creator, whose session it would mislead), `data-gate` the scan gate as one word for both (`passed-code` proves the code passed it); `arStatusLive` (the screen reader's live region) is written only when its text changes: the visitor's sentence, and a creator's line outside a session (a failed start with its cause), never per camera frame (UI round 1, U1, review F14; U1 milestone review #8, #9).
   - Subscribes the button renderer to the controller and binds the click:
-    during a running session the click ENDS it ("Exit AR", UI round 1, U2),
-    through the same teardown as the back gesture. On a VISITOR's phone
-    without AR the click copies `location.href` through `seams.copyText`
-    ("Copying…" disabled, then "Link copied"; a failure restores "Copy
-    link" and puts the address-bar advice in `errorBox`) - the owner's
-    V4, polish round M4a. The copy runs inside a promise chain (a missing
-    clipboard throws synchronously), owns the button's label until it
-    settles (a render meanwhile does not hand it back), and a working copy
-    clears an earlier failure's advice (M4 milestone review #1).
+    during a running session the click ENDS it ("Exit AR", UI round 1, U2)
+    - except a creator's "Done" (polish round M3, Q-Done): it asks
+      `hooks.finishFromAr()` first, and when a finish started, the finish
+      ends the session itself once the zip is written; with no finish
+      possible, or after a failed one ("Close AR"), it just leaves. The draft
+      keeps every change either way.
+      through the same teardown as the back gesture. On a VISITOR's phone
+      without AR the click copies `location.href` through `seams.copyText`
+      ("Copying…" disabled, then "Link copied"; a failure restores "Copy
+      link" and puts the address-bar advice in `errorBox`) - the owner's
+      V4, polish round M4a. The copy runs inside a promise chain (a missing
+      clipboard throws synchronously), owns the button's label until it
+      settles (a render meanwhile does not hand it back), and a working copy
+      clears an earlier failure's advice (M4 milestone review #1).
   - `renderArStatus` also renders the visitor's scan card (`dom.scanCard`,
     `dom.scanCardLine`, optional; the owner's S1, polish round M4b): shown
     while `scanCardShown` holds, carrying the visitor's sentence, with the

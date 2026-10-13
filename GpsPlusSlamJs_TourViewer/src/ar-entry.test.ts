@@ -653,3 +653,52 @@ describe("the scan card when the session ends under it (M4 review #8)", () => {
     expect(h.dom.arStatus.hidden).toBe(false);
   });
 });
+
+describe("a creator's one way out of AR (polish round M3, Q-Done)", () => {
+  // Why: Exit AR left without a word and Finish was a second button that
+  // did the same and more (B6). The one button finishes when a finish can
+  // run, else it just leaves - nothing is lost either way, the draft
+  // keeps every change - and after a failed finish it only leaves.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("finishes when a finish can start, and does not also end the session itself", async () => {
+    const h = harness({ arStatus: "running", mode: "creator" });
+    const finish = vi.fn(() => true);
+    h.hooks.finishFromAr = finish;
+    expect(h.dom.enterArButton.textContent).toBe("Done");
+    await h.enter();
+    expect(finish).toHaveBeenCalledTimes(1);
+    // The finish ends the session itself, after the zip is written.
+    expect(h.arController.disable).not.toHaveBeenCalled();
+  });
+
+  it("just leaves when no finish can start", async () => {
+    const h = harness({ arStatus: "running", mode: "creator" });
+    h.hooks.finishFromAr = vi.fn(() => false);
+    await h.enter();
+    expect(h.arController.disable).toHaveBeenCalledTimes(1);
+  });
+
+  it("only leaves after a failed finish", async () => {
+    const h = harness({ arStatus: "running", mode: "creator" });
+    const finish = vi.fn(() => true);
+    h.hooks.finishFromAr = finish;
+    h.ctx.finishError = "Finishing failed: offline";
+    h.entry.renderArEntry();
+    expect(h.dom.enterArButton.textContent).toBe("Close AR");
+    await h.enter();
+    expect(finish).not.toHaveBeenCalled();
+    expect(h.arController.disable).toHaveBeenCalledTimes(1);
+  });
+
+  it("a visitor's Exit AR never finishes", async () => {
+    const h = harness({ arStatus: "running" });
+    const finish = vi.fn(() => true);
+    h.hooks.finishFromAr = finish;
+    await h.enter();
+    expect(finish).not.toHaveBeenCalled();
+    expect(h.arController.disable).toHaveBeenCalledTimes(1);
+  });
+});

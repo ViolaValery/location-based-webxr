@@ -6,6 +6,7 @@ import {
   installTourViewerArFakes,
   openFixtureTour,
   seedAlignment,
+  tapFinish,
 } from "./ar-fakes.js";
 import {
   E2E_QR_ARCHIVE,
@@ -306,7 +307,8 @@ test("creator mode (the plain page) boots the same foundation under its own labe
   await page.goto("/");
   await expect(page.getByTestId("enter-ar")).toHaveText("Start creating");
   await enterAr(page);
-  await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
+  // A creator's one way out of AR (polish round M3, Q-Done).
+  await expect(page.getByTestId("enter-ar")).toHaveText("Done");
   await expect(page.getByTestId("ar-status")).toContainText("Creator mode");
 
   const wiring = await page.evaluate(() => {
@@ -352,7 +354,7 @@ test("a system session end tears the runtime down, and a re-entry starts a clean
   // alignment solve.
   await page.goto("/");
   await enterAr(page);
-  await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
+  await expect(page.getByTestId("enter-ar")).toHaveText("Done");
 
   await page.evaluate(() => {
     /** @type {any} */ (window).__tourViewerTest.endXrSession();
@@ -369,7 +371,7 @@ test("a system session end tears the runtime down, and a re-entry starts a clean
   expect(afterEnd.isRecording).toBe(false);
 
   await enterAr(page);
-  await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
+  await expect(page.getByTestId("enter-ar")).toHaveText("Done");
   const afterReenter = await page.evaluate(() => {
     const t = /** @type {any} */ (window).__tourViewerTest;
     return {
@@ -415,8 +417,10 @@ test("the creator measures the code, finishes, and downloads a rebuilt zip that 
   await expect(page.getByTestId("setup-status")).toHaveText("");
   await enterAr(page);
   await expect(page.getByTestId("setup-controls")).toBeVisible();
-  await expect(page.getByTestId("setup-finish")).toBeDisabled(); // not measured
-  await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
+  // In a session the AR button's Done is the way out (polish round M3);
+  // the panel's Finish steps aside.
+  await expect(page.getByTestId("setup-finish")).toBeHidden();
+  await expect(page.getByTestId("enter-ar")).toHaveText("Done");
   await expect(page.getByTestId("setup-status")).toHaveText(
     /hold the phone on the printed code/i,
   );
@@ -554,7 +558,7 @@ test("the creator measures the code, finishes, and downloads a rebuilt zip that 
   await page.evaluate(() => {
     /** @type {any} */ (window).__tourViewerTest.saveOutcome = false;
   });
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("enter-ar")).toHaveText("Start creating", {
     timeout: 15000,
   });
@@ -680,7 +684,7 @@ test("the creator measures the code, finishes, and downloads a rebuilt zip that 
   // origins. The snapshot makes the count session-relative. (The finish
   // above already ended the session.)
   await enterAr(page);
-  await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
+  await expect(page.getByTestId("enter-ar")).toHaveText("Done");
   await expect
     .poll(
       async () => {
@@ -715,7 +719,7 @@ test("the creator measures the code, finishes, and downloads a rebuilt zip that 
   await expect(page.getByTestId("setup-status")).toContainText(
     /1 object placed/,
   );
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("enter-ar")).toHaveText("Start creating", {
     timeout: 15000,
   });
@@ -835,7 +839,7 @@ test("a first measurement of a code the tour does not store is minted into the r
     /1 object placed/,
   );
 
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("finish-block")).toBeVisible({
     timeout: 30000,
   });
@@ -961,7 +965,7 @@ test("two new codes 20 m apart, measured in one visit, both reach the zip with o
     /2 objects placed/,
   );
 
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("finish-block")).toBeVisible({
     timeout: 30000,
   });
@@ -1009,7 +1013,7 @@ test("a later visit adds a new code beside a stored one; the stored code's level
   await enterArAndMeasure(page);
   await measureAnotherCode(page, E2E_QR_UNKNOWN_TEXT, [21, 1.5, -2]);
 
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("finish-block")).toBeVisible({
     timeout: 30000,
   });
@@ -1111,7 +1115,7 @@ test("a failed finish says so with priority and can be retried; the panel shows 
 
   // Every archive read fails from now on: the finish must fail loudly.
   await page.route("http://127.0.0.1:5197/**", (route) => route.abort());
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("setup-status")).toContainText(
     /finishing failed/i,
     { timeout: 30000 },
@@ -1124,12 +1128,14 @@ test("a failed finish says so with priority and can be retried; the panel shows 
   await expect(page.getByTestId("setup-status")).toContainText(
     /finishing failed/i,
   );
+  // The panel's Finish is back as the retry, and the AR button only
+  // leaves now, so a finish that keeps failing cannot trap the creator.
   await expect(page.getByTestId("setup-finish")).toBeEnabled();
-  await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR"); // the session survived
+  await expect(page.getByTestId("enter-ar")).toHaveText("Close AR"); // the session survived
 
   // Retry with the network back: progress, then step 5.
   await page.unroute("http://127.0.0.1:5197/**");
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("setup-finish")).toBeDisabled();
   await expect(page.getByTestId("finish-block")).toBeVisible({
     timeout: 30000,
@@ -2394,7 +2400,7 @@ test("a crash does not lose the walk: placed content survives a reload and lands
   await expect(page.getByTestId("setup-finish")).toBeEnabled({
     timeout: 10000,
   });
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("finish-block")).toBeVisible({
     timeout: 30000,
   });
@@ -2409,12 +2415,14 @@ test("a crash does not lose the walk: placed content survives a reload and lands
   expect(labels).toContain("The old gate");
 });
 
-test("Exit AR keeps the work: the pin is still listed after the exit and offered after a reload (polish round B7)", async ({
+test("a session that ends without a Finish keeps the work: the pin is still listed after it and offered after a reload (polish round B7)", async ({
   page,
 }) => {
   // Why this matters (polish round B7): the owner left AR with "Exit AR"
   // and read it as "my changes are gone". Every placement is in the draft
-  // the moment it is made; this pins what the page shows after the exit
+  // the moment it is made; this pins what the page shows after a session
+  // that ended without a Finish - since polish round M3 the system's end
+  // (the back gesture): the creator's own button is Done, which finishes -
   // and that a reload still offers the work.
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
@@ -2430,18 +2438,25 @@ test("Exit AR keeps the work: the pin is still listed after the exit and offered
     /1 object placed/,
   );
 
-  await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
-  await page.getByTestId("enter-ar").click();
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__tourViewerTest.endXrSession();
+  });
   await expect(page.getByTestId("enter-ar")).toHaveText("Start creating");
   await expect(page.getByTestId("object-list")).toContainText(
     "Kept by the exit",
   );
-  // Back into AR: the pin is still there. In AR the list is the chooser,
-  // which counts the objects rather than naming them: the fixture's pin
-  // and this one.
+  // Back into AR and out again: the pin is still there, beside the
+  // fixture's own.
   await page.getByTestId("enter-ar").click();
-  await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
-  await expect(page.getByTestId("object-list")).toContainText("2 objects");
+  await expect(page.getByTestId("enter-ar")).toHaveText("Done");
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__tourViewerTest.endXrSession();
+  });
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating");
+  await expect(page.getByTestId("object-list")).toContainText(
+    "Kept by the exit",
+  );
+  await expect(page.getByTestId("object-list")).toContainText("Fixture pin");
 
   await page.reload();
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
@@ -2779,7 +2794,7 @@ test("a draft accumulates ACROSS finishes: both batches land in the zip", async 
   await expect(page.getByTestId("setup-status")).toContainText(
     /1 object placed/,
   );
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("finish-block")).toBeVisible({
     timeout: 30000,
   });
@@ -2809,7 +2824,7 @@ test("a draft accumulates ACROSS finishes: both batches land in the zip", async 
   await expect(page.getByTestId("setup-finish")).toBeEnabled({
     timeout: 10000,
   });
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("finish-block")).toBeVisible({
     timeout: 30000,
   });
@@ -2985,7 +3000,7 @@ async function measureAndFinish(page, url) {
     timeout: 15000,
   });
   await measureTheCode(page);
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("enter-ar")).toHaveText("Start creating", {
     timeout: 15000,
   });
@@ -3127,7 +3142,7 @@ test("an opted-in authoring session is recorded across the finish and saved as i
   );
 
   // The Finish ends the AR session.
-  await page.getByTestId("setup-finish").click();
+  await tapFinish(page);
   await expect(page.getByTestId("finish-block")).toBeVisible({
     timeout: 30000,
   });

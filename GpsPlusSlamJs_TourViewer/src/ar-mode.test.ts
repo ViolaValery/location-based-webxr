@@ -305,13 +305,34 @@ describe("arButtonView", () => {
     // The way out of AR (UI round 1, U2, review F2): it used to sit there
     // disabled as "Tour running" / "Setting up in AR".
     ["running", "visitor", "Exit AR", false],
-    ["running", "creator", "Exit AR", false],
+    // A creator's one way out is Done (polish round M3, Q-Done): it
+    // finishes when a finish can run, else just leaves.
+    ["running", "creator", "Done", false],
     ["stopping", "visitor", "Stopping…", true],
   ] as const)("%s (%s) → %j / disabled=%s", (status, mode, label, disabled) => {
     expect(arButtonView({ status }, mode)).toEqual({
       label,
       disabled,
     });
+  });
+
+  it("a creator's Done says it is saving, and after a failed finish offers to leave (polish round M3)", () => {
+    // Why: Done runs the finish; while it rebuilds the zip the button
+    // must say so and not take a second tap, and a finish that failed
+    // (offline) must not trap the creator in AR - the button then only
+    // leaves, and the panel's Finish is the retry.
+    const running = { status: "running" } as const;
+    const idle = { pending: false, busy: false };
+    expect(
+      arButtonView(running, "creator", idle, { running: true, failed: false }),
+    ).toEqual({ label: "Saving…", disabled: true });
+    expect(
+      arButtonView(running, "creator", idle, { running: false, failed: true }),
+    ).toEqual({ label: "Close AR", disabled: false });
+    // A visitor's button never reads the finish.
+    expect(
+      arButtonView(running, "visitor", idle, { running: true, failed: true }),
+    ).toEqual({ label: "Exit AR", disabled: false });
   });
 
   it("a ready visitor button asks for the location first while the gate is pending (DEC-N2)", () => {

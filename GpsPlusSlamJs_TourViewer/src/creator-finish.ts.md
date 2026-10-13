@@ -31,6 +31,11 @@ M4 makes it write every code of the book, not only the one in hand.
   - The Finish settles a visit still running FIRST
     (`settle.settleVisit("finish")`), and forgets that settle again when
     no zip was written (`settle.unsettle`).
+- `CreatorFinish.start()` - start a Finish now if `canStart()`; whether
+  one started. The panel's Finish button and the creator's Done in AR
+  (polish round M3, Q-Done, through `creator-setup.ts`'s `finishNow`)
+  share it. When a finish ends, `deps.renderArEntry` re-renders the AR
+  button (it reads "Saving…" / "Close AR" from the finish).
 - `CreatorFinish.readiness()` / `canStart()` - whether a Finish could run
   (the readout's hint), and whether a tap starts one now: ready, no
   measurement in flight, none running. The ONE rule the button's state and

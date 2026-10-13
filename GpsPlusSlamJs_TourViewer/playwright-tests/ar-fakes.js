@@ -690,6 +690,24 @@ export async function downloadedZip(page, index) {
 }
 
 /**
+ * The creator's Finish: in a session the AR button's Done (polish round
+ * M3, Q-Done - the panel's Finish is hidden there), on the page the
+ * panel's Finish. Which one is the page's own state, not the test's.
+ */
+export async function tapFinish(page) {
+  const inSession = await page.evaluate(
+    () => document.body.dataset["arActive"] === "true",
+  );
+  // After a failed finish the panel's Finish is back in AR as the retry.
+  if (inSession && (await page.getByTestId("setup-finish").isHidden())) {
+    await expect(page.getByTestId("enter-ar")).toHaveText("Done");
+    await page.getByTestId("enter-ar").click();
+  } else {
+    await page.getByTestId("setup-finish").click();
+  }
+}
+
+/**
  * Finish, then download: the zip lands in the fake's downloads as the
  * `index`-th. The Finish button is disabled while the zip is rebuilt, so
  * waiting for it to leave that state is waiting for THIS rebuild - a second
@@ -699,7 +717,7 @@ export async function downloadedZip(page, index) {
  */
 export async function finishAndDownload(page, index) {
   const finish = page.getByTestId("setup-finish");
-  await finish.click();
+  await tapFinish(page);
   await expect
     .poll(async () => (await finish.isHidden()) || (await finish.isEnabled()), {
       timeout: 30000,

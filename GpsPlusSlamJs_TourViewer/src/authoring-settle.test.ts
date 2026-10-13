@@ -1506,6 +1506,27 @@ describe(
       expect(logs[1]!.payload.objects).toHaveLength(2);
     });
 
+    it("in AR the Done is the one way out: the panel's Finish steps aside, and Done finishes only when a finish can start (polish round M3, Q-Done)", async () => {
+      // Why: Exit AR and Finish did the same thing in two buttons (B6). In
+      // a session the AR button's Done runs the finish (`finishNow`); the
+      // panel's Finish is hidden then, and comes back as the retry after
+      // a failed finish or on the page.
+      const a = authoring();
+      const tour = await openFinishableTour(a, { holdArchive: true });
+      a.setup.renderAuthorReadout();
+      expect(a.dom.finishButton.hidden).toBe(true);
+      // Nothing measured, nothing placed: no finish can start yet.
+      expect(a.setup.finishNow()).toBe(false);
+      expect(a.ctx.finishing).toBe(false);
+      await a.mint();
+      await a.placePin("Gate", [2, 0, -1]);
+      expect(a.setup.finishNow()).toBe(true);
+      expect(a.ctx.finishing).toBe(true);
+      tour.releaseArchive();
+      await finished(a.ctx);
+      expect(a.ctx.finishError).toBeNull();
+    });
+
     it("keeps a photo that lands while a live Finish rebuilds the zip - settled, and left for the next Finish", async () => {
       // Review #6: the Finish emptied the whole placed list when its rebuild
       // landed, which wiped a photo pushed DURING the rebuild - it was in

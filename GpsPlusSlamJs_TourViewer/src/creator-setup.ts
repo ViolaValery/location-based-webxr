@@ -194,6 +194,9 @@ export interface CreatorSetup {
    *  object under the tap (its target ray; the screen centre when null),
    *  or clear the selection on a miss. */
   selectInView: (tap: SelectTargetRay | null) => void;
+  /** The creator's Done in AR: start a Finish if one can start now
+   *  (polish round M3, Q-Done); false when none could. */
+  finishNow: () => boolean;
 }
 
 export function wireCreatorSetup(deps: {
@@ -220,6 +223,8 @@ export function wireCreatorSetup(deps: {
    *  manifest's `title` at the Finish, for the visitor's start page
    *  (polish round M4a). Absent in the node tests that do not need it. */
   tourTitle?: () => string | null;
+  /** Re-render the AR button: it reads the finish (polish round M3). */
+  renderArEntry?: () => void;
 }): CreatorSetup {
   const { ctx, mode, arStore, arController, seams, wizard, dom } = deps;
   const codeTour: Pick<ScanOpen, "onDetection" | "status" | "relation"> =
@@ -462,11 +467,12 @@ export function wireCreatorSetup(deps: {
     // for the greyed-out AR buttons to go, not for the finish to become
     // session-only (M3 milestone review #4). A failed finish keeps it too,
     // or its own "try again" would have nothing to try.
-    dom.finishButton.hidden = !(
-      sessionLive() ||
-      ctx.finishError !== null ||
-      finish.readiness() === "ready"
-    );
+    // In a session the AR button's Done is the one way out (polish round
+    // M3, Q-Done): the panel's Finish steps aside, and comes back as the
+    // retry after a failed finish.
+    dom.finishButton.hidden = sessionLive()
+      ? ctx.finishError === null
+      : !(ctx.finishError !== null || finish.readiness() === "ready");
     // The save cannot be forgotten (UI round 1, U2): after AR with changes
     // not finished, Finish says so; while a rebuilt file waits for its
     // save on a phone, Finish steps aside for it.
@@ -679,9 +685,13 @@ export function wireCreatorSetup(deps: {
     render: () => {
       renderAuthorReadout();
     },
+    ...(deps.renderArEntry === undefined
+      ? {}
+      : { renderArEntry: deps.renderArEntry }),
   });
 
   return {
+    finishNow: () => finish.start(),
     codes,
     renderAuthorReadout,
     measuredCodeIds: () => codes.ids(),

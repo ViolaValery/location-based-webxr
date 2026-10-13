@@ -5,6 +5,7 @@ import {
   enterArAndMeasure,
   installTourViewerArFakes,
   openFixtureTour,
+  tapFinish,
 } from "./ar-fakes.js";
 import { E2E_QR_ARCHIVE, E2E_QR_TEXT } from "./qr-fixture.mjs";
 
@@ -57,8 +58,7 @@ async function placePin(page, label) {
 }
 
 async function finish(page) {
-  const finishButton = page.getByTestId("setup-finish");
-  await finishButton.click();
+  await tapFinish(page);
   await expect(page.getByTestId("finish-block")).toBeVisible({
     timeout: 30000,
   });
