@@ -17,7 +17,7 @@ import type {
 import { codeDistanceLine, objectTitle } from "../object-describe.js";
 import { buildSummaryModel, type MapPoint } from "../summary-model.js";
 
-export type EditorItemKind = "code" | "pin" | "photo";
+export type EditorItemKind = "code" | "pin" | "photo" | "station";
 
 /** One row in the rail and, with a position, one mark on the map. */
 export interface EditorItem {
@@ -51,6 +51,10 @@ export interface EditorModel {
 
 /** A recorded photo's id: its frame's entry name, which is unique. */
 export const RECORDED_PREFIX = "recorded:";
+
+/** A station's id in the editor: stations and objects have separate id
+ *  spaces in the manifest. */
+export const STATION_PREFIX = "station:";
 
 function readable(p: MapPoint): boolean {
   return (
@@ -129,14 +133,50 @@ export function buildEditorModel(input: {
       image: capture.image,
       recorded: true,
     }));
-  const items = [...codes, ...notes, ...recorded];
+  // The story's stations (tour kit plan K4): where each starts, at its own
+  // position or at the code it is anchored to. A story tour may carry
+  // nothing else (the committed sample).
+  const stations: EditorItem[] = manifest.stations.flatMap(
+    (station, index): EditorItem[] => {
+      const number = index + 1;
+      const code =
+        station.anchor.code === undefined
+          ? undefined
+          : codes.find((c) => c.id === station.anchor.code);
+      const own =
+        station.anchor.geo === undefined
+          ? null
+          : { lat: station.anchor.geo.lat, lng: station.anchor.geo.lon };
+      const at = own !== null && readable(own) ? own : (code?.at ?? null);
+      const title = station.title?.trim() ?? "";
+      return [
+        {
+          id: `${STATION_PREFIX}${station.id}`,
+          kind: "station",
+          title: title === "" ? `Station ${String(number)}` : title,
+          meta:
+            code === undefined
+              ? `Station ${String(number)}`
+              : `Station ${String(number)} · at ${code.title}`,
+          at,
+          number,
+        },
+      ];
+    },
+  );
+  const items = [...codes, ...notes, ...recorded, ...stations];
   const count = (kind: EditorItemKind): number =>
     items.filter((i) => i.kind === kind).length;
   const title = manifest.title?.trim() ?? "";
   return {
     title: title === "" ? input.fileName : title,
     items,
-    counts: { code: count("code"), pin: count("pin"), photo: count("photo") },
+    counts: {
+      code: count("code"),
+      pin: count("pin"),
+      photo: count("photo"),
+      station: count("station"),
+    },
     fitPoints: items.flatMap((i) => (i.at === null ? [] : [i.at])),
   };
 }

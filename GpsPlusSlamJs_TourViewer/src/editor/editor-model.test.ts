@@ -116,7 +116,7 @@ describe("buildEditorModel", () => {
       meta: "Photo note · 4 m from the code",
       image: "content/f.jpg",
     });
-    expect(m.counts).toEqual({ code: 1, pin: 1, photo: 1 });
+    expect(m.counts).toEqual({ code: 1, pin: 1, photo: 1, station: 0 });
   });
 
   it("lists the walk's recorded photos with the placed ones, marked as recorded", () => {
@@ -145,6 +145,44 @@ describe("buildEditorModel", () => {
       }),
     ]);
     expect(m.counts.photo).toBe(1);
+  });
+
+  it("lists the story's stations at their own position or their code's", () => {
+    // Why: a story tour (the committed sample) may carry no pins or photos
+    // at all - only stations; an editor that ignored them opened it as an
+    // empty map.
+    const m = buildEditorModel({
+      manifest: manifest({
+        stations: [
+          {
+            id: "column",
+            title: "The column",
+            anchor: { geo: { ...AT, headingDeg: 0 } },
+            activateRadiusM: 30,
+            foundRadiusM: 5,
+            hint: "arrow",
+            steps: [],
+          },
+          {
+            id: "gate",
+            anchor: { code: "c" },
+            activateRadiusM: 30,
+            foundRadiusM: 5,
+            hint: "arrow",
+            steps: [],
+          },
+        ],
+      }),
+      levels: new Map([["c", level(4)]]),
+      fileName: "tour.zip",
+    });
+    const stations = m.items.filter((i) => i.kind === "station");
+    expect(stations.map((x) => [x.id, x.title, x.meta])).toEqual([
+      ["station:column", "The column", "Station 1"],
+      ["station:gate", "Station 2", "Station 2 · at The code"],
+    ]);
+    expect(stations[1]?.at).toEqual(m.items[0]?.at);
+    expect(m.counts.station).toBe(2);
   });
 
   it("keeps a note whose position cannot be drawn off the map", () => {
