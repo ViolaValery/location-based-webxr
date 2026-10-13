@@ -65,7 +65,7 @@ import type { CreatorDraft } from "./creator-draft.js";
 import type { CreatorCodes } from "./creator-codes.js";
 import type { CreatorPreviews } from "./creator-previews.js";
 import { moveWithCode, takesAlong } from "./move-with-code.js";
-import { authoringObjects, upsertPlaced } from "./object-editing.js";
+import { authoringObjects, upsertPlaced } from "./object-edits.js";
 import { correctionRefusedLine } from "./qr-author-mode.js";
 import type { TourViewerSeams } from "./seams.js";
 import { buildSummaryModel, codeLabel } from "./summary-model.js";

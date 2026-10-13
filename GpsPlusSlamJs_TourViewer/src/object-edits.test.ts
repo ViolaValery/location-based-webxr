@@ -1,0 +1,151 @@
+/**
+ * Why these tests matter: the phone's object list and the desktop editor
+ * (M6 E0c, E2 plan review #8) must agree on what an edit, a delete and an
+ * undo do to the lists the Finish writes - otherwise a tour edited on one
+ * page and saved on the other drops or revives objects. The rules were
+ * wired into `object-editing.ts`; here they are pinned on their own: an
+ * empty pin refused (the manifest serializer rejects one, so a save would
+ * throw), a hosted delete as a tombstone and a local one dropped, an undo
+ * back at the old place, a map move keeping height and facing.
+ */
+import { describe, expect, it } from "vitest";
+import fc from "fast-check";
+import type { TourObject } from "gps-plus-slam-app-framework/ar/tour-manifest";
+import {
+  authoringObjects,
+  deleteObject,
+  moveObjectTo,
+  pinTextEdit,
+  undoDelete,
+  upsertPlaced,
+} from "./object-edits.js";
+
+type Entry = { readonly object: TourObject; readonly blob?: Blob };
+
+function pin(id: string, label = `pin ${id}`): TourObject {
+  return {
+    id,
+    kind: "pin",
+    label,
+    createdAtIso: "2026-10-13T00:00:00.000Z",
+    geo: { lat: 47.5, lon: 8.7, alt: 400, headingDeg: 30 },
+  };
+}
+
+function photo(id: string): TourObject {
+  return {
+    id,
+    kind: "photo",
+    image: `content/${id}.jpg`,
+    imageWidth: 4,
+    imageHeight: 3,
+    createdAtIso: "2026-10-13T00:00:00.000Z",
+    geo: { lat: 47.5, lon: 8.7, alt: 400, rotation: [0, 0.6, 0, 0.8] },
+  };
+}
+
+describe("pinTextEdit", () => {
+  it("edits a pin's text, trimmed", () => {
+    expect(pinTextEdit(pin("a", "Old"), "  New  ")).toEqual({
+      kind: "edited",
+      after: { ...pin("a"), label: "New" },
+    });
+  });
+
+  it("refuses an empty pin and leaves the same text alone", () => {
+    expect(pinTextEdit(pin("a", "Old"), "   ")).toEqual({
+      kind: "refused",
+      reason: "A pin needs some text - it was left as it was.",
+    });
+    expect(pinTextEdit(pin("a", "Old"), "Old ")).toEqual({
+      kind: "unchanged",
+    });
+  });
+
+  it("does not edit a photo's caption (owner question Q-E2-1)", () => {
+    expect(pinTextEdit(photo("p"), "A caption")).toEqual({
+      kind: "unchanged",
+    });
+  });
+});
+
+describe("deleteObject and undoDelete", () => {
+  it("tombstones a hosted object and drops this device's entry for it", () => {
+    const placed: Entry[] = [{ object: pin("a", "edited") }];
+    const [entry] = authoringObjects([pin("a")], placed, []);
+    const out = deleteObject({ placed, deleted: [] }, entry!);
+    expect(out.placed).toEqual([]);
+    expect(out.deleted).toEqual(["a"]);
+    expect(out.record).toMatchObject({ hosted: true, index: 0 });
+  });
+
+  it("drops a local object without a tombstone", () => {
+    const placed: Entry[] = [{ object: pin("x") }, { object: pin("n") }];
+    const entries = authoringObjects([], placed, []);
+    const out = deleteObject({ placed, deleted: [] }, entries[1]!);
+    expect(out.placed.map((p) => p.object.id)).toEqual(["x"]);
+    expect(out.deleted).toEqual([]);
+  });
+
+  it("undo puts it back where it was, with its bytes (property)", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 6 }),
+        fc.integer({ min: 0, max: 5 }),
+        fc.boolean(),
+        (n, pick, hostedToo) => {
+          const placed: Entry[] = Array.from({ length: n }, (_, i) => ({
+            object: i % 2 === 0 ? pin(`o${String(i)}`) : photo(`o${String(i)}`),
+            ...(i % 2 === 0 ? {} : { blob: new Blob([String(i)]) }),
+          }));
+          const manifest = hostedToo ? placed.map((p) => p.object) : [];
+          const entries = authoringObjects(manifest, placed, []);
+          const target = entries[pick % entries.length]!;
+          const before = { placed, deleted: [] as string[] };
+          const gone = deleteObject(before, target);
+          const back = undoDelete(
+            { placed: gone.placed, deleted: gone.deleted },
+            gone.record,
+          );
+          expect(back.placed).toEqual(before.placed);
+          expect(back.deleted).toEqual(before.deleted);
+        },
+      ),
+    );
+  });
+});
+
+describe("moveObjectTo", () => {
+  it("moves a pin and a photo on the map, keeping height and facing", () => {
+    expect(moveObjectTo(pin("a"), 47.6, 8.8).geo).toEqual({
+      lat: 47.6,
+      lon: 8.8,
+      alt: 400,
+      headingDeg: 30,
+    });
+    // A photo's rotation is a world-frame quaternion: a move of a few
+    // metres keeps its facing (E2 plan review #8).
+    expect(moveObjectTo(photo("p"), 47.6, 8.8).geo).toEqual({
+      lat: 47.6,
+      lon: 8.8,
+      alt: 400,
+      rotation: [0, 0.6, 0, 0.8],
+    });
+  });
+
+  it("refuses a position nobody can draw", () => {
+    expect(() => moveObjectTo(pin("a"), 123, 8.8)).toThrow(/latitude/i);
+  });
+});
+
+describe("upsertPlaced", () => {
+  it("replaces an entry by id in place, or appends", () => {
+    const placed: Entry[] = [{ object: pin("a") }, { object: pin("b") }];
+    expect(
+      upsertPlaced(placed, { object: pin("a", "new") }).map(
+        (p) => (p.object as { label: string }).label,
+      ),
+    ).toEqual(["new", "pin b"]);
+    expect(upsertPlaced(placed, { object: pin("c") })).toHaveLength(3);
+  });
+});
