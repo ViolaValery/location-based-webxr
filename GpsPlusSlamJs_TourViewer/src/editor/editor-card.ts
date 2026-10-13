@@ -15,6 +15,9 @@ import { pictureProblem } from "../image-cap.js";
 import type { EditorItem } from "./editor-model.js";
 import { placePopover, type Box } from "./popover-place.js";
 
+/** Fired on the card when its content changed size (a photo landed). */
+export const CARD_RESIZED = "card-resized";
+
 /** The card's width where the window has room (the prototype's). */
 const CARD_WIDTH_PX = 320;
 
@@ -40,8 +43,31 @@ export interface EditorCardDom {
   readonly chipShow: HTMLButtonElement;
 }
 
+/** What the card offers for the item shown (M6 E2a). */
+export interface CardView {
+  /** A pin or a photo of the tour: Move and Delete, and a pin's text. */
+  readonly editable: boolean;
+  /** Its marker is being dragged (Move): Done and Cancel instead. */
+  readonly moving: boolean;
+  /** It was moved since the last save: the height line. */
+  readonly moved: boolean;
+  /** The last action's outcome or refusal, or "". */
+  readonly message: string;
+}
+
+const READ_ONLY: CardView = {
+  editable: false,
+  moving: false,
+  moved: false,
+  message: "",
+};
+
+/** Said after a move on the map (E2 plan: the 2D map keeps the height). */
+const MOVED_LINE =
+  "Height kept from the phone; on sloped ground it may be off.";
+
 export interface EditorCard {
-  show(item: EditorItem): void;
+  show(item: EditorItem, view?: CardView): void;
   hide(): void;
   /** Follow the marker: `anchor` its ground point in window pixels (null
    *  without one), `free` the window's free part. */
@@ -65,6 +91,12 @@ export function createEditorCard(
     readonly loadImage: (item: EditorItem) => Promise<Blob>;
     readonly onClose: () => void;
     readonly onReveal: () => void;
+    /** A pin's text was committed (blur or Ctrl+Enter). */
+    readonly onText?: (id: string, text: string) => void;
+    readonly onMove?: (id: string) => void;
+    readonly onMoveDone?: () => void;
+    readonly onMoveCancel?: () => void;
+    readonly onDelete?: (id: string) => void;
   },
 ): EditorCard {
   let current: EditorItem | null = null;
@@ -73,14 +105,23 @@ export function createEditorCard(
    *  no longer shown is dropped. */
   let generation = 0;
 
+  /** Tell the page the card changed size, so it is placed again. */
+  function resized(): void {
+    dom.card.dispatchEvent(new Event(CARD_RESIZED));
+  }
+
   function freeUrl(): void {
     if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
     objectUrl = null;
   }
 
-  function line(text: string, error = false): HTMLElement {
+  function line(text: string, error = false, warn = false): HTMLElement {
     const p = document.createElement("p");
-    p.className = error ? "note-line error" : "note-line";
+    p.className = error
+      ? "note-line error"
+      : warn
+        ? "note-line warn"
+        : "note-line";
     p.textContent = text;
     return p;
   }
@@ -96,6 +137,7 @@ export function createEditorCard(
         if (mine !== generation) return;
         if (problem !== null) {
           status.replaceWith(line(`This photo is not shown: ${problem}`, true));
+          resized();
           return;
         }
         freeUrl();
@@ -103,6 +145,9 @@ export function createEditorCard(
         const img = document.createElement("img");
         img.className = "card-photo";
         img.alt = item.title;
+        // The card grows when the photo lands: the page places it again
+        // (a card placed while loading could end below the window).
+        img.addEventListener("load", resized);
         img.src = objectUrl;
         status.replaceWith(img);
       })
@@ -116,7 +161,46 @@ export function createEditorCard(
             true,
           ),
         );
+        resized();
       });
+  }
+
+  function button(
+    text: string,
+    className: string,
+    run: () => void,
+  ): HTMLButtonElement {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = className;
+    b.textContent = text;
+    b.addEventListener("click", run);
+    return b;
+  }
+
+  /** Move and Delete, or - while moving - the drag's Done and Cancel. */
+  function actionsFor(item: EditorItem, view: CardView): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "card-actions";
+    if (view.moving) {
+      const hint = document.createElement("p");
+      hint.className = "move-hint";
+      hint.textContent = "Drag the marker to its new place.";
+      row.append(
+        hint,
+        button("Done", "btn primary small", () => deps.onMoveDone?.()),
+        button("Cancel", "btn small", () => deps.onMoveCancel?.()),
+      );
+      return row;
+    }
+    const grow = document.createElement("span");
+    grow.className = "grow";
+    row.append(
+      button("Move", "btn small", () => deps.onMove?.(item.id)),
+      grow,
+      button("Delete", "btn small danger", () => deps.onDelete?.(item.id)),
+    );
+    return row;
   }
 
   dom.chipShow.addEventListener("click", () => {
@@ -124,9 +208,16 @@ export function createEditorCard(
   });
 
   return {
-    show(item) {
-      generation += 1;
-      freeUrl();
+    show(item, view = READ_ONLY) {
+      // The same photo stays on screen across re-renders after an edit.
+      const samePhoto =
+        current?.id === item.id &&
+        current.image === item.image &&
+        objectUrl !== null;
+      if (!samePhoto) {
+        generation += 1;
+        freeUrl();
+      }
       current = item;
       const head = document.createElement("div");
       head.className = "card-head";
@@ -146,9 +237,37 @@ export function createEditorCard(
       if (item.kind === "photo" && item.image !== undefined) {
         const holder = document.createElement("div");
         body.push(holder);
-        loadPhoto(item, holder);
+        if (samePhoto && objectUrl !== null) {
+          const img = document.createElement("img");
+          img.className = "card-photo";
+          img.alt = item.title;
+          img.src = objectUrl;
+          holder.append(img);
+        } else {
+          loadPhoto(item, holder);
+        }
       }
-      if (item.kind !== "code") {
+      if (view.editable && item.kind === "pin") {
+        const label = document.createElement("label");
+        label.className = "field-label";
+        label.textContent = "Text";
+        label.htmlFor = "card-text";
+        const field = document.createElement("textarea");
+        field.id = "card-text";
+        field.rows = 3;
+        field.value = item.title;
+        const commit = (): void => {
+          if (field.value !== item.title) deps.onText?.(item.id, field.value);
+        };
+        field.addEventListener("blur", commit);
+        field.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            commit();
+          }
+        });
+        body.push(label, field);
+      } else if (item.kind !== "code") {
         const text = document.createElement("p");
         text.className = "card-text";
         text.textContent = item.title;
@@ -166,6 +285,9 @@ export function createEditorCard(
         ),
         line(item.meta),
       );
+      if (view.moved) body.push(line(MOVED_LINE, false, true));
+      if (view.message !== "") body.push(line(view.message));
+      if (view.editable) body.push(actionsFor(item, view));
       const foot = document.createElement("div");
       foot.className = "card-foot";
       const key = document.createElement("kbd");

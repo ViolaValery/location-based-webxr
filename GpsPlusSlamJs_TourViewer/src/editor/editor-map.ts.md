@@ -15,6 +15,10 @@ plan review #4).
   - `show(model, padding)` - replaces the markers and frames the tour
     (`fitBounds` with the rail's and top bar's padding, max zoom 19); a
     tour with no position shows a world view.
+  - `update(model)` - redraws the markers after an edit; the view and the
+    selection stay (M6 E2a).
+  - `drag(id, onDrop | null)` - makes the marker draggable (Leaflet's
+    marker drag) and reports where it was dropped; null ends it.
   - `select(id | null)`, `hover(id, on)` - the `sel` / `hover` classes.
   - `anchorOf(id)` - the marker's ground point in window pixels, or null.
   - `reveal(id, padding)` - pans the marker inside the window minus

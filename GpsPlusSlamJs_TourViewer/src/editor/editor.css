@@ -239,12 +239,6 @@ button:disabled {
   flex: 1;
 }
 
-.read-only-note {
-  font-size: 13px;
-  color: var(--ink-dim);
-  white-space: nowrap;
-}
-
 /* The left rail. */
 #rail {
   position: fixed;
@@ -591,6 +585,13 @@ button:disabled {
   background: var(--panel-solid);
 }
 
+/* Never taller than the window under the top bar: the content scrolls
+ * inside, the arrow (outside the card's edge) is not clipped. */
+#card-inner {
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+}
+
 #card .arrow {
   position: absolute;
   width: 14px;
@@ -820,8 +821,110 @@ kbd {
     --rail-w: 252px;
   }
 
-  .tour-file,
-  .read-only-note {
+  .tour-file {
     display: none;
   }
+}
+
+/* Editing (M6 E2a), as the prototype's card. */
+.btn.danger {
+  color: var(--danger);
+}
+
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  margin-bottom: 4px;
+}
+
+#card textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--hairline);
+  background: #fff;
+  font: 14px/1.45 var(--sans);
+  color: var(--ink);
+}
+
+#card textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.note-line.warn {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  padding: 8px 10px;
+  border-radius: 9px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.card-actions .grow {
+  flex: 1;
+}
+
+.move-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+#save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--panel-lo);
+  font-size: 13px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+#save-status[data-state="error"] {
+  background: rgb(200 50 43 / 12%);
+  color: var(--danger);
+}
+
+#save-status[data-state="pending"],
+#save-status[data-state="saving"] {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.keep-walk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.toast .btn {
+  background: transparent;
+  color: var(--accent);
+  border-color: rgb(255 255 255 / 18%);
+  min-height: 30px;
 }

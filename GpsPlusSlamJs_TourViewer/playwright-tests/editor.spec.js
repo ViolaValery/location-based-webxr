@@ -1,9 +1,12 @@
 // @ts-check
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import {
   TextReader,
+  TextWriter,
   Uint8ArrayReader,
   Uint8ArrayWriter,
+  ZipReader,
   ZipWriter,
 } from "@zip.js/zip.js";
 import {
@@ -393,4 +396,157 @@ test("Open another tour can be cancelled, and a refused file keeps the open tour
   // The tour still reads: its photo opens.
   await page.locator("#rail .row", { hasText: "Fountain" }).click();
   await expect(page.locator("#card img.card-photo")).toBeVisible();
+});
+
+/**
+ * The saved file, through the browser's download: the save picker is taken
+ * away first, so the framework's `downloadBlob` takes its `<a download>`
+ * path, which Playwright sees (M6 E2a).
+ * @param {import("@playwright/test").Page} page
+ */
+async function saveAndRead(page) {
+  const download = page.waitForEvent("download");
+  await page.locator("#save-btn").click();
+  const file = await download;
+  const path = await file.path();
+  const bytes = new Uint8Array(readFileSync(path));
+  const reader = new ZipReader(new Uint8ArrayReader(bytes));
+  const entries = await reader.getEntries();
+  /** @type {Record<string, string>} */
+  const texts = {};
+  for (const entry of entries) {
+    if (!entry.directory && entry.getData !== undefined) {
+      texts[entry.filename] = await entry.getData(new TextWriter());
+    }
+  }
+  await reader.close();
+  return {
+    name: file.suggestedFilename(),
+    manifest: JSON.parse(texts["tour.json"] ?? "{}"),
+    names: Object.keys(texts),
+  };
+}
+
+/** @param {import("@playwright/test").Page} page */
+async function noSavePicker(page) {
+  await page.addInitScript(() => {
+    // @ts-expect-error - the e2e takes the picker away on purpose.
+    delete window.showSaveFilePicker;
+  });
+}
+
+test("edits a pin's text and saves a tour that carries it", async ({
+  page,
+}) => {
+  // Why (M6 E2a): an edit on the desktop must reach the file the creator
+  // puts back - under the opened file's name, so Drive offers Replace.
+  await noSavePicker(page);
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  const field = page.locator("#card textarea");
+  await field.fill("The new text");
+  await field.blur();
+  await expect(page.locator("#save-status")).toHaveText("1 change not saved");
+  await expect(page.locator("#card")).toContainText("Changed - not saved yet.");
+  const saved = await saveAndRead(page);
+  expect(saved.name).toBe("editor-fixture.zip");
+  const pinSaved = saved.manifest.objects.find(
+    (/** @type {{ id: string }} */ o) => o.id === "pin-markup",
+  );
+  expect(pinSaved.label).toBe("The new text");
+  await expect(page.locator("#save-status")).toHaveText(
+    "Saved as editor-fixture.zip",
+  );
+});
+
+test("refuses to empty a pin, in the card's words", async ({ page }) => {
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  const field = page.locator("#card textarea");
+  await field.fill("   ");
+  await field.blur();
+  await expect(page.locator("#card")).toContainText("A pin needs some text");
+  await expect(page.locator("#save-status")).toHaveText("No changes");
+});
+
+test("deletes a note with Undo, and a saved delete takes the photo's file", async ({
+  page,
+}) => {
+  await noSavePicker(page);
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Fountain" }).click();
+  await page.locator("#card button", { hasText: "Delete" }).click();
+  await expect(page.locator("#rail .row", { hasText: "Fountain" })).toHaveCount(
+    0,
+  );
+  await page.locator(".toast button", { hasText: "Undo" }).click();
+  await expect(page.locator("#rail .row", { hasText: "Fountain" })).toHaveCount(
+    1,
+  );
+  await expect(page.locator("#save-status")).toHaveText("No changes");
+  await page.locator("#rail .row", { hasText: "Fountain" }).click();
+  await page.locator("#card button", { hasText: "Delete" }).click();
+  const saved = await saveAndRead(page);
+  expect(
+    saved.manifest.objects.map((/** @type {{ id: string }} */ o) => o.id),
+  ).not.toContain("photo-ok");
+  expect(saved.names).not.toContain("content/photo-ok.png");
+  expect(saved.names).toContain("content/photo-big.png");
+});
+
+test("moves a pin by dragging its marker, says the height was kept, and saves the new place", async ({
+  page,
+}) => {
+  await noSavePicker(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  await page.locator("#card button", { hasText: "Move" }).click();
+  await expect(page.locator("#card")).toContainText(
+    "Drag the marker to its new place.",
+  );
+  const marker = await box(page.locator(".mk-wrap.sel"));
+  await page.mouse.move(marker.x + marker.width / 2, marker.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(marker.x + marker.width / 2 + 60, marker.y + 70, {
+    steps: 8,
+  });
+  await page.mouse.up();
+  await page.locator("#card button", { hasText: "Done" }).click();
+  await expect(page.locator("#card")).toContainText(
+    "Height kept from the phone",
+  );
+  const saved = await saveAndRead(page);
+  const pinSaved = saved.manifest.objects.find(
+    (/** @type {{ id: string }} */ o) => o.id === "pin-markup",
+  );
+  // South-east of where it was: further east, further south.
+  expect(pinSaved.geo.lon).toBeGreaterThan(9.0536 + 10 / 73_800);
+  expect(pinSaved.geo.lat).toBeLessThan(48.5203 + 10 / 111_320);
+  expect(pinSaved.geo.alt).toBe(340);
+});
+
+test("asks before Open another tour drops unsaved changes", async ({
+  page,
+}) => {
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  const field = page.locator("#card textarea");
+  await field.fill("Changed");
+  await field.blur();
+  /** @type {string[]} */
+  const asked = [];
+  page.once("dialog", (dialog) => {
+    asked.push(dialog.message());
+    void dialog.dismiss();
+  });
+  await page.locator("#open-another").click();
+  await expect.poll(() => asked.length).toBe(1);
+  expect(asked[0]).toMatch(/not saved/);
+  await expect(page.locator("#open-modal")).toBeHidden();
 });

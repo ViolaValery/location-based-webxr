@@ -17,7 +17,16 @@
         </div>
       </div>
       <div class="topbar-spacer"></div>
-      <span class="read-only-note">Viewing only - editing comes next</span>
+      <label class="keep-walk" id="keep-walk" hidden>
+        <input type="checkbox" id="keep-walk-input" />
+        Keep the walk recording in the saved file
+      </label>
+      <span id="save-status" role="status" aria-live="polite" data-state="clean"
+        >No changes</span
+      >
+      <button class="btn primary" id="save-btn" type="button" disabled>
+        Save
+      </button>
       <button class="btn" id="open-another" type="button">
         Open another tour
       </button>
@@ -100,7 +109,7 @@
         <h1 id="open-title">Open a tour</h1>
         <p class="lede">
           See what your phone created on a map: every printed code, pin and
-          photo. Editing them here comes next.
+          photo, and fix a text, move a pin or remove a note.
         </p>
         <label class="drop" id="drop">
           <span class="drop-text">
@@ -129,8 +138,8 @@
           </button>
         </div>
         <p class="fineprint">
-          The file stays on this computer: nothing is uploaded. Saving your
-          edits into it is the next step of this page.
+          The file stays on this computer: nothing is uploaded. Save gives you a
+          new copy of the tour to put in place of the old one.
         </p>
       </div>
     </div>

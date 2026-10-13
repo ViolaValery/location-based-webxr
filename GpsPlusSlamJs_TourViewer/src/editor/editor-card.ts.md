@@ -19,6 +19,12 @@ view" chip.
     with no position (`anchor` null) gets the card at the free area's
     corner, without arrow or chip (E1 review #3). The card is as wide as
     the free area, up to 320 px (E1 review #7).
+  - `show(item, view?)` takes a `CardView` (M6 E2a): `editable` (a pin's
+    text field committed on blur or Ctrl+Enter through `onText`; Move and
+    Delete through `onMove` / `onDelete`), `moving` (the drag's hint,
+    Done and Cancel through `onMoveDone` / `onMoveCancel`), `moved` ("Height
+    kept from the phone; on sloped ground it may be off."), `message`
+    (the last outcome). The same photo stays on screen across re-renders.
   - `hide()`, `shown()`.
 - The precision line (`PRECISION_LINE`, internal) - R7's two figures: "about 0.1-0.7 m near a code, 1-3 m
   further away" (M6 E1 plan review #10).

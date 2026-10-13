@@ -34,6 +34,11 @@ export interface EditorMapHandlers {
 
 export interface EditorMap {
   show(model: EditorModel, padding: { left: number; top: number }): void;
+  /** Redraw the markers after an edit: the view and the selection stay. */
+  update(model: EditorModel): void;
+  /** Let the marker be dragged (Move, M6 E2a); `onDrop` gets where it
+   *  was left. Null ends dragging. */
+  drag(id: string, onDrop: ((lat: number, lng: number) => void) | null): void;
   select(id: string | null): void;
   hover(id: string, on: boolean): void;
   /** The marker's ground point in window pixels, or null without one. */
@@ -117,43 +122,75 @@ export function createEditorMap(
     });
   }
 
+  function draw(model: EditorModel): void {
+    for (const { marker } of markers.values()) marker.remove();
+    markers.clear();
+    for (const item of model.items) {
+      if (item.at === null) continue;
+      const marker = L.marker([item.at.lat, item.at.lng], {
+        icon: iconFor(item),
+        keyboard: false,
+        zIndexOffset: baseZ(item),
+      });
+      marker.on("click", (event) => {
+        L.DomEvent.stopPropagation(event);
+        handlers.onSelect(item.id);
+      });
+      marker.on("mouseover", () => {
+        handlers.onHover(item.id, true);
+      });
+      marker.on("mouseout", () => {
+        handlers.onHover(item.id, false);
+      });
+      marker.on("drag", () => {
+        handlers.onView();
+      });
+      marker.addTo(map);
+      markers.set(item.id, { marker, item });
+    }
+  }
+
+  function markSelected(id: string | null): void {
+    if (selected !== null) {
+      const before = markers.get(selected);
+      before?.marker.getElement()?.classList.remove("sel");
+      before?.marker.setZIndexOffset(baseZ(before.item));
+    }
+    selected = id;
+    const now = id === null ? undefined : markers.get(id);
+    now?.marker.getElement()?.classList.add("sel");
+    now?.marker.setZIndexOffset(SELECTED_Z);
+  }
+
   return {
     show(model, padding) {
-      for (const { marker } of markers.values()) marker.remove();
-      markers.clear();
       selected = null;
-      for (const item of model.items) {
-        if (item.at === null) continue;
-        const marker = L.marker([item.at.lat, item.at.lng], {
-          icon: iconFor(item),
-          keyboard: false,
-          zIndexOffset: baseZ(item),
-        });
-        marker.on("click", (event) => {
-          L.DomEvent.stopPropagation(event);
-          handlers.onSelect(item.id);
-        });
-        marker.on("mouseover", () => {
-          handlers.onHover(item.id, true);
-        });
-        marker.on("mouseout", () => {
-          handlers.onHover(item.id, false);
-        });
-        marker.addTo(map);
-        markers.set(item.id, { marker, item });
-      }
+      draw(model);
       frame(model, padding);
     },
-    select(id) {
-      if (selected !== null) {
-        const before = markers.get(selected);
-        before?.marker.getElement()?.classList.remove("sel");
-        before?.marker.setZIndexOffset(baseZ(before.item));
+    update(model) {
+      const keep = selected;
+      selected = null;
+      draw(model);
+      markSelected(keep);
+    },
+    drag(id, onDrop) {
+      const entry = markers.get(id);
+      if (entry === undefined) return;
+      const { marker } = entry;
+      marker.off("dragend");
+      if (onDrop === null) {
+        marker.dragging?.disable();
+        return;
       }
-      selected = id;
-      const now = id === null ? undefined : markers.get(id);
-      now?.marker.getElement()?.classList.add("sel");
-      now?.marker.setZIndexOffset(SELECTED_Z);
+      marker.dragging?.enable();
+      marker.on("dragend", () => {
+        const at = marker.getLatLng();
+        onDrop(at.lat, at.lng);
+      });
+    },
+    select(id) {
+      markSelected(id);
     },
     hover(id, on) {
       markers.get(id)?.marker.getElement()?.classList.toggle("hover", on);

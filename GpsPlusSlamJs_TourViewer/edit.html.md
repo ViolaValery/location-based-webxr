@@ -5,20 +5,21 @@
 The Tour Viewer's second page, for a computer: open the tour zip the
 phone's Finish saved and see every printed code, pin and photo on a full
 map, in the owner's chosen layout (variant 1, the left rail:
-`public/prototypes/editor-1-left-rail/`). Read-only until E2 adds editing
-and saving. Design and decisions:
+`public/prototypes/editor-1-left-rail/`), and fix a pin's text, move a note or
+delete one, then Save a new copy (M6 E2a). Design and decisions:
 `GpsPlusSlamJs_Docs/docs/2026-10-13-0832-tour-desktop-editor-and-scan-data-design.md`
 (§5, §9).
 
 A Vite build entry (`vite.config.ts`, `edit`), so it is built and reachable
 on a deployed branch preview at `/tour/edit.html`; linked from nothing
-until it can save.
+until the phone's draft gives way to desktop edits (E2p).
 
 ## Structure
 
 - `#map` - the full-window map (`src/editor/editor-map.ts`).
-- `#topbar` - the tour's title and file name, "Viewing only - editing comes
-  next", "Open another tour".
+- `#topbar` - the tour's title and file name, the "Keep the walk recording"
+  switch (`#keep-walk`, only for a tour carrying a walk), `#save-status`,
+  `#save-btn` (Save downloads the tour, M6 E2a), "Open another tour".
 - `#rail` - the codes, pins and photos (`src/editor/editor-rail.ts`).
 - `#card`, `#offscreen-chip` - the card beside the selected marker
   (`src/editor/editor-card.ts`).

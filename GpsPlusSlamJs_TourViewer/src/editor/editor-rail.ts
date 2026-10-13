@@ -33,6 +33,8 @@ export interface EditorRailDom {
 
 export interface EditorRail {
   render(model: EditorModel): void;
+  /** Redraw after an edit: the search and the selection stay. */
+  update(model: EditorModel): void;
   select(id: string | null): void;
   hover(id: string, on: boolean): void;
   /** Fold the rail to its per-group counts, or open it. */
@@ -197,6 +199,11 @@ export function createEditorRail(
       model = next;
       dom.filter.value = "";
       dom.rail.hidden = false;
+      draw();
+      drawMini();
+    },
+    update(next) {
+      model = next;
       draw();
       drawMini();
     },

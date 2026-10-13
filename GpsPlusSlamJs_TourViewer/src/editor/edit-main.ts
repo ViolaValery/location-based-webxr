@@ -1,25 +1,38 @@
 /**
- * The desktop editor's page (`/tour/edit.html`, M6 E1): the composition
- * root. Opens a tour (a file chosen or dropped, or the sample), draws it
- * in the chosen variant 1 layout (full map, the left rail, the card beside
- * the selected marker), read-only until E2. Linked from nothing yet.
+ * The desktop editor's page (`/tour/edit.html`, M6 E1, E2a): the
+ * composition root. Opens a tour (a file chosen or dropped, or the
+ * sample), draws it in the chosen variant 1 layout (full map, the left
+ * rail, the card beside the selected marker), and edits it: a pin's text,
+ * Move and Delete with Undo, and a Save that downloads the tour to put in
+ * place of the old file. Linked from nothing yet.
  *
  * @see edit-main.ts.md
  */
 
 import "./editor.css";
+import { downloadZip } from "gps-plus-slam-app-framework/storage";
 import { createTourViewerStore } from "../tour-viewer-session.js";
 import { describeIntegrityError } from "../open-errors.js";
+import { scanEntryNames } from "../tour-read-set.js";
 import type { TourSession } from "../tour-session.js";
-import { createEditorCard } from "./editor-card.js";
+import {
+  CARD_RESIZED,
+  createEditorCard,
+  type CardView,
+} from "./editor-card.js";
 import { createEditorMap } from "./editor-map.js";
 import {
-  buildEditorModel,
   photoSource,
+  type EditorItem,
   type EditorModel,
 } from "./editor-model.js";
 import { openTourForEditing } from "./editor-open.js";
 import { createEditorRail } from "./editor-rail.js";
+import {
+  createEditorSession,
+  type EditorSave,
+  type EditorSession,
+} from "./editor-session.js";
 import { revealPadding, type Box } from "./popover-place.js";
 
 /** The committed sample tour (`public/samples/`), beside this page. */
@@ -30,6 +43,10 @@ const SAMPLE_NAME = "marienplatz-tour.zip";
 const EDGE_PX = 12;
 /** Below this width the rail starts folded (the prototype's 760 px). */
 const NARROW_PX = 760;
+/** How long a delete can be undone - the phone's hold (`object-editing.ts`
+ *  `OUTCOME_HOLD_MS`). A Save ends it sooner: the saved file no longer
+ *  carries the object. */
+const UNDO_MS = 8000;
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -49,11 +66,30 @@ const sampleButton = element<HTMLButtonElement>("sample-btn");
 const cancelButton = element<HTMLButtonElement>("open-cancel");
 const topbar = element("topbar");
 const toasts = element("toasts");
+const saveButton = element<HTMLButtonElement>("save-btn");
+const saveStatus = element("save-status");
+const keepWalk = element("keep-walk");
+const keepWalkInput = element<HTMLInputElement>("keep-walk-input");
 
 let session: TourSession | null = null;
+let editor: EditorSession | null = null;
 let model: EditorModel | null = null;
 let selected: string | null = null;
 let busy = false;
+let saving = false;
+/** A save the browser did not deliver (the picker dismissed, a failed
+ *  download): Save offers it again before anything else. */
+let undelivered: EditorSave | null = null;
+/** The marker being dragged, and where it was dropped so far. */
+let moving: { id: string; drop: { lat: number; lng: number } | null } | null =
+  null;
+/** Notes moved since the last save: their card says the height was kept. */
+const moved = new Set<string>();
+/** The card's last outcome line, for the item it was said about. */
+let message: { id: string; text: string } | null = null;
+/** The open delete's Undo, until it times out or a Save starts. */
+let undoOffer: { run: () => void; toast: HTMLElement; timer: number } | null =
+  null;
 
 /** "2 codes, 3 notes" - and the stations when the story has any. */
 function openedSummary(opened: EditorModel): string {
@@ -67,14 +103,28 @@ function openedSummary(opened: EditorModel): string {
   ].join(", ");
 }
 
-function toast(text: string): void {
+function toast(
+  text: string,
+  action?: { label: string; run: () => void },
+): HTMLElement {
   const t = document.createElement("div");
   t.className = "toast";
-  t.textContent = text;
+  const words = document.createElement("span");
+  words.textContent = text;
+  t.append(words);
+  if (action !== undefined) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn small";
+    b.textContent = action.label;
+    b.addEventListener("click", action.run);
+    t.append(b);
+  }
   toasts.append(t);
   setTimeout(() => {
     t.remove();
-  }, 4000);
+  }, UNDO_MS);
+  return t;
 }
 
 /** The free part of the window: right of the rail, under the top bar
@@ -90,12 +140,11 @@ function freeArea(): Box {
 }
 
 function reveal(id: string): void {
-  const free = freeArea();
   map.reveal(
     id,
     revealPadding(
       { width: window.innerWidth, height: window.innerHeight },
-      free,
+      freeArea(),
     ),
   );
 }
@@ -105,18 +154,127 @@ function placeCard(): void {
   card.place(map.anchorOf(selected), freeArea());
 }
 
-function select(id: string | null, pan = false): void {
-  selected = id;
-  map.select(id);
-  rail.select(id);
-  const item = model?.items.find((i) => i.id === id) ?? null;
+/** A pin or photo of the tour can be edited; codes, stations and the
+ *  walk's recorded photos cannot (yet). */
+function editable(item: EditorItem): boolean {
+  return (
+    (item.kind === "pin" || item.kind === "photo") && item.recorded !== true
+  );
+}
+
+function viewOf(item: EditorItem): CardView {
+  return {
+    editable: editable(item),
+    moving: moving?.id === item.id,
+    moved: moved.has(item.id),
+    message: message?.id === item.id ? message.text : "",
+  };
+}
+
+function showCard(): void {
+  const item = model?.items.find((i) => i.id === selected) ?? null;
   if (item === null) {
     card.hide();
     return;
   }
-  card.show(item);
-  if (pan) reveal(item.id);
+  card.show(item, viewOf(item));
   placeCard();
+}
+
+function select(id: string | null, pan = false): void {
+  if (moving !== null && moving.id !== id) cancelMove();
+  selected = id;
+  message = null;
+  map.select(id);
+  rail.select(id);
+  showCard();
+  if (pan && id !== null) {
+    reveal(id);
+    placeCard();
+  }
+}
+
+function renderSaveState(): void {
+  const count = editor?.changeCount() ?? 0;
+  if (saving) {
+    saveStatus.dataset["state"] = "saving";
+    saveStatus.textContent = "Saving…";
+    saveButton.disabled = true;
+    return;
+  }
+  saveButton.disabled =
+    editor === null || (count === 0 && undelivered === null);
+  if (undelivered !== null && count === 0) {
+    saveStatus.dataset["state"] = "error";
+    saveStatus.textContent = "Not saved yet - tap Save again";
+    return;
+  }
+  if (count === 0) {
+    saveStatus.dataset["state"] = "clean";
+    saveStatus.textContent = saveStatus.dataset["saved"] ?? "No changes";
+    return;
+  }
+  saveStatus.dataset["state"] = "pending";
+  saveStatus.textContent = `${String(count)} ${count === 1 ? "change" : "changes"} not saved`;
+}
+
+/** After an edit: the rail, the markers, the card and the status follow. */
+function refresh(): void {
+  if (editor === null) return;
+  model = editor.model();
+  rail.update(model);
+  map.update(model);
+  if (selected !== null && !model.items.some((i) => i.id === selected)) {
+    selected = null;
+  }
+  map.select(selected);
+  rail.select(selected);
+  showCard();
+  renderSaveState();
+}
+
+function endUndo(): void {
+  if (undoOffer === null) return;
+  clearTimeout(undoOffer.timer);
+  undoOffer.toast.remove();
+  undoOffer = null;
+}
+
+function startMove(id: string): void {
+  moving = { id, drop: null };
+  map.drag(id, (lat, lng) => {
+    if (moving?.id === id) moving.drop = { lat, lng };
+  });
+  showCard();
+}
+
+function finishMove(): void {
+  const done = moving;
+  if (done === null || editor === null) return;
+  map.drag(done.id, null);
+  moving = null;
+  if (done.drop !== null) {
+    try {
+      editor.move(done.id, done.drop.lat, done.drop.lng);
+      moved.add(done.id);
+      message = { id: done.id, text: "Moved - not saved yet." };
+    } catch (err) {
+      message = {
+        id: done.id,
+        text: `It cannot go there: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+  refresh();
+}
+
+function cancelMove(): void {
+  const done = moving;
+  if (done === null) return;
+  map.drag(done.id, null);
+  moving = null;
+  // Redrawn from the model: the marker goes back to where it was.
+  refresh();
 }
 
 const map = createEditorMap(element("map"), {
@@ -128,7 +286,7 @@ const map = createEditorMap(element("map"), {
     rail.hover(id, on);
   },
   onBackground: () => {
-    select(null);
+    if (moving === null) select(null);
   },
   onView: placeCard,
 });
@@ -183,6 +341,41 @@ const card = createEditorCard(
     onReveal: () => {
       if (selected !== null) reveal(selected);
     },
+    onText: (id, text) => {
+      if (editor === null) return;
+      const outcome = editor.editText(id, text);
+      message =
+        outcome.kind === "refused"
+          ? { id, text: outcome.reason }
+          : outcome.kind === "edited"
+            ? { id, text: "Changed - not saved yet." }
+            : null;
+      refresh();
+    },
+    onMove: startMove,
+    onMoveDone: finishMove,
+    onMoveCancel: cancelMove,
+    onDelete: (id) => {
+      if (editor === null) return;
+      const item = model?.items.find((i) => i.id === id);
+      const undo = editor.remove(id);
+      endUndo();
+      select(null);
+      refresh();
+      const t = toast(`Deleted ${item?.title ?? "the note"}`, {
+        label: "Undo",
+        run: () => {
+          endUndo();
+          undo();
+          refresh();
+        },
+      });
+      undoOffer = {
+        run: undo,
+        toast: t,
+        timer: window.setTimeout(endUndo, UNDO_MS),
+      };
+    },
   },
 );
 
@@ -193,9 +386,22 @@ function showModal(on: boolean): void {
   if (on) openError.hidden = true;
 }
 
+/** Leaving would lose edits: changes not saved, or a save not delivered. */
+function unsavedWork(): boolean {
+  return saving || undelivered !== null || (editor?.changeCount() ?? 0) > 0;
+}
+
 window.addEventListener("resize", placeCard);
+element("card").addEventListener(CARD_RESIZED, placeCard);
+window.addEventListener("beforeunload", (event) => {
+  if (unsavedWork()) event.preventDefault();
+});
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (moving !== null) {
+    cancelMove();
+    return;
+  }
   if (!modal.hidden && session !== null && !busy) showModal(false);
   else select(null);
 });
@@ -208,13 +414,24 @@ function setBusy(on: boolean, text: string): void {
   openStatus.textContent = text;
 }
 
+function resetEditing(): void {
+  endUndo();
+  moving = null;
+  moved.clear();
+  message = null;
+  undelivered = null;
+  delete saveStatus.dataset["saved"];
+}
+
 /** The tour is gone (a late integrity failure): nothing of it stays on
  *  screen, and the dialog says why. */
 function dropTour(reason: string): void {
   select(null);
   const open = session;
   session = null;
+  editor = null;
   model = null;
+  resetEditing();
   void open?.close().catch(() => undefined);
   topbar.hidden = true;
   element("rail").hidden = true;
@@ -253,11 +470,23 @@ async function openFile(file: File): Promise<void> {
   const previous = session;
   session = outcome.session;
   void previous?.close().catch(() => undefined);
-  model = buildEditorModel({
+  resetEditing();
+  editor = createEditorSession({
+    session: outcome.session,
     manifest: outcome.manifest,
     levels: outcome.levels,
     fileName: outcome.fileName,
   });
+  model = editor.model();
+  // The walk-recording switch only for a tour that carries one (S-D10:
+  // the saved copy leaves it out unless asked, E2 plan review #4).
+  keepWalkInput.checked = false;
+  keepWalk.hidden =
+    scanEntryNames(
+      outcome.session.entries.map((e) => e.filename),
+      outcome.manifest,
+      outcome.session.manifestWrap,
+    ).length === 0;
   element("tour-name").textContent = model.title;
   element("tour-file").textContent = outcome.fileName;
   topbar.hidden = false;
@@ -267,9 +496,55 @@ async function openFile(file: File): Promise<void> {
   if (window.innerWidth < NARROW_PX) rail.collapse(true);
   const free = freeArea();
   map.show(model, { left: free.left, top: free.top });
+  renderSaveState();
   toast(`Opened ${outcome.fileName}: ${openedSummary(model)}`);
 }
 
+/** Hand `save` to the browser; whether it arrived. */
+async function deliver(save: EditorSave): Promise<boolean> {
+  try {
+    return await downloadZip(save.blob, save.filename);
+  } catch {
+    return false;
+  }
+}
+
+async function runSave(): Promise<void> {
+  if (editor === null || saving) return;
+  // The saved file will not carry a deleted object any more: its Undo ends.
+  endUndo();
+  if (moving !== null) finishMove();
+  saving = true;
+  renderSaveState();
+  try {
+    const save =
+      undelivered !== null && editor.changeCount() === 0
+        ? undelivered
+        : await editor.save({ keepScan: keepWalkInput.checked });
+    const arrived = await deliver(save);
+    undelivered = arrived ? null : save;
+    if (arrived) {
+      moved.clear();
+      saveStatus.dataset["saved"] = `Saved as ${save.filename}`;
+      toast(
+        `Saved as ${save.filename}. Put it in place of the old file, under the same name, so the printed codes keep opening it.`,
+      );
+    }
+  } catch (err) {
+    saving = false;
+    renderSaveState();
+    saveStatus.dataset["state"] = "error";
+    saveStatus.textContent = `Not saved: ${err instanceof Error ? err.message : String(err)}`;
+    saveButton.disabled = false;
+    return;
+  }
+  saving = false;
+  refresh();
+}
+
+saveButton.addEventListener("click", () => {
+  void runSave();
+});
 zipInput.addEventListener("change", () => {
   const file = zipInput.files?.[0];
   zipInput.value = "";
@@ -315,5 +590,15 @@ cancelButton.addEventListener("click", () => {
   showModal(false);
 });
 element<HTMLButtonElement>("open-another").addEventListener("click", () => {
+  // The same guard as leaving the page (`main.ts`'s rule for switching
+  // tours, E2 plan review #12).
+  if (
+    unsavedWork() &&
+    !window.confirm(
+      "Your changes are not saved yet. Open another tour anyway? They will be lost.",
+    )
+  ) {
+    return;
+  }
   showModal(true);
 });
