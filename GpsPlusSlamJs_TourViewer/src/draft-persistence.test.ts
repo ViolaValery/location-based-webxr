@@ -704,27 +704,43 @@ describe("the bases of a draft's objects (M6 E2p)", () => {
 });
 
 describe("writeDraftEdit (M6 E2p)", () => {
-  // Why: the base is the hosted version the edit STARTED from. A second
-  // edit of the same object must not move it to a later version, or a
-  // newer edit elsewhere would no longer be recognised.
-  it("records the hosted version at the first write and keeps it after", async () => {
+  // Why: the caller decides the base once per page load (creator-draft.ts);
+  // this layer must write exactly what it is told - a key, a removal, or
+  // nothing - so that decision is the only one.
+  it("writes a given base, removes it on null, leaves it on undefined", async () => {
     const store = memoryStore();
     await writeDraftMeta(store, META);
     const hosted = pin("a");
-    await writeDraftEdit(store, { ...hosted, label: "one" }, undefined, hosted);
-    await writeDraftEdit(store, { ...hosted, label: "two" }, undefined, {
-      ...hosted,
-      label: "a later version",
-    });
-    const read = await readDraft(store);
+    await writeDraftEdit(
+      store,
+      { ...hosted, label: "one" },
+      undefined,
+      objectContentKey(hosted),
+    );
+    await writeDraftEdit(
+      store,
+      { ...hosted, label: "two" },
+      undefined,
+      undefined,
+    );
+    let read = await readDraft(store);
     expect(read?.draft.bases?.get("a")).toBe(objectContentKey(hosted));
     expect(read?.draft.objects[0]).toMatchObject({ label: "two" });
+    await writeDraftEdit(store, { ...hosted, label: "three" }, undefined, null);
+    read = await readDraft(store);
+    expect(read?.draft.bases).toBeUndefined();
   });
 
-  it("writes no base for an object the tour does not carry", async () => {
-    const store = memoryStore();
+  // Why (review #6): the result is the record's write. A base that did not
+  // land must not report the edit itself as lost.
+  it("reports the record's write, not the base's", async () => {
+    const inner = memoryStore();
+    const store: DraftFileStore = {
+      ...inner,
+      put: (key, data) =>
+        key.startsWith("base:") ? Promise.resolve(false) : inner.put(key, data),
+    };
     await writeDraftMeta(store, META);
-    await writeDraftEdit(store, pin("new"), undefined, undefined);
-    expect((await readDraft(store))?.draft.bases).toBeUndefined();
+    expect(await writeDraftEdit(store, pin("a"), undefined, "k")).toBe(true);
   });
 });

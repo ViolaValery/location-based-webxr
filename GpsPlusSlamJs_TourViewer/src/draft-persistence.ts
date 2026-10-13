@@ -25,7 +25,7 @@ import {
 import { isWritableQrLevelId } from "gps-plus-slam-app-framework/ar/qr/qr-level-archive";
 import type { DraftFileStore } from "gps-plus-slam-app-framework/storage";
 
-import { objectContentKey, type AuthoringDraft } from "./authoring-draft.js";
+import type { AuthoringDraft } from "./authoring-draft.js";
 import {
   parseVisitLogEntry,
   serializeVisitLogEntry,
@@ -133,39 +133,29 @@ export async function removeDraftObject(
 }
 
 /**
- * Record a placement or an edit, and - the first time an object the open
- * tour carries is written - the hosted version it started from (M6 E2p):
- * a newer edit elsewhere then wins over this record. A later write keeps
- * the first base. `hosted` is the tour's own version, or undefined for an
- * object the tour does not carry (a new placement).
+ * Record a placement or an edit, and its base (M6 E2p): `base` is the
+ * content key to record, `null` to remove a base (the opened tour does not
+ * carry the object), `undefined` to leave it. The caller decides, once per
+ * object per page load, from the tour AS OPENED (`creator-draft.ts`). The
+ * result is the record's write: a base that did not land only falls back
+ * to the behaviour before E2p (review #6). Both writes run at once.
  */
 export async function writeDraftEdit(
   store: DraftFileStore,
   object: TourObject,
   blob: Blob | undefined,
-  hosted: TourObject | undefined,
+  base: string | null | undefined,
 ): Promise<boolean> {
-  // Both at once: the edit's in-progress state lasts one write, not two.
-  const [wrote, based] = await Promise.all([
+  const [wrote] = await Promise.all([
     writeDraftObject(store, object, blob),
-    hosted === undefined
-      ? Promise.resolve(true)
-      : baseOnce(store, object.id, hosted),
+    base === undefined
+      ? Promise.resolve()
+      : base === null
+        ? store.remove(baseKey(object.id))
+        : writeDraftBase(store, object.id, base),
   ]);
-  return wrote && based;
+  return wrote;
 }
-
-/** Write the base unless the draft already has one: the first edit's
- *  hosted version is kept. */
-async function baseOnce(
-  store: DraftFileStore,
-  id: string,
-  hosted: TourObject,
-): Promise<boolean> {
-  if ((await store.getText(baseKey(id))) !== undefined) return true;
-  return writeDraftBase(store, id, objectContentKey(hosted));
-}
-
 /** Record an object's base (M6 E2p). */
 export async function writeDraftBase(
   store: DraftFileStore,

@@ -149,21 +149,22 @@ export function draftObjectsSuperseded(
 }
 
 /**
- * The draft's objects the hosted zip carries with the same content and
- * that have no base yet (M6 E2p): they reached the file the world sees,
- * so their base is set to that content - a later delete elsewhere is then
- * not undone by this draft.
+ * The draft's objects the hosted zip carries with the same content whose
+ * base is not that content yet (absent, or an older version): they reached
+ * the file the world sees, so their base is set to it - a later delete
+ * elsewhere is then not undone by this draft, and a later edit of this
+ * device's own published version is not mistaken for one made elsewhere
+ * (M6 E2p review #1).
  */
-export function draftObjectsPublishedWithoutBase(
+export function draftObjectsPublished(
   draft: AuthoringDraft,
   manifest: TourManifest | null,
 ): readonly TourObject[] {
   const hosted = hostedKeys(manifest);
-  return draft.objects.filter(
-    (o) =>
-      draft.bases?.has(o.id) !== true &&
-      hosted.get(o.id) === objectContentKey(o),
-  );
+  return draft.objects.filter((o) => {
+    const key = objectContentKey(o);
+    return hosted.get(o.id) === key && draft.bases?.get(o.id) !== key;
+  });
 }
 
 /** The draft's deletions the hosted zip still carries: not yet published. */

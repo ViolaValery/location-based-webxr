@@ -33,7 +33,7 @@ import {
   draftKeyForTour,
   draftLevels,
   draftObjectsNotYetHosted,
-  draftObjectsPublishedWithoutBase,
+  draftObjectsPublished,
   draftObjectsSuperseded,
   objectContentKey,
   restoredText,
@@ -493,13 +493,24 @@ describe("a newer edit elsewhere wins over the phone's draft (M6 E2p)", () => {
     ).toBe(true);
   });
 
-  it("names the objects that reached the hosted zip without a base yet", () => {
+  // Why (review #1): a base that names an OLDER version than the hosted
+  // record must be refreshed too, or this device's own published edit
+  // reads as one made elsewhere on the next load and is thrown away.
+  it("names the records the hosted zip carries whose base is absent or stale", () => {
     const published = pin("p");
-    const draft = draftOf([published, pin("pending")]);
+    const stale = relabel(pin("s"), "phone 1");
+    const current = relabel(pin("c"), "phone 1");
+    const draft: AuthoringDraft = {
+      ...draftOf([published, stale, current, pin("pending")]),
+      bases: new Map([
+        ["s", objectContentKey(pin("s"))],
+        ["c", objectContentKey(current)],
+      ]),
+    };
     expect(
-      draftObjectsPublishedWithoutBase(draft, manifestOf([published])).map(
+      draftObjectsPublished(draft, manifestOf([published, stale, current])).map(
         (o) => o.id,
       ),
-    ).toEqual(["p"]);
+    ).toEqual(["p", "s"]);
   });
 });

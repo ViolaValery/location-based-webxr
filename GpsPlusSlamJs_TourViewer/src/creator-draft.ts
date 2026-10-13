@@ -11,7 +11,10 @@
 import { qrLevelIdFromEntryName } from "gps-plus-slam-app-framework/ar/qr/qr-level-archive";
 import { AUTHOR_DEFAULT_SIZE_M } from "gps-plus-slam-app-framework/ar/qr/qr-mint-level";
 import { readSideM, writeSideM } from "./printed-side.js";
-import type { TourObject } from "gps-plus-slam-app-framework/ar/tour-manifest";
+import type {
+  TourManifest,
+  TourObject,
+} from "gps-plus-slam-app-framework/ar/tour-manifest";
 import type { DraftFileStore } from "gps-plus-slam-app-framework/storage";
 import {
   draftDeletionsNotYetHosted,
@@ -20,7 +23,7 @@ import {
   draftIsSpent,
   draftKeyForTour,
   draftObjectsNotYetHosted,
-  draftObjectsPublishedWithoutBase,
+  draftObjectsPublished,
   draftObjectsSuperseded,
   objectContentKey,
   restoredText,
@@ -68,6 +71,9 @@ export interface CreatorDraft {
   recordPlacement(object: TourObject, blob?: Blob): void;
   /** Record one AR visit's log entry, in memory and in the draft. */
   recordVisit(entry: VisitLogEntry): void;
+  /** One awaited write of an object's record, with its base (M6 E2p):
+   *  the object list's edits, moves and undos. */
+  writeObject(object: TourObject, blob?: Blob): Promise<boolean>;
   /** One awaited write for object `id` (the object list's actions). */
   write(
     id: string,
@@ -235,10 +241,25 @@ export function wireCreatorDraft(deps: {
    * already happened in memory, and the draft is a safety net - a storage
    * problem must never fail the tap that made it.
    */
-  /** The open tour's own version of an object, for its draft base (M6
-   *  E2p); undefined for an object the tour does not carry. */
-  function hostedVersion(id: string): TourObject | undefined {
-    return ctx.tourManifest?.objects.find((o) => o.id === id);
+  /** The tour as it was OPENED (M6 E2p review #2): a Finish advances
+   *  `ctx.tourManifest` to what this page wrote, which is not what is
+   *  hosted until the creator uploads it. */
+  let opened: TourManifest | null = null;
+  /** The objects whose base this page load already decided. */
+  const basedThisLoad = new Set<string>();
+  /** The line saying the draft gave way to newer edits, for the open. */
+  let supersededNote: string | null = null;
+
+  /** An object's base for its next draft write (M6 E2p): decided at its
+   *  first write in this page load - the opened tour's version, or none
+   *  for an object it does not carry - and left alone after (review #1:
+   *  a base kept across loads mistook the phone's own published edit for
+   *  one made elsewhere). */
+  function baseFor(id: string): string | null | undefined {
+    if (basedThisLoad.has(id)) return undefined;
+    basedThisLoad.add(id);
+    const hosted = opened?.objects.find((o) => o.id === id);
+    return hosted === undefined ? null : objectContentKey(hosted);
   }
 
   function recordPlacement(object: TourObject, blob?: Blob): void {
@@ -252,8 +273,9 @@ export function wireCreatorDraft(deps: {
       if (draftTourUrl !== null) noteNoPersistence();
       return;
     }
+    const base = baseFor(object.id);
     void writeForObject(store, tourUrl, object.id, (s) =>
-      writeDraftEdit(s, object, blob, hostedVersion(object.id)),
+      writeDraftEdit(s, object, blob, base),
     ).then((ok) => {
       if (!ok) noteNoPersistence();
     });
@@ -602,6 +624,11 @@ export function wireCreatorDraft(deps: {
     // open path already guards every other continuation this way.
     const generation = ctx.openGeneration;
     const stale = (): boolean => generation !== ctx.openGeneration;
+    // The tour as opened, and a fresh decision per object (M6 E2p): taken
+    // here, before any write of this load, never after a Finish.
+    opened = ctx.tourManifest;
+    basedThisLoad.clear();
+    supersededNote = null;
     void (async () => {
       const store = await deps.openDraftStore(draftKeyForTour(tourUrl));
       if (stale()) return;
@@ -663,9 +690,18 @@ export function wireCreatorDraft(deps: {
       // default): those records are not offered back, and the page says
       // so once.
       const superseded = draftObjectsSuperseded(stored.draft, ctx.tourManifest);
-      if (superseded.length > 0) {
-        ctx.placementNote = supersededLine(superseded.length);
+      supersededNote =
+        superseded.length === 0 ? null : supersededLine(superseded.length);
+      if (supersededNote !== null) {
+        ctx.placementNote = supersededNote;
         deps.render();
+        // Said once (review #4): the replaced records go - unless this
+        // page changed them again before the draft opened.
+        for (const id of notLive(superseded.map((o) => o.id))) {
+          void writeForObject(store, tourUrl, id, (s) =>
+            removeDraftObject(s, id).then(() => true),
+          );
+        }
       }
       const waiting = draftObjectsNotYetHosted(stored.draft, ctx.tourManifest);
       const waitingDeletions = draftDeletionsNotYetHosted(
@@ -734,10 +770,7 @@ export function wireCreatorDraft(deps: {
       // base now (M6 E2p), so a later delete elsewhere is not undone. Not
       // on the spent path above, which must leave the files alone when its
       // commit is refused.
-      for (const o of draftObjectsPublishedWithoutBase(
-        stored.draft,
-        ctx.tourManifest,
-      )) {
+      for (const o of draftObjectsPublished(stored.draft, ctx.tourManifest)) {
         void writeForObject(store, tourUrl, o.id, (s) =>
           writeDraftBase(s, o.id, objectContentKey(o)),
         );
@@ -784,8 +817,11 @@ export function wireCreatorDraft(deps: {
       // opened the tour mid-session would not see it and would place the
       // same content again (milestone review #4).
       if (deps.sessionLive()) {
-        ctx.placementNote =
-          "Unsaved work for this tour is on this device - restore it after leaving AR.";
+        // With the superseded line, which this note must not hide.
+        ctx.placementNote = [
+          "Unsaved work for this tour is on this device - restore it after leaving AR.",
+          ...(supersededNote === null ? [] : [supersededNote]),
+        ].join(" ");
         deps.render();
       }
       // The offer lives inside step 4, which is usually COLLAPSED when a
@@ -800,6 +836,9 @@ export function wireCreatorDraft(deps: {
   return {
     present,
     reset: () => {
+      opened = null;
+      basedThisLoad.clear();
+      supersededNote = null;
       dom.draftOffer.hidden = true;
       offered = null;
       draftStore = undefined;
@@ -811,6 +850,12 @@ export function wireCreatorDraft(deps: {
     recordPlacement,
     recordVisit,
     write: draftWrite,
+    writeObject: (object, blob) => {
+      const base = baseFor(object.id);
+      return draftWrite(object.id, (s) =>
+        writeDraftEdit(s, object, blob, base),
+      );
+    },
     forgetObject: (id) => {
       const store = draftStore;
       const tourUrl = draftTourUrl;

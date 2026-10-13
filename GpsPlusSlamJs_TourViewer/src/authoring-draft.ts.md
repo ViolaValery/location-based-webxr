@@ -19,9 +19,11 @@ asked. Pure - the OPFS mechanics are the framework's
   whose hosted object changed since, or is gone though it was hosted, is
   SUPERSEDED: not offered, not keeping the draft alive
   (`draftObjectsSuperseded`); the page says so (`supersededLine`, owner
-  question Q-E2-2's default). `draftObjectsPublishedWithoutBase` names the
-  records the hosted zip carries with the same content and no base yet -
-  the page gives them one, so a later delete elsewhere is not undone. A
+  question Q-E2-2's default). `draftObjectsPublished` names the
+  records the hosted zip carries with the same content whose base is not
+  that content yet (absent or older) - the page sets it, so a later delete
+  elsewhere is not undone and this device's own published edit is not
+  read as one made elsewhere (E2p review #1). A
   draft without bases (every draft before E2p) behaves as before. Not
   covered: a phone deletion against a newer edit elsewhere.
 - `draftObjectsNotYetHosted(draft, manifest) -> readonly TourObject[]` -

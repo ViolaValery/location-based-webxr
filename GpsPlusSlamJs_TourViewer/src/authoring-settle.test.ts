@@ -3166,6 +3166,108 @@ describe(
       expect(model?.objects.map((o) => o.label)).toEqual(["Gate"]);
     });
 
+    // M6 E2p review #1, #2, #4: the walks the pure rules could not see.
+    // Each loses the phone's own work if the base is taken from the wrong
+    // version: "replaced by a newer one" would be false, and the record
+    // would not be offered back.
+    describe("the draft's base comes from the tour as opened (M6 E2p review)", () => {
+      /** A pin the hosted zip carries. */
+      function hosted(id: string, label: string): TourObject {
+        return mintPin({
+          id,
+          label,
+          worldNuePosition: { x: 4, y: 400, z: 2 },
+          zero: ZERO,
+          nowIso: "2026-09-29T10:00:00.000Z",
+        })!;
+      }
+
+      /** One page load: the tour as hosted now, the draft presented. */
+      async function load(
+        store: DraftFileStore,
+        objects: TourObject[],
+      ): Promise<ReturnType<typeof authoring>> {
+        const a = authoring({ store });
+        await openFinishableTour(a);
+        a.ctx.tourManifest = { ...createEmptyTourManifest(), objects };
+        a.setup.presentDraftForTour(TOUR);
+        await flush();
+        return a;
+      }
+
+      it("offers a placement moved after a download-only Finish (review #2)", async () => {
+        const { store } = memoryDraftStore();
+        const a = await load(store, []);
+        a.setWalk(walk());
+        await a.mint();
+        await a.placePin("Gate", [2, 0, -1]);
+        a.endVisit();
+        await flush();
+        a.device.live = false;
+        a.dom.finishButton.click();
+        await finished(a.ctx);
+        // The page's manifest now holds the pin; the hosted zip does not.
+        const id = a.ctx.tourManifest!.objects[0]!.id;
+        a.dom.objectList.listHandlers!.editText(id, "Gate, edited");
+        await flush();
+        // The zip was never uploaded: the reload sees the tour without it.
+        const b = await load(store, []);
+        await vi.waitFor(() => {
+          expect(b.dom.draftOfferText.textContent).not.toBe("");
+        });
+        expect(b.dom.draftOfferText.textContent).toMatch(/1 thing you placed/);
+        expect(b.ctx.placementNote ?? "").not.toMatch(/replaced/);
+      });
+
+      it("offers a later edit of an object the phone itself published (review #1)", async () => {
+        const { store } = memoryDraftStore();
+        const a0 = hosted("h1", "Gate");
+        const a = await load(store, [a0]);
+        a.setWalk(walk());
+        await a.mint();
+        a.endVisit();
+        await flush();
+        a.dom.objectList.listHandlers!.editText("h1", "Gate, phone 1");
+        await flush();
+        // The creator uploaded that edit: the next load opens it hosted.
+        const a1 = { ...a0, label: "Gate, phone 1" } as TourObject;
+        const b = await load(store, [a1]);
+        b.dom.objectList.listHandlers!.editText("h1", "Gate, phone 2");
+        await flush();
+        // The tab dies before a Finish: the reload, still hosted at A1.
+        const c = await load(store, [a1]);
+        await vi.waitFor(() => {
+          expect(c.dom.draftOfferText.textContent).not.toBe("");
+        });
+        expect(c.dom.draftOfferText.textContent).toMatch(/1 change/);
+        expect(c.ctx.placementNote ?? "").not.toMatch(/replaced/);
+      });
+
+      it("says a desktop edit won once, and forgets the replaced record (review #4)", async () => {
+        const { store, files } = memoryDraftStore();
+        const a0 = hosted("h1", "Gate");
+        const a = await load(store, [a0]);
+        a.setWalk(walk());
+        await a.mint();
+        a.endVisit();
+        await flush();
+        a.dom.objectList.listHandlers!.editText("h1", "Gate, phone");
+        await flush();
+        // The desktop editor renamed it in the hosted file meanwhile.
+        const desk = { ...a0, label: "Gate, desk" } as TourObject;
+        const b = await load(store, [desk]);
+        await vi.waitFor(() => {
+          expect(b.ctx.placementNote ?? "").toMatch(/replaced by a newer one/);
+        });
+        await flush();
+        expect(files.has("object:h1")).toBe(false);
+        expect(files.has("base:h1")).toBe(false);
+        const c = await load(store, [desk]);
+        await flush();
+        expect(c.ctx.placementNote ?? "").not.toMatch(/replaced/);
+      });
+    });
+
     it("brings a restored draft's visits back into the summary after a reload", async () => {
       const { store } = memoryDraftStore();
       const a = authoring({ store });
