@@ -698,13 +698,23 @@ export async function tapFinish(page) {
   const inSession = await page.evaluate(
     () => document.body.dataset["arActive"] === "true",
   );
-  // After a failed finish the panel's Finish is back in AR as the retry.
-  if (inSession && (await page.getByTestId("setup-finish").isHidden())) {
-    await expect(page.getByTestId("enter-ar")).toHaveText("Done");
-    await page.getByTestId("enter-ar").click();
-  } else {
+  if (!inSession) {
     await page.getByTestId("setup-finish").click();
+    return;
   }
+  // After a failed finish the AR button only leaves ("Close AR") and the
+  // panel's Finish is back in AR as the retry; otherwise the panel's
+  // Finish must be hidden in AR - asserted, so a Finish that wrongly showed
+  // there could not quietly carry every Done-path test (M3 review #11).
+  if (
+    (await page.getByTestId("enter-ar").textContent())?.trim() === "Close AR"
+  ) {
+    await page.getByTestId("setup-finish").click();
+    return;
+  }
+  await expect(page.getByTestId("setup-finish")).toBeHidden();
+  await expect(page.getByTestId("enter-ar")).toHaveText("Done");
+  await page.getByTestId("enter-ar").click();
 }
 
 /**

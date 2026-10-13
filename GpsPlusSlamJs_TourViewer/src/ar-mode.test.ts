@@ -323,9 +323,12 @@ describe("arButtonView", () => {
     // leaves, and the panel's Finish is the retry.
     const running = { status: "running" } as const;
     const idle = { pending: false, busy: false };
+    // Tappable while saving (M3 review #1): the read of a hosted zip can
+    // take minutes on mobile data, and a disabled button left only the
+    // back gesture; a tap leaves AR and the finish carries on.
     expect(
       arButtonView(running, "creator", idle, { running: true, failed: false }),
-    ).toEqual({ label: "Saving…", disabled: true });
+    ).toEqual({ label: "Saving…", disabled: false });
     expect(
       arButtonView(running, "creator", idle, { running: false, failed: true }),
     ).toEqual({ label: "Close AR", disabled: false });

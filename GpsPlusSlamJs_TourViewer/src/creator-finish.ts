@@ -265,6 +265,9 @@ export function wireCreatorFinish(deps: {
     // saves the new one under the same name (F4 milestone review #5).
     dom.downloadButton.disabled = true;
     ctx.finishError = null;
+    // The AR button reads the finish ("Saving…"): a finish started from the
+    // panel's retry left it saying "Close AR" (M3 review #3).
+    deps.renderArEntry?.();
     ctx.placementNote = null;
     ctx.finishProgress = FINISH_LABELS.reading(current.archive.size);
     deps.render();

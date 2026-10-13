@@ -35,6 +35,7 @@ import {
 } from "gps-plus-slam-app-framework/state";
 
 import {
+  changedSinceFinish,
   finishButtonText,
   hideFinishForResult,
   leaveNeedsConfirm,
@@ -696,7 +697,9 @@ export function wireCreatorSetup(deps: {
   });
 
   return {
-    finishNow: () => finish.start(),
+    // Only with something to write (M3 review #4): a visit that only
+    // looked at the code leaves instead of saving the same tour again.
+    finishNow: () => changedSinceFinish(guardInput()) && finish.start(),
     codes,
     renderAuthorReadout,
     measuredCodeIds: () => codes.ids(),

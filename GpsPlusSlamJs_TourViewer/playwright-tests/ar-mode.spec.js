@@ -1110,7 +1110,12 @@ test("a failed finish says so with priority and can be retried; the panel shows 
     /Code measured/i,
     { timeout: 10000 },
   );
-  await expect(page.getByTestId("setup-finish")).toBeEnabled();
+  // Something to write, so Done runs a finish (polish round M3 review
+  // #4: a visit that changed nothing just leaves).
+  await page.getByTestId("setup-pin").click();
+  await page.getByTestId("pin-label").fill("Kept through a failure");
+  await page.getByTestId("pin-save").click();
+  await expect(page.getByTestId("enter-ar")).toHaveText("Done");
   // The size note tells the creator what the rebuild will copy.
   await expect(page.getByTestId("setup-status")).toContainText(/MB/);
 
@@ -2416,6 +2421,75 @@ test("a crash does not lose the walk: placed content survives a reload and lands
   expect(labels).toContain("The old gate");
 });
 
+test("Done says Saving… while the zip is written, and a tap on it then leaves AR while the save carries on (polish round M3 review #1, #11)", async ({
+  page,
+}) => {
+  // Why: the finish reads the whole hosted zip first, which can take
+  // minutes on mobile data; a disabled "Saving…" left only the back
+  // gesture. The archive's responses are held from the Done on, so the
+  // finish waits exactly as it would on a slow network.
+  await page.goto("/?nocache=1");
+  await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
+  await page.getByTestId("open-button").click();
+  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
+    timeout: 15000,
+  });
+  await measureTheCode(page);
+  await page.getByTestId("setup-pin").click();
+  await page.getByTestId("pin-label").fill("Saved later");
+  await page.getByTestId("pin-save").click();
+  await expect(page.getByTestId("setup-status")).toContainText(
+    /1 object placed/,
+  );
+  /** @type {() => void} */
+  let release = () => undefined;
+  const held = new Promise((resolve) => (release = () => resolve(undefined)));
+  await page.route("**/ranges-ok/tour.zip", async (route) => {
+    await held;
+    await route.continue();
+  });
+  const button = page.getByTestId("enter-ar");
+  await expect(button).toHaveText("Done");
+  await button.click();
+  await expect(button).toHaveText("Saving…");
+  await expect(button).toBeEnabled();
+  await button.click();
+  await expect(button).toHaveText("Start creating");
+  release();
+  // The save carried on after the session ended.
+  await expect(page.getByTestId("finish-block")).toBeVisible({
+    timeout: 30000,
+  });
+});
+
+test("Done on a visit that only measured the stored code leaves AR without writing the tour again (polish round M3 review #4)", async ({
+  page,
+}) => {
+  // Why: codes are measured on sight, and "a session with a code in
+  // hand" counted as work - so Done on a visit that changed nothing
+  // rebuilt the zip and saved a duplicate file. The stored code measured
+  // again is kept (no change); Done then just leaves.
+  await page.goto("/?nocache=1");
+  await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
+  await page.getByTestId("open-button").click();
+  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
+    timeout: 15000,
+  });
+  await measureTheCode(page);
+  await expect(page.getByTestId("setup-status")).toContainText(
+    /Saved position kept/,
+  );
+  await expect(page.getByTestId("enter-ar")).toHaveText("Done");
+  await page.getByTestId("enter-ar").click();
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating");
+  await expect(page.getByTestId("finish-block")).toBeHidden();
+  expect(
+    await page.evaluate(
+      () => /** @type {any} */ (window).__tourViewerTest.downloads.length,
+    ),
+  ).toBe(0);
+});
+
 test("a session that ends without a Finish keeps the work: the pin is still listed after it and offered after a reload (polish round B7)", async ({
   page,
 }) => {
@@ -3294,8 +3368,10 @@ test("a recording whose tab was killed is offered on the next open, saved from i
     ).__tourViewerTest.alignmentStore.flushPendingActionWrites(),
   );
 
-  // The kill.
-  await page.reload();
+  // The kill - and the page comes back WITHOUT ?debug=1: the switch is
+  // the flag's since polish round M3, but a recording left behind is still
+  // offered to the creator (M3 review #8).
+  await page.goto("/?nocache=1");
 
   // Offered without opening step 4 by hand: the offer reveals its step.
   await expect(page.getByTestId("recording-offer")).toBeVisible({

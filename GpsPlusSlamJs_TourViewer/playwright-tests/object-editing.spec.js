@@ -136,7 +136,7 @@ test("a deleted photo leaves the zip with its jpg, and a deleted hosted pin leav
   await page.getByTestId("station-measure").click();
   await row(page, "Photo").getByTestId("object-delete").click();
   await expect(page.getByTestId("object-list-note")).toHaveText(
-    /Deleted the photo - it leaves the zip on the next Finish/,
+    /Deleted the photo - it leaves the zip when you save the tour/,
   );
   await row(page, "Fixture pin").getByTestId("object-delete").click();
   await expect(row(page, "Fixture pin")).toHaveCount(0);
@@ -155,7 +155,7 @@ test("a tap in AR selects the object under the ring, a tap on the panel does not
 
   // In AR the list waits for a selection.
   await expect(page.getByTestId("object-list-hint")).toHaveText(
-    /tap the screen to select it/,
+    /Tap a pin or photo to select it/,
   );
   await page.evaluate(
     ([key, id]) => {

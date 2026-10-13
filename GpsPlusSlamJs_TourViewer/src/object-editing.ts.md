@@ -22,7 +22,9 @@ Wired by `creator-setup.ts`, drawn by `object-list.ts`.
     note rule as a tap (polish round M3; the Previous / Next chooser is
     gone).
   - `selected()` - the selected id or null; `deps.selectionChanged` is
-    told after every change, so the place buttons follow object mode.
+    told after a tap or Close changed the selection, so the place buttons
+    follow object mode. A delete and `reset` do not tell it (`reset` runs
+    inside a visit's teardown, M3 review #14); the next render catches up.
   - `objects()` - `authoringObjects` over the live state.
   - `reset()` - a visit ended or a tour closed: selection and note go.
 - `ObjectEditingDeps` - the creator setup's state and callbacks: the

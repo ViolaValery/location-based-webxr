@@ -2042,7 +2042,7 @@ describe(
       expect(files.has(deletedKey("h1"))).toBe(true);
       expect(a.dom.objectList.lastModel?.rows).toEqual([]);
       expect(a.dom.objectList.lastModel?.note).toMatch(
-        /Deleted "Gate" - it leaves the zip on the next Finish/,
+        /Deleted "Gate" - it leaves the zip when you save the tour/,
       );
       const log = logged(a, "tourAuthoring/objectDeleted").at(-1)!.payload;
       expect(log["hosted"]).toBe(true);

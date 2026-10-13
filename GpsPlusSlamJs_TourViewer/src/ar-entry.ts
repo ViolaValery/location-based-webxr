@@ -597,7 +597,12 @@ export function wireArEntry(deps: {
     if (arController.getState().status === "running") {
       // A creator's Done finishes when it can (polish round M3, Q-Done);
       // the finish ends the session itself once the zip is written.
-      if (authorMode && ctx.finishError === null && hooks.finishFromAr()) {
+      if (
+        authorMode &&
+        !ctx.finishing &&
+        ctx.finishError === null &&
+        hooks.finishFromAr()
+      ) {
         renderArState(arController.getState());
         return;
       }

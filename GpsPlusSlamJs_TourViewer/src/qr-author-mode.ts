@@ -408,9 +408,10 @@ export function finishBlockedHint(
 ): string {
   switch (readiness) {
     case "manifest-pending":
-      return "Finish unlocks once the tour's content list has loaded.";
+      // Said in AR (Done) and on the page (Finish) - M3 review #5, #12.
+      return "Saving unlocks once the tour's content list has loaded.";
     case "manifest-broken":
-      return "The hosted zip's tour.json is broken; repair it before finishing, or the placement it holds would be lost.";
+      return "The hosted zip's tour.json is broken; repair it before saving, or the placement it holds would be lost.";
     default:
       return "";
   }

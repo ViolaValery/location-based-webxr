@@ -164,9 +164,8 @@ its map by the lazily imported `summary-map-view.ts`), `replace-help` (owns
 `object-edit-save`, `object-edit-cancel`, `object-busy`, and the list
 `setup-status` carries `data-clamped` (two lines in AR, whole on a tap;
 whole on the page), `object-list-heading`, `object-list-hint`, `object-list-note` and,
-beside it after a delete, `object-undo`; in AR the chooser
-`object-chooser` with `object-previous`, `object-position`,
-`object-next`),
+beside it after a delete, `object-undo`; in AR the selected row's
+`object-close` - the chooser is gone since polish round M3),
 `setup-pin`, `pin-label`, `pin-save`, `pin-cancel`, `setup-photo`,
 `setup-finish`, `scan-escape`, `station-line`, `station-skip`, `scene-panel`
 (owns `scene-title`, `scene-speaker`, `scene-image`, `scene-text`,

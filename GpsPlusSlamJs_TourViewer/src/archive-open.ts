@@ -165,6 +165,9 @@ export function wireArchiveOpen(deps: {
     // plan §9 #8).
     ctx.finishError = null;
     hooks.resetFinishStep();
+    // The AR button reads the finish's failure ("Close AR"); it is gone
+    // now (scan-to-open in AR opens a tour mid-session - M3 review #3).
+    hooks.renderArEntry();
     // From here until an open SUCCEEDS there is no tour, and the page has
     // to say so: the print step goes back to asking for a link and step 4
     // offers to open one again. Both are hidden again below on success, so

@@ -160,7 +160,8 @@ export interface ObjectEditing {
   reset(): void;
 }
 
-const SAVED_SUFFIX = "it goes into the zip on the next Finish.";
+/** True on the page (Finish) and in AR (Done) alike (M3 review #12). */
+const SAVED_SUFFIX = "it goes into the zip when you save the tour.";
 const NOT_BACKED_UP =
   "this device could not save a backup copy - finish before closing the page.";
 
@@ -489,7 +490,7 @@ export function wireObjectEditing(deps: ObjectEditingDeps): ObjectEditing {
         // did not record is still a delete in memory, and the next Finish.
         say(
           ok
-            ? `Deleted ${name} - ${found.hosted ? "it leaves the zip on the next Finish." : "it will not be in the zip."}`
+            ? `Deleted ${name} - ${found.hosted ? "it leaves the zip when you save the tour." : "it will not be in the zip."}`
             : `Deleted ${name}, but ${NOT_BACKED_UP}`,
           {
             manifest,
@@ -589,7 +590,10 @@ export function wireObjectEditing(deps: ObjectEditingDeps): ObjectEditing {
       stopHold();
       busy.clear();
       render();
-      deps.selectionChanged?.();
+      // Not `selectionChanged`: a reset runs inside a visit's teardown,
+      // and a full readout render there could start a measurement after
+      // the visit's own had been cleared (M3 review #14). The next render
+      // brings the place buttons and the ring along.
     },
   };
 }

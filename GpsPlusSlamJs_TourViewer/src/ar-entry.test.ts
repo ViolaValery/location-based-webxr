@@ -693,6 +693,19 @@ describe("a creator's one way out of AR (polish round M3, Q-Done)", () => {
     expect(h.arController.disable).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves AR on a tap while saving, without starting another finish (M3 review #1, #3)", async () => {
+    const h = harness({ arStatus: "running", mode: "creator" });
+    const finish = vi.fn(() => true);
+    h.hooks.finishFromAr = finish;
+    h.ctx.finishing = true;
+    h.entry.renderArEntry();
+    expect(h.dom.enterArButton.textContent).toBe("Saving…");
+    expect(h.dom.enterArButton.disabled).toBe(false);
+    await h.enter();
+    expect(finish).not.toHaveBeenCalled();
+    expect(h.arController.disable).toHaveBeenCalledTimes(1);
+  });
+
   it("a visitor's Exit AR never finishes", async () => {
     const h = harness({ arStatus: "running" });
     const finish = vi.fn(() => true);

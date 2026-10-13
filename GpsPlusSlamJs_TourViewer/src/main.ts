@@ -437,13 +437,6 @@ const summary = createSummaryPanel({
 // round M3, D-P4). Wired BEFORE the setup binds the chips' own clicks: a
 // long press that unfolds a label must not also place a pin.
 if (mode === "creator") {
-  const store = (() => {
-    try {
-      return window.localStorage;
-    } catch {
-      return null;
-    }
-  })();
   for (const [id, label] of [
     ["setup-pin", "Place a pin"],
     ["setup-photo", "Take a photo"],
@@ -452,8 +445,14 @@ if (mode === "creator") {
       button: element(id),
       key: id,
       label,
-      store,
-      now: () => performance.now(),
+      // The page's one guarded localStorage (`stepStoreOrUndefined`).
+      store: stepStore ?? null,
+      schedule: (fn, ms) => {
+        const timer = setTimeout(fn, ms);
+        return () => {
+          clearTimeout(timer);
+        };
+      },
     });
   }
 }
@@ -555,9 +554,10 @@ hooks.presentNoTour = () => {
 };
 hooks.presentDraftForTour = setup.presentDraftForTour;
 
-// The recording's controls: a creator's, and a `?debug=1` visitor's (M1b);
-// wired before the AR entry that asks them at each entry. One save at a
-// time across the block: "Save the recording" and the offer share a guard.
+// The recording's controls: a `?debug=1` creator's or visitor's (M1b;
+// polish round M3, Q-Data); wired before the AR entry that asks them at
+// each entry. One save at a time across the block: "Save the recording"
+// and the offer share a guard.
 const recordingSaveGuard = createSaveGuard();
 const recordingPanel = recordingControls
   ? wireRecordingPanel({
@@ -600,12 +600,18 @@ if (recordingPanel !== null) {
     recordingPanel.render();
   });
   wireRecordingHousekeeping();
+} else if (mode === "creator") {
+  // The switch is ?debug=1's since polish round M3 (Q-Data), but a creator
+  // may hold recordings from before: they are still cleaned up, and one a
+  // killed tab left unsaved is still offered (M3 review #8).
+  wireRecordingHousekeeping();
 }
 
 /**
  * A recording a killed tab left unsaved is offered, and old saved ones are
  * cleaned up (M1b, `recording-housekeeping.ts`), wherever the recording's
- * controls show. Best effort: without OPFS there is nothing to offer.
+ * controls show - and for every creator (M3 review #8). Best effort:
+ * without OPFS there is nothing to offer.
  */
 function wireRecordingHousekeeping(): void {
   void wireHousekeeping({
@@ -638,6 +644,8 @@ function wireRecordingHousekeeping(): void {
         timeStyle: "short",
       }),
     reveal: () => {
+      // Without ?debug=1 the block is hidden; an offer needs it shown.
+      element("recording-block").hidden = false;
       wizard.revealStep("measure");
     },
     saveGuard: recordingSaveGuard,

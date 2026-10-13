@@ -1548,7 +1548,7 @@
       }
       body[data-mode="creator"][data-ar-active="true"] #setup-status {
         order: 2;
-        margin: 0 104px 0 0;
+        margin: 0 128px 0 0;
         /* The vertical spacing is a border of the card's own colour: the
            two-line clamp clips at the padding box, so vertical padding
            showed a cut third line. */
@@ -1584,7 +1584,9 @@
       /* The panel is the whole screen as a column: the size offer (the
          owner's "short card above the status") and the status at the top,
          a spacer, then the selected object's line, the chips and the
-         Finish's retry at the bottom. It lets taps through to the scene
+         Finish's retry at the bottom. The top cards keep 128 px clear for
+         the AR button, sized for its longest label, "Close AR" (M3 review
+         #10). It lets taps through to the scene
          (a tap there selects); only its cards catch them. */
       body[data-mode="creator"][data-ar-active="true"] #setup-panel {
         position: fixed;
@@ -1609,7 +1611,7 @@
       }
       body[data-mode="creator"][data-ar-active="true"] #size-offer {
         order: 1;
-        margin-right: 104px;
+        margin-right: 128px;
       }
       body[data-mode="creator"][data-ar-active="true"] #object-list {
         order: 4;
@@ -1715,11 +1717,15 @@
         letter-spacing: normal;
         text-transform: none;
       }
+      /* Under the AR button, in the column the cards keep clear, and above
+         them: the marker is the promise that nothing records behind the
+         creator's back (M3 review #9). */
       body[data-mode="creator"][data-ar-active="true"] #recording-marker {
         position: fixed;
         top: calc(64px + env(safe-area-inset-top));
-        left: 12px;
-        z-index: 5;
+        right: 12px;
+        z-index: 7;
+        max-width: 116px;
       }
       .chip-icon {
         width: 22px;

@@ -41,12 +41,15 @@ function fakeButton() {
       if (type === "click") (options?.capture ? capture : bubble).push(handler);
       else other.set(type, [...(other.get(type) ?? []), handler]);
     },
+    prevented: [] as string[],
     fire(type: string) {
+      const prevented = this.prevented;
       const event: FakeEvent = {
         defaultPrevented: false,
         stopped: false,
         preventDefault() {
           this.defaultPrevented = true;
+          prevented.push(type);
         },
         stopImmediatePropagation() {
           this.stopped = true;
@@ -70,14 +73,35 @@ function memory() {
     setItem: (k: string, v: string) => {
       data.set(k, v);
     },
-    removeItem: (k: string) => {
-      data.delete(k);
+  };
+}
+
+/** A one-shot clock the test advances by hand. */
+function fakeClock() {
+  let now = 0;
+  const timers: { at: number; fn: () => void; live: boolean }[] = [];
+  return {
+    schedule(fn: () => void, ms: number) {
+      const timer = { at: now + ms, fn, live: true };
+      timers.push(timer);
+      return () => {
+        timer.live = false;
+      };
+    },
+    advance(ms: number) {
+      now += ms;
+      for (const timer of timers) {
+        if (timer.live && timer.at <= now) {
+          timer.live = false;
+          timer.fn();
+        }
+      }
     },
   };
 }
 
 function setup(store: ReturnType<typeof memory> | null = memory()) {
-  let now = 0;
+  const clock = fakeClock();
   const button = fakeButton();
   let actions = 0;
   wireFoldingLabel({
@@ -85,7 +109,7 @@ function setup(store: ReturnType<typeof memory> | null = memory()) {
     key: "pin",
     label: "Place a pin",
     store,
-    now: () => now,
+    schedule: (fn, ms) => clock.schedule(fn, ms),
   });
   // The chip's own action, bound after the fold (as the page does).
   button.addEventListener("click", () => (actions += 1));
@@ -95,9 +119,16 @@ function setup(store: ReturnType<typeof memory> | null = memory()) {
     actions: () => actions,
     tap(heldMs = 50) {
       button.fire("pointerdown");
-      now += heldMs;
+      clock.advance(heldMs);
       button.fire("pointerup");
       button.fire("click");
+    },
+    /** A touch browser's long press: the context menu instead of a click. */
+    touchLongPress(heldMs: number) {
+      button.fire("pointerdown");
+      clock.advance(heldMs);
+      button.fire("contextmenu");
+      button.fire("pointercancel");
     },
   };
 }
@@ -116,7 +147,7 @@ describe("wireFoldingLabel", () => {
       key: "pin",
       label: "Place a pin",
       store: s.store,
-      now: () => 0,
+      schedule: () => () => undefined,
     });
     expect(again.dataset["folded"]).toBe("true");
   });
@@ -141,6 +172,30 @@ describe("wireFoldingLabel", () => {
     expect(s.button.dataset["folded"]).toBe("true");
   });
 
+  // Why (M3 review #6): on a phone a press longer than the system's long
+  // press fires the context menu and NO click, so an unfold that waited
+  // for the click could never happen; the timer unfolds while the finger
+  // is still down, and the menu is suppressed.
+  it("unfolds on a touch long press that ends in a context menu, not a click", () => {
+    const s = setup();
+    s.tap();
+    expect(s.button.dataset["folded"]).toBe("true");
+    s.touchLongPress(LONG_PRESS_MS);
+    expect(s.button.dataset["folded"]).toBeUndefined();
+    expect(s.button.prevented).toContain("contextmenu");
+    expect(s.actions()).toBe(1);
+  });
+
+  it("a press that is cancelled before the threshold neither acts nor unfolds", () => {
+    const s = setup();
+    s.tap();
+    s.button.fire("pointerdown");
+    s.button.fire("pointercancel");
+    s.tap(LONG_PRESS_MS - 1);
+    expect(s.button.dataset["folded"]).toBe("true");
+    expect(s.actions()).toBe(2);
+  });
+
   it("works without storage, and with storage that throws", () => {
     const none = setup(null);
     none.tap();
@@ -152,9 +207,6 @@ describe("wireFoldingLabel", () => {
         throw new Error("blocked");
       },
       setItem: () => {
-        throw new Error("blocked");
-      },
-      removeItem: () => {
         throw new Error("blocked");
       },
     };

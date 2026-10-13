@@ -19,9 +19,10 @@ export const SELECTION_MARK_NAME = "selection-mark";
 
 /** The page's route red (`--map-route`): the accent of the setup. */
 const MARK_COLOUR = 0xcf4428;
-/** Inner and outer radius in metres: about a hand's width around a pin. */
-const INNER_M = 0.2;
-const OUTER_M = 0.26;
+/** Inner and outer radius in metres - about H1's halo (0.41 m), so the
+ *  band still reads at 5-10 m (M3 review #7: 0.20-0.26 m was 1-3 px). */
+const INNER_M = 0.3;
+const OUTER_M = 0.4;
 
 export interface SelectionMark {
   /** Ring the object of `root` (a preview's group), or take the ring away
@@ -40,13 +41,22 @@ export function createSelectionMark(): SelectionMark {
       side: DoubleSide,
       transparent: true,
       opacity: 0.9,
+      // Drawn over the object: a photo's anchor is where it was taken, so
+      // the ring cuts its plane, and with the depth test on the plane hid
+      // half of it (M3 review #7).
+      depthTest: false,
+      depthWrite: false,
     }),
   );
   ring.name = SELECTION_MARK_NAME;
   // Flat on the surface: the ring geometry lies in XY.
   ring.rotation.x = -Math.PI / 2;
-  // Drawn over the object's own surface, never hidden in it.
+  // After the object, with the depth test off (the material above).
   ring.renderOrder = 2;
+  // Never what a tap picks: the ring hangs in the preview's group, which a
+  // tap is cast against, so a tap near the base would re-select instead
+  // of letting go.
+  ring.raycast = () => undefined;
   let marked: Object3D | null = null;
 
   return {

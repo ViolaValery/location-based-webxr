@@ -8,7 +8,7 @@
  * mesh behind when the selection goes or the session ends.
  */
 import { describe, expect, it } from "vitest";
-import { Group, Object3D, type Mesh } from "three";
+import { Group, Object3D, Raycaster, Vector3, type Mesh } from "three";
 
 import { createSelectionMark, SELECTION_MARK_NAME } from "./selection-mark.js";
 
@@ -57,6 +57,34 @@ describe("createSelectionMark", () => {
     mark.show(after);
     expect(marks(before)).toHaveLength(0);
     expect((marks(after)[0] as Mesh).position.toArray()).toEqual([4, 0, 2]);
+  });
+
+  // Why (M3 review #7): a photo's anchor is where it was taken, so a flat
+  // ring there cuts the photo plane, and with the depth test on the plane
+  // hid half of it; and the ring is part of the preview's group, so a tap
+  // near the base would pick it and re-select instead of letting go.
+  it("draws over the object, and is never what a tap picks", () => {
+    const mark = createSelectionMark();
+    const root = preview(0, 1.4, -2);
+    mark.show(root);
+    const ring = marks(root)[0] as Mesh;
+    const material = ring.material as { depthTest: boolean };
+    expect(material.depthTest).toBe(false);
+    const hits: unknown[] = [];
+    ring.raycast(
+      new Raycaster(new Vector3(0, 5, -2), new Vector3(0, -1, 0)),
+      hits as never,
+    );
+    expect(hits).toEqual([]);
+  });
+
+  it("is large enough to read at a distance (about H1's halo)", () => {
+    const mark = createSelectionMark();
+    const root = preview(0, 0, 0);
+    mark.show(root);
+    const ring = marks(root)[0] as Mesh;
+    ring.geometry.computeBoundingSphere();
+    expect(ring.geometry.boundingSphere!.radius).toBeGreaterThanOrEqual(0.38);
   });
 
   it("frees its mesh on dispose", () => {

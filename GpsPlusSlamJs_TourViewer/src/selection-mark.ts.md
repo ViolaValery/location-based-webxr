@@ -23,10 +23,15 @@ as in the owner's chosen HUD prototype H1 (`public/prototypes/hud-1-chips/`).
 
 - **At most one ring exists**, and it hangs under the selected preview's
   group, so it moves, follows a code frame and is removed with it.
-- The ring is part of the preview's group, so a tap on it picks the same
-  object (`object-pick.ts` casts against the group).
-- Colour: the page's route red (`--map-route`, `0xcf4428`); radii 0.20 to
-  0.26 m; drawn after the object (`renderOrder` 2).
+- The ring hangs in the preview's group but is never picked (its `raycast`
+  is a no-op): a tap near a selected pin's base lets go instead of
+  re-selecting it.
+- Colour: the page's route red (`--map-route`, `0xcf4428`); radii 0.30 to
+  0.40 m (about H1's halo, readable at 5-10 m); drawn over the object with
+  the depth test off (a photo's ring sits at its capture height and would
+  otherwise be half hidden by the photo plane). H1's ground halo for photos
+  and its outline around the label or frame are not built: the anchor is
+  the only position the preview knows.
 - Driven from `creator-setup.ts`'s readout render: `show` runs on every
   render with the current selection's group, which is what keeps it on a
   preview that was redrawn.

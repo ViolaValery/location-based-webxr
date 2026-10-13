@@ -15,7 +15,6 @@ const KEY_PREFIX = "tour-viewer.hud.folded.";
 export interface FoldStore {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
-  removeItem(key: string): void;
 }
 
 /** The chip, structurally (the unit tests pass a plain object). */
@@ -44,16 +43,20 @@ function safely<T>(run: () => T, fallback: T): T {
 
 /**
  * Wire `button` (it carries its icon and a `.chip-label`; CSS hides the
- * label while `data-folded` is set). Must be wired BEFORE the chip's own
- * click handler is bound: the long press's click is swallowed in the
- * capture phase.
+ * label while `data-folded` is set). A tap acts and folds; a press held for
+ * `LONG_PRESS_MS` unfolds while the finger is still down - on a phone a
+ * long press ends in the context menu and no click, so the unfold cannot
+ * wait for the click (M3 review #6). Any click that still follows a long
+ * press is swallowed in the capture phase (which runs first at the target),
+ * so it never also places a pin.
  */
 export function wireFoldingLabel(deps: {
   button: FoldingButton;
   key: string;
   label: string;
   store: FoldStore | null;
-  now: () => number;
+  /** A one-shot timer; returns its cancel (`setTimeout` on the page). */
+  schedule: (fn: () => void, ms: number) => () => void;
 }): void {
   const { button, store } = deps;
   const key = KEY_PREFIX + deps.key;
@@ -65,25 +68,37 @@ export function wireFoldingLabel(deps: {
   }
   show(safely(() => store?.getItem(key) === "1", false));
 
-  let pressedAt: number | null = null;
-  let longPress = false;
+  let cancelPress: (() => void) | null = null;
+  let longPressed = false;
+  function endPress(): void {
+    cancelPress?.();
+    cancelPress = null;
+  }
   button.addEventListener("pointerdown", () => {
-    pressedAt = deps.now();
+    endPress();
+    longPressed = false;
+    cancelPress = deps.schedule(() => {
+      cancelPress = null;
+      longPressed = true;
+      safely(() => store?.setItem(key, "0"), undefined);
+      show(false);
+    }, LONG_PRESS_MS);
   });
-  button.addEventListener("pointerup", () => {
-    longPress = pressedAt !== null && deps.now() - pressedAt >= LONG_PRESS_MS;
-    pressedAt = null;
+  for (const type of ["pointerup", "pointercancel", "pointerleave"]) {
+    button.addEventListener(type, endPress);
+  }
+  // A phone's long press would open the context menu over the chip.
+  button.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
   });
   button.addEventListener(
     "click",
     (event) => {
-      if (longPress) {
-        // The long press unfolds; it is not also a tap on the chip.
-        longPress = false;
+      if (longPressed) {
+        // The long press unfolded; it is not also a tap on the chip.
+        longPressed = false;
         event.preventDefault();
         event.stopImmediatePropagation();
-        safely(() => store?.removeItem(key), undefined);
-        show(false);
         return;
       }
       safely(() => store?.setItem(key, "1"), undefined);

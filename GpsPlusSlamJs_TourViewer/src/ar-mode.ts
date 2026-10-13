@@ -81,7 +81,7 @@ export const COPY_LINK_LABELS = {
  *  AR". A creator's is the ONE button of the session (polish round M3,
  *  Q-Done, B6): "Done" finishes when a finish can run, else leaves
  *  (`ar-entry.ts`; the draft keeps every change either way); "Saving…"
- *  while the zip is written; "Close AR" after a failed finish, so a finish
+ *  while the zip is written, still tappable to leave; "Close AR" after a failed finish, so a finish
  *  that keeps failing cannot trap the creator (the panel's Finish is the
  *  retry). */
 function runningButtonView(
@@ -89,7 +89,9 @@ function runningButtonView(
   finish: { running: boolean; failed: boolean },
 ): ArButtonView {
   if (mode !== "creator") return { label: "Exit AR", disabled: false };
-  if (finish.running) return { label: "Saving…", disabled: true };
+  // Tappable while saving (M3 review #1): reading a hosted zip can take
+  // minutes on mobile data; a tap leaves AR and the finish carries on.
+  if (finish.running) return { label: "Saving…", disabled: false };
   return { label: finish.failed ? "Close AR" : "Done", disabled: false };
 }
 
