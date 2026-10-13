@@ -517,6 +517,21 @@ describe("the next PDF continues the numbering (F4, D-R5)", () => {
     await settled(env.dom);
     expect(env.dom.codeInput.value).toBe("9");
   });
+
+  // Why (PR #597 review): an empty field, or "01", prints from code 1 like
+  // "1" does, and was read as "typed another number meanwhile", so the
+  // field never moved on and the next PDF printed codes 1-3 again.
+  it.each(["", "01", " 1.0 "])(
+    "moves on from a field that reads %j, the same first code",
+    async (typed) => {
+      const env = wire();
+      env.panel.presentTour("https://h.example/t.zip");
+      env.dom.codeInput.value = typed;
+      env.dom.pdfButton.fire("click");
+      await settled(env.dom);
+      expect(env.dom.codeInput.value).toBe("4");
+    },
+  );
 });
 
 describe("the info line while the tiles redraw", () => {

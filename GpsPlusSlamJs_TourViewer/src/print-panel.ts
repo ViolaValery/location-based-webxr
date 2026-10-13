@@ -470,9 +470,11 @@ export function wirePrintPanel(deps: {
           const outcome = note === null ? text : `${note} ${text}`;
           // The next PDF continues the numbering (F4, D-R5): two posters
           // with the same number are one code. Not when the creator typed
-          // another number meanwhile, nor when nothing was printed.
+          // another number meanwhile, nor when nothing was printed. Read as
+          // the print read it: "" and "01" are code 1 too (PR #597 review).
           const typedMeanwhile =
-            dom.codeInput.value.trim() !== String(request.startIndex);
+            codeIndexFromInput(dom.codeInput.value).codeIndex !==
+            request.startIndex;
           if (!printed || typedMeanwhile) {
             writeInfo(outcome);
             return;

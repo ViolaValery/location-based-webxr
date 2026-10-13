@@ -89,6 +89,34 @@ vi.mock("gps-plus-slam-app-framework/ar/qr/qr-tracking-controller", () => ({
   },
 }));
 
+// The code's id is a hash (async): the window in which a measurement is in
+// flight. A test that needs that window holds it with `idHold`; otherwise
+// this is the real function, unchanged.
+const idHold = vi.hoisted(() => ({
+  gate: null as Promise<void> | null,
+  /** Calls let through before the gate holds. */
+  pass: 0,
+  held: 0,
+}));
+vi.mock(
+  "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id",
+  async (importOriginal) => {
+    const actual = await importOriginal<{ qrCodeId: typeof qrCodeId }>();
+    return {
+      ...actual,
+      qrCodeId: (text: string) => {
+        if (idHold.gate === null) return actual.qrCodeId(text);
+        if (idHold.pass > 0) {
+          idHold.pass -= 1;
+          return actual.qrCodeId(text);
+        }
+        idHold.held += 1;
+        return idHold.gate.then(() => actual.qrCodeId(text));
+      },
+    };
+  },
+);
+
 /**
  * Per-test timeout. A test here walks one or two whole AR visits through the
  * real fused-pose source (eight detections each, plus the mint): 0.4-1.2 s
@@ -1525,6 +1553,55 @@ describe(
       tour.releaseArchive();
       await finished(a.ctx);
       expect(a.ctx.finishError).toBeNull();
+    });
+
+    it("a Done while a code is being measured keeps the session and says why, and finishes once it is measured (PR #598 review)", async () => {
+      // Why: a finish waits for an in-flight measurement, so Done's
+      // finishNow was false and the session ended with changes unsaved and
+      // nothing said in AR. Now Done stays, the status says so, and the
+      // next Done saves.
+      const a = authoring();
+      await openFinishableTour(a);
+      await a.mint();
+      await a.placePin("Gate", [2, 0, -1]);
+      // A second code: its first id call (seeing it) passes, the
+      // measurement's is held - the measurement is in flight.
+      const SECOND_TEXT = "https://gps.csutil.com/tour/?qr=second";
+      let release: () => void = () => undefined;
+      idHold.pass = 1;
+      idHold.gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      try {
+        const measured = () =>
+          a.dispatched.filter((x) => x.type === "tourAuthoring/codeMeasured")
+            .length;
+        const before = measured();
+        a.seeTheCode(new Matrix4().makeTranslation(1, 0, 0), SECOND_TEXT);
+        await vi.waitFor(() => {
+          expect(idHold.held).toBeGreaterThan(0);
+        });
+        expect(a.setup.finishNow()).toBe(true);
+        expect(a.ctx.finishing).toBe(false);
+        expect(a.dom.status.textContent).toMatch(
+          /code is being measured.*tap Done again/i,
+        );
+        idHold.gate = null;
+        release();
+        await vi.waitFor(() => {
+          expect(measured()).toBeGreaterThan(before);
+        });
+        await flush();
+        expect(a.setup.finishNow()).toBe(true);
+        expect(a.ctx.finishing).toBe(true);
+        await finished(a.ctx);
+        expect(a.ctx.finishError).toBeNull();
+      } finally {
+        idHold.gate = null;
+        idHold.held = 0;
+        idHold.pass = 0;
+        release();
+      }
     });
 
     it("keeps a photo that lands while a live Finish rebuilds the zip - settled, and left for the next Finish", async () => {

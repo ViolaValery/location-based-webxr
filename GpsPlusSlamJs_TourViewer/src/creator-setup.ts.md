@@ -83,7 +83,9 @@ were here. What stays is the Finish's side:
     opened AND its manifest settled - "spent" is a question about that
     manifest, so it cannot be asked earlier), `beginAuthorVisit`,
     `endAuthorVisit`, `finishNow` (polish round M3, Q-Done: the creator's
-    Done in AR starts a Finish through `CreatorFinish.start`; in a session
+    Done in AR starts a Finish through `CreatorFinish.start`, or, while a
+    code is being measured, keeps the session and adds "tap Done again"
+    to the status - PR #598 review; in a session
     the panel's Finish is hidden, and comes back as the retry after a
     failed finish), and `selectInView` (M4: a tap in AR - an XR select
     the overlay did not cancel - selects the object the `pickObjectInView`

@@ -47,8 +47,10 @@ function safely<T>(run: () => T, fallback: T): T {
  * `LONG_PRESS_MS` unfolds while the finger is still down - on a phone a
  * long press ends in the context menu and no click, so the unfold cannot
  * wait for the click (M3 review #6). Any click that still follows a long
- * press is swallowed in the capture phase (which runs first at the target),
- * so it never also places a pin.
+ * press is swallowed in the capture phase, so it never also places a pin.
+ * At the target, capture listeners run before bubble ones whatever the
+ * registration order (the DOM spec since 2021; measured in Chromium 153,
+ * PR #598 review), so this does not depend on being wired first.
  */
 export function wireFoldingLabel(deps: {
   button: FoldingButton;

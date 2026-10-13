@@ -136,7 +136,10 @@ const arController = createEnableGpsArController(seams.controllerDeps);
 const ctx = createTourViewerSession();
 ctx.debug = debug;
 // The gallery is a creator's debugging aid (polish round M2): shown only
-// with ?debug=1, and never to a visitor, whose tour appears in AR.
+// with ?debug=1, and never to a visitor, whose tour appears in AR. Hidden,
+// it is still filled (each photo decoded): the e2e suite reads it as its
+// "tour is open" signal, so skipping the fill waits for a readiness
+// attribute to replace that (filed with the PR #598 review).
 element("gallery").hidden = !(mode === "creator" && debug);
 element<HTMLPreElement>("ar-debug").hidden = !ctx.debug;
 // The page's CSS keeps a creator's technical AR line for ?debug=1 only

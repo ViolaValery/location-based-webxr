@@ -92,6 +92,10 @@ import {
 import type { Wizard } from "./wizard.js";
 import { writeSideM } from "./printed-side.js";
 
+/** What a Done says while a code is being measured (PR #598 review). */
+const DONE_WAITS_FOR_MEASURING =
+  "A code is being measured - tap Done again in a moment to save.";
+
 /**
  * Whether an AR session is live, from the controller's status.
  *
@@ -196,7 +200,8 @@ export interface CreatorSetup {
    *  or clear the selection on a miss. */
   selectInView: (tap: SelectTargetRay | null) => void;
   /** The creator's Done in AR: start a Finish if one can start now
-   *  (polish round M3, Q-Done); false when none could. */
+   *  (polish round M3, Q-Done). True when the session stays: a finish
+   *  started, or one waits a moment for a code being measured. */
   finishNow: () => boolean;
 }
 
@@ -699,7 +704,18 @@ export function wireCreatorSetup(deps: {
   return {
     // Only with something to write (M3 review #4): a visit that only
     // looked at the code leaves instead of saving the same tour again.
-    finishNow: () => changedSinceFinish(guardInput()) && finish.start(),
+    finishNow: () => {
+      if (!changedSinceFinish(guardInput())) return false;
+      // A finish waits for a measurement in flight (a moment). Leaving
+      // would end the visit with its changes unsaved and nothing said in
+      // AR, so Done stays and says so (PR #598 review).
+      if (measuring.inFlight()) {
+        renderAuthorReadout();
+        dom.status.textContent += ` · ${DONE_WAITS_FOR_MEASURING}`;
+        return true;
+      }
+      return finish.start();
+    },
     codes,
     renderAuthorReadout,
     measuredCodeIds: () => codes.ids(),

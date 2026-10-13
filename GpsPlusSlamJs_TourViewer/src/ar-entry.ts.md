@@ -64,7 +64,9 @@ since the flows plan M6.
     - except a creator's "Done" (polish round M3, Q-Done): it asks
       `hooks.finishFromAr()` first (which starts a finish only when there
       is something to write - M3 review #4), and when a finish started,
-      the finish ends the session itself once the zip is written; with no
+      the finish ends the session itself once the zip is written; while a
+      code is being measured it stays and says "tap Done again" (PR #598
+      review: the finish waits for the measurement); with no
       finish to run, while one runs ("Saving…", still tappable - M3 review
       #1), or after a failed one ("Close AR"), it just leaves. The draft
       keeps every change either way;
