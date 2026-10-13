@@ -373,6 +373,29 @@ describe("the link the codes carry (r820 feedback R4, R5)", () => {
   });
 });
 
+describe("a cleared link clears the posters (PR #595 review)", () => {
+  // Why: with no tour open the creator may type a link and see posters for
+  // it; clearing the field used to return early and leave those posters,
+  // their info line and the link under them on screen - codes for a link
+  // that is no longer there.
+  it("takes the previous link's posters, line and link away", () => {
+    const { dom } = wire({});
+    // What a render for the previous link left on screen (the node
+    // harness draws no tiles itself: it has no document).
+    dom.urlInput.value = "https://h.example/tour.zip";
+    dom.tiles.hidden = false;
+    dom.urlOut.textContent = "https://h.example/tour.zip?qr=1";
+    dom.info.textContent = "Codes 1 to 3, 18 cm each.";
+    const cleared = vi.spyOn(dom.tiles, "replaceChildren");
+    dom.urlInput.value = "";
+    dom.urlInput.fire("change");
+    expect(dom.tiles.hidden).toBe(true);
+    expect(cleared).toHaveBeenCalledWith();
+    expect(dom.urlOut.textContent).toBe("");
+    expect(dom.info.textContent).toBe("");
+  });
+});
+
 describe("no caption line under the codes (owner, on r821)", () => {
   // Why: the owner did not want "Code 2 - 18cm - print at 100%" on the
   // poster; the 10 cm bar carries the 100 % instruction and the file name

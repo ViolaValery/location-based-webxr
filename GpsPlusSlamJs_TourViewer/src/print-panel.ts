@@ -369,8 +369,26 @@ export function wirePrintPanel(deps: {
 
   /** Redraw the tiles. `note` goes in front of the info line - the outcome
    *  of a PDF just printed, which the redraw must not wipe. */
+  /** No link to encode: the posters, their line and the link under them
+   *  go, and a render still in flight must not paint them back. */
+  function clearTiles(): void {
+    renderGeneration += 1;
+    dom.tiles.hidden = true;
+    dom.tiles.replaceChildren();
+    dom.urlOut.textContent = "";
+    dom.urlOut.removeAttribute("href");
+  }
+
   function regenerate(note = ""): void {
-    if (dom.urlInput.value.trim() === "") return; // nothing to encode yet
+    if (dom.urlInput.value.trim() === "") {
+      // A cleared field: the previous link's posters went with it (PR
+      // #595 review - they stayed on screen).
+      clearTiles();
+      releaseInfoHeight();
+      claimInfo()("");
+      dom.info.removeAttribute("aria-busy");
+      return;
+    }
     const generation = ++renderGeneration;
     const claimed = claimInfo();
     const writeInfo = (text: string): void => {
@@ -533,12 +551,7 @@ export function wirePrintPanel(deps: {
       restPdfButton();
       releaseInfoHeight();
       showLink(null);
-      dom.tiles.hidden = true;
-      dom.tiles.replaceChildren();
-      dom.urlOut.textContent = "";
-      dom.urlOut.removeAttribute("href");
-      // A render still in flight must not paint over the cleared panel.
-      renderGeneration += 1;
+      clearTiles();
     },
     presentCodes: () => {
       // The tour's name comes with its manifest, after the open.

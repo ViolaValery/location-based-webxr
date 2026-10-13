@@ -72,6 +72,10 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
     (`winAnsiText`).
   - `PrintPanel.presentNoTour()` - back to asking for the link, the tiles
     cleared.
+  - A link field cleared by the creator clears the same way (the tiles,
+    the link under them, the info line; an in-flight render is dropped) -
+    it used to leave the previous link's posters on screen (PR #595
+    review).
   - The optional `checkLink` dep runs before the PDF while the link is
     unverified. The PDF is built either way; `recheckNote` goes in front of
     its info line, and a link that now opens drops its "not verified yet".
