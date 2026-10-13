@@ -63,6 +63,9 @@ export interface OccluderSink {
 /** The lifecycle half: what the session teardown calls. */
 export interface OccluderSinkHandle {
   readonly sink: OccluderSink;
+  /** The occluder's mesh, for a raycast (the Tour Viewer's mesh cursor,
+   *  polish round M5c). Depth-only, but the raycaster still hits it. */
+  mesh(): Object3D;
   /**
    * Dispose the mesh + worker and turn the sink callbacks into no-ops.
    * Idempotent — safe from any teardown path.
@@ -144,6 +147,7 @@ export function createOccluderSink(
 
   return {
     sink,
+    mesh: () => mesh.getMesh(),
     dispose: (): void => {
       if (disposed) {
         return;

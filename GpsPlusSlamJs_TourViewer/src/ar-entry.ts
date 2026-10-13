@@ -35,7 +35,13 @@ import {
   endTourArRuntime,
   startTourArRuntime,
 } from "./ar-mode.js";
+import type { DepthSamplerConfig } from "gps-plus-slam-app-framework/ar/depth-sampler";
 import { RECORDING_DEPTH } from "./authoring-recording.js";
+import {
+  MESH_DEPTH,
+  meshSurfaceLine,
+  type MeshSurface,
+} from "./mesh-surface.js";
 import type { ViewerMode } from "./mode.js";
 import { describeOpenError } from "./open-errors.js";
 import { debugReadoutLines, visitorFusedHint } from "./qr-debug-readout.js";
@@ -96,6 +102,9 @@ export function wireArEntry(deps: {
   /** The creator's troubleshooting recording (authoring recording plan
    *  2026-09-28-0953, M1a): asked at each entry whether it records. */
   recording?: Pick<RecordingPanel, "beginOnArEntry">;
+  /** `?mesh=1`: a creator's ring follows a mesh of the surroundings
+   *  (polish round M5, Q-Mesh). */
+  meshCursor?: boolean;
 }): ArEntry {
   const {
     ctx,
@@ -116,6 +125,11 @@ export function wireArEntry(deps: {
   let copying = false;
   /** Whether THIS session's depth sampler was started (a recorded entry). */
   let depthRunning = false;
+  /** Whether that sampler serves a recorded entry (the readout's line);
+   *  the mesh cursor runs it too (polish round M5). */
+  let depthRecorded = false;
+  /** The creator's mesh of the surroundings, with `?mesh=1` (M5). */
+  let meshSurface: MeshSurface | null = null;
   /** The device fixes' extent, for the ?debug=1 GPS line (polish round C4). */
   const gpsExtent = createGpsExtentTracker();
   /** That line's inputs, recomputed only when the GPS list changed: the
@@ -144,13 +158,39 @@ export function wireArEntry(deps: {
     };
   }
 
-  /** Once the runtime runs: start the sampler a recorded entry asked for. */
-  function startRecordedDepth(
-    depthHooks: Pick<ArEnableHooks, "onDepthSample">,
-  ): void {
-    if (depthHooks.onDepthSample === undefined) return;
-    seams.startDepthCapture(RECORDING_DEPTH);
+  /** The depth this entry asks for: a recorded entry's at the recording's
+   *  density (its byte estimate assumes it), else a creator's with
+   *  `?mesh=1` at the mesh's (polish round M5), else none - depth stays
+   *  off otherwise (QD-5). Either feeds the store's latest depth sample. */
+  function entryDepth(): {
+    hooks: Pick<ArEnableHooks, "onDepthSample">;
+    config: Partial<DepthSamplerConfig> | null;
+    recorded: boolean;
+  } {
+    const recorded = recordedEntryHooks();
+    if (recorded.onDepthSample !== undefined) {
+      return { hooks: recorded, config: RECORDING_DEPTH, recorded: true };
+    }
+    if (authorMode && deps.meshCursor === true) {
+      return {
+        hooks: {
+          onDepthSample: (sample: DepthSample) => {
+            arStore.dispatch(recordDepthSample(sample));
+          },
+        },
+        config: MESH_DEPTH,
+        recorded: false,
+      };
+    }
+    return { hooks: {}, config: null, recorded: false };
+  }
+
+  /** Once the runtime runs: start the sampler the entry asked for. */
+  function startEntryDepth(depth: ReturnType<typeof entryDepth>): void {
+    if (depth.config === null) return;
+    seams.startDepthCapture(depth.config);
     depthRunning = true;
+    depthRecorded = depth.recorded;
   }
 
   /** The scan card shows the visitor's sentence while the gate waits;
@@ -292,9 +332,14 @@ export function wireArEntry(deps: {
       movedCodeChecks: ctx.movedCodeChecks?.snapshot() ?? [],
       ignoredCodes: [...ctx.ignoredCodes.values()].map((c) => c.text),
       gps: sessionGpsQuality(),
-      // A recorded entry is the one that runs the depth sampler.
-      recordingOn: depthRunning,
-    }).join("\n");
+      // A recorded entry's sampler (the mesh cursor's is not a recording).
+      recordingOn: depthRecorded,
+    })
+      // With ?mesh=1, the frame time the owner judges the mesh by (Q-Mesh).
+      .concat(
+        meshSurface === null ? [] : [meshSurfaceLine(meshSurface.stats())],
+      )
+      .join("\n");
   }
 
   /** The entry button: its label (left alone while a copy runs - the copy
@@ -430,7 +475,10 @@ export function wireArEntry(deps: {
     if (depthRunning) {
       seams.stopDepthCapture();
       depthRunning = false;
+      depthRecorded = false;
     }
+    meshSurface?.dispose();
+    meshSurface = null;
     arStore.dispatch(clearAllQrMarkers());
     endTourArRuntime(arStore, {
       stopCameraFrameCapture: () => {
@@ -488,7 +536,7 @@ export function wireArEntry(deps: {
     // session is plain AR.
     if (authorMode && !hooks.startAuthorPipeline()) return;
     if (!authorMode) hooks.startViewerPipeline();
-    const depth = recordedEntryHooks();
+    const depth = entryDepth();
     const result = await arController.enable(
       buildArEnableConfig({
         container: dom.arRoot,
@@ -512,7 +560,7 @@ export function wireArEntry(deps: {
         onOrientation: (orientation) => {
           updateDeviceOrientation(orientation);
         },
-        ...depth,
+        ...depth.hooks,
       }),
     );
     // Failure states surface via the subscribed button view (Retry — <reason>).
@@ -537,7 +585,7 @@ export function wireArEntry(deps: {
       await arController.disable();
       return;
     }
-    startRecordedDepth(depth);
+    startEntryDepth(depth);
     // The world group exists only AFTER initAR built the scene graph —
     // creating the glue check earlier made it dead code in production
     // (PR #360 review). The snapshot for the alignment gate belongs to the
@@ -557,9 +605,20 @@ export function wireArEntry(deps: {
       // selects the object under it (authoring plan 2026-09-28-0953 M4;
       // taps on the panel are cancelled there, `beforexrselect`).
       if (authorMode) {
-        ctx.reticle = seams.startHitTestReticle(worldGroup, (tap) => {
-          hooks.selectInView(tap);
-        });
+        // With ?mesh=1 the ring follows a mesh of the surroundings where
+        // there is one, the hit-test elsewhere (polish round M5).
+        meshSurface =
+          deps.meshCursor === true
+            ? seams.startMeshSurface(worldGroup, arStore)
+            : null;
+        const surface = meshSurface;
+        ctx.reticle = seams.startHitTestReticle(
+          worldGroup,
+          (tap) => {
+            hooks.selectInView(tap);
+          },
+          surface === null ? undefined : () => surface.pick(),
+        );
       }
     }
     if (authorMode) hooks.beginAuthorVisit();

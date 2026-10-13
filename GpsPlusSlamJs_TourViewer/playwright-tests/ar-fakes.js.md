@@ -86,7 +86,10 @@ camera, so `installTourViewerArFakes(page)` installs
   `audioElements`; `loadGlbModel` is NOT faked (the real GLTF loader
   parses the fixture's minimal `.glb`). The troubleshooting recording's depth (authoring
   recording plan 2026-09-28-0953, D4): `initARCalls` records `hasDepth`,
-  `depthCaptureCalls` / `stopDepthCalls` count the depth seams, and
+  `depthCaptureCalls` / `stopDepthCalls` count the depth seams (and, for
+  the mesh cursor of polish round M5, `meshSurfaces` /
+  `meshSurfaceDisposals` count the stand-in mesh surfaces and
+  `reticleSurfacePick` says whether the ring was given a pick), and
   `emitDepthSample()` feeds one sample through the initAR depth callback
   (`depthCallback`). The fake world group's `matrixWorld` and `worldToLocal`
   follow the store's alignment (the identity before one exists), as the real

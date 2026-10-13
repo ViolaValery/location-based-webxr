@@ -36,7 +36,14 @@ createAudioElement }`
     real loader.
   - `createAudioElement()` (K4) - `new Audio()`: the page's ONE element
     for the stories (`scene-audio.ts`). The e2e fake records what plays.
-  - `startHitTestReticle(arWorldGroup, onSelect?)` - `onSelect` hears
+  - `startMeshSurface(parent, store)` - the creator's mesh of the
+    surroundings behind `?mesh=1` (polish round M5, `mesh-surface.ts`), with
+    the app's mesh worker (`./workers/occlusion-mesher.worker.ts`, a
+    `new Worker(new URL(...))` here because it resolves against this app's
+    source). A seam because the e2e scene has no depth to mesh.
+  - `startHitTestReticle(arWorldGroup, onSelect?, surfacePick?)` -
+    `surfacePick` (polish round M5) is passed to the framework driver, which
+    prefers its point over the hit-test each frame. `onSelect` hears
     every XR `select` the DOM overlay did not cancel (a tap in AR,
     authoring plan 2026-09-28-0953 M4), through the framework driver's own
     `onSelect` option, with where the tap pointed: the driver's second

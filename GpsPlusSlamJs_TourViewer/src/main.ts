@@ -38,7 +38,7 @@ import { createAuthoringRecording } from "./authoring-recording.js";
 import { arSessionLive, wireCreatorSetup } from "./creator-setup.js";
 import { createObjectListView } from "./object-list.js";
 import type { ScanOpen } from "./scan-open.js";
-import { viewerModeFromSearch } from "./mode.js";
+import { meshCursorFromSearch, viewerModeFromSearch } from "./mode.js";
 import { describeOpenError } from "./open-errors.js";
 import { wireHostPicker } from "./host-picker.js";
 import { wireSetupStage } from "./setup-stage.js";
@@ -740,6 +740,9 @@ const arEntry = wireArEntry({
   ctx,
   mode,
   arStore,
+  // The creator's ring on a mesh of the surroundings (polish round M5,
+  // Q-Mesh): behind ?mesh=1 until the owner likes it on the phone.
+  meshCursor: mode === "creator" && meshCursorFromSearch(location.search),
   arController,
   gpsHandler,
   seams,

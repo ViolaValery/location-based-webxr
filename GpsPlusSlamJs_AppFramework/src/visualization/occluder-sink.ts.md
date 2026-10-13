@@ -21,7 +21,9 @@ variables in every teardown path" pattern that produced several leak-class revie
   `createOccluderMeshWorker(() => new Worker(new URL(...)))`, because the worker file's URL
   resolves against the app's source) and an optional `createMesh` (tests).
 - `OccluderMeshWorker` — `{ driver, dispose() }`, what `createWorker` returns.
-- `OccluderSinkHandle` — `{ sink, dispose() }`. `dispose()` releases worker + mesh and turns
+- `OccluderSinkHandle` — `{ sink, mesh(), dispose() }`. `mesh()` is the depth-only
+  mesh, for a raycast (the Tour Viewer's mesh cursor; `colorWrite: false` does not stop the
+  raycaster). `dispose()` releases worker + mesh and turns
   the sink callbacks into no-ops; **idempotent**, safe from any teardown path.
 - `OccluderSink` — `{ refresh(grid, pose?), clear() }`, the shape
   `wireOccupancyGridSubscribers`' `occluder` option drives.

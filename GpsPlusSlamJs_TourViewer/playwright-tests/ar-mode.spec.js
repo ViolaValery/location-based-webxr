@@ -3687,3 +3687,44 @@ test("a code hung far from its saved spot is ignored after a minute of walking: 
   expect(await votesStored()).toBe(0);
   await expect(status).toContainText("seems to have been moved");
 });
+
+test("with ?mesh=1 a creator's ring follows a mesh: depth at the mesh density, one mesh per session (polish round M5)", async ({
+  page,
+}) => {
+  // Why: the mesh cursor is behind ?mesh=1 until the owner likes it on the
+  // phone (Q-Mesh); the e2e scene has no depth to mesh, so this pins the
+  // wiring - the depth request, the mesh's life, the ring given its pick -
+  // and that without the flag nothing of it runs.
+  const state = () =>
+    page.evaluate(() => {
+      const t = /** @type {any} */ (window).__tourViewerTest;
+      return {
+        depth: t.depthCaptureCalls,
+        meshes: t.meshSurfaces,
+        disposed: t.meshSurfaceDisposals,
+        pick: t.reticleSurfacePick,
+      };
+    });
+  await page.goto("/?mesh=1");
+  await openMeasureStep(page);
+  await expect(page.getByTestId("enter-ar")).toBeEnabled({ timeout: 10000 });
+  await page.getByTestId("enter-ar").click();
+  await expect(page.getByTestId("enter-ar")).toHaveText("Done");
+  await expect.poll(async () => (await state()).meshes).toBe(1);
+  expect(await state()).toMatchObject({
+    depth: [{ intervalMs: 200, gridSize: 24 }],
+    pick: true,
+  });
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__tourViewerTest.endXrSession();
+  });
+  await expect(page.getByTestId("enter-ar")).toHaveText("Start creating");
+  expect((await state()).disposed).toBe(1);
+
+  await page.goto("/");
+  await openMeasureStep(page);
+  await expect(page.getByTestId("enter-ar")).toBeEnabled({ timeout: 10000 });
+  await page.getByTestId("enter-ar").click();
+  await expect(page.getByTestId("enter-ar")).toHaveText("Done");
+  expect(await state()).toMatchObject({ depth: [], meshes: 0, pick: false });
+});

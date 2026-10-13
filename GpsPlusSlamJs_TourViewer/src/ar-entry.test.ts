@@ -10,6 +10,7 @@
  * session callbacks it hands the AR controller, and end the session.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MESH_DEPTH } from "./mesh-surface.js";
 import type { EnableGpsArConfig } from "gps-plus-slam-app-framework/ar";
 import { wireArEntry, type ArEntryDom } from "./ar-entry.js";
 import {
@@ -61,6 +62,7 @@ function harness(
     mode?: "visitor" | "creator";
     locationPending?: () => boolean;
     copyText?: (text: string) => Promise<void>;
+    meshCursor?: boolean;
   } = {},
 ) {
   // The entry flags a running session on `document.body.dataset`; the
@@ -121,6 +123,17 @@ function harness(
     startDepthCapture: vi.fn(),
     stopDepthCapture: vi.fn(),
     copyText: vi.fn(options.copyText ?? (() => Promise.resolve())),
+    startHitTestReticle: vi.fn(() => ({
+      isVisible: () => false,
+      getWorldPosition: (out: unknown) => out,
+      dispose: () => undefined,
+    })),
+    startMeshSurface: vi.fn(() => meshSurface),
+  };
+  const meshSurface = {
+    pick: vi.fn(() => ({ position: "the mesh point" })),
+    stats: () => ({ frameMs: { median: 16, worst: 40 }, triangles: 1200 }),
+    dispose: vi.fn(),
   };
   const entry = wireArEntry({
     ctx,
@@ -139,6 +152,9 @@ function harness(
     ...(options.records === undefined
       ? {}
       : { recording: { beginOnArEntry: () => options.records === true } }),
+    ...(options.meshCursor === undefined
+      ? {}
+      : { meshCursor: options.meshCursor }),
   });
   return {
     ctx,
@@ -150,6 +166,7 @@ function harness(
     seams,
     arController,
     enabledConfig: () => enabled,
+    meshSurface,
     setArStatus(status: string) {
       ar.status = status;
     },
@@ -713,5 +730,74 @@ describe("a creator's one way out of AR (polish round M3, Q-Done)", () => {
     await h.enter();
     expect(finish).not.toHaveBeenCalled();
     expect(h.arController.disable).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the creator's mesh cursor behind ?mesh=1 (polish round M5)", () => {
+  // Why: with the flag the creator's ring follows a mesh of the
+  // surroundings: depth at the reconstruction density, the mesh under the
+  // world group, its pick preferred by the reticle; without the flag
+  // nothing changes (depth stays off unless the entry is recorded), and a
+  // recorded entry keeps the recording's own density (its byte estimate
+  // assumes it).
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("asks for depth at the mesh density and hands the mesh's pick to the ring", async () => {
+    const h = harness({ mode: "creator", enableOk: true, meshCursor: true });
+    await h.enter();
+    expect(h.seams.startDepthCapture).toHaveBeenCalledWith(MESH_DEPTH);
+    expect(h.seams.startMeshSurface).toHaveBeenCalledTimes(1);
+    const pick = (h.seams.startHitTestReticle.mock.calls[0] as unknown[])[2] as
+      (() => unknown) | undefined;
+    expect(pick?.()).toEqual({ position: "the mesh point" });
+  });
+
+  it("keeps the recording's density on a recorded entry", async () => {
+    const h = harness({
+      mode: "creator",
+      enableOk: true,
+      meshCursor: true,
+      records: true,
+    });
+    await h.enter();
+    expect(h.seams.startDepthCapture).toHaveBeenCalledWith(RECORDING_DEPTH);
+    expect(h.seams.startMeshSurface).toHaveBeenCalledTimes(1);
+  });
+
+  it("changes nothing without the flag", async () => {
+    const h = harness({ mode: "creator", enableOk: true });
+    await h.enter();
+    expect(h.seams.startDepthCapture).not.toHaveBeenCalled();
+    expect(h.seams.startMeshSurface).not.toHaveBeenCalled();
+    expect(
+      (h.seams.startHitTestReticle.mock.calls[0] as unknown[])[2],
+    ).toBeUndefined();
+  });
+
+  it("never builds a mesh for a visitor", async () => {
+    const h = harness({ enableOk: true, meshCursor: true });
+    await h.enter();
+    expect(h.seams.startMeshSurface).not.toHaveBeenCalled();
+  });
+
+  it("frees the mesh when the session ends", async () => {
+    const h = harness({ mode: "creator", enableOk: true, meshCursor: true });
+    await h.enter();
+    h.enabledConfig()!.callbacks?.onSessionEnd?.({ requestedByApp: false });
+    await settle();
+    expect(h.meshSurface.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("puts the frame time and the triangles in the ?debug=1 block", async () => {
+    const h = harness({ mode: "creator", enableOk: true, meshCursor: true });
+    h.ctx.debug = true;
+    await h.enter();
+    h.setArStatus("running");
+    h.entry.renderArStatus();
+    expect(h.dom.arDebug.textContent).toContain(
+      "mesh: 1200 triangles · frame 16/40 ms",
+    );
   });
 });

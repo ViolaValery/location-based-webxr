@@ -33,6 +33,7 @@ function makeDeps() {
     clear: vi.fn(),
     dispose: vi.fn(),
     setDebugStyle: vi.fn(),
+    getMesh: vi.fn(() => ({ name: 'the-occluder-mesh' })),
   };
   const driver = { request: vi.fn() };
   const worker = { driver, dispose: vi.fn() };
@@ -158,5 +159,16 @@ describe('createOccluderSink', () => {
     expect(d.mesh.applyMeshData).not.toHaveBeenCalled();
     handle.sink.clear();
     expect(d.mesh.clear).not.toHaveBeenCalled();
+  });
+
+  // Why (Tour Viewer polish round M5c): the mesh cursor casts the screen
+  // centre against the occluder's mesh, which only the sink holds.
+  it('hands out the mesh a cursor can raycast', () => {
+    const d = makeDeps();
+    const handle = createOccluderSink(PARENT as never, makeOccupancy({}), {
+      createMesh: d.createMesh as never,
+      createWorker: d.createWorker,
+    });
+    expect(handle.mesh()).toEqual({ name: 'the-occluder-mesh' });
   });
 });

@@ -130,6 +130,11 @@ export async function installTourViewerArFakes(page, options = {}) {
         reticleVisible: true,
         reticlePosition: [3, 400.5, -2],
         reticleDisposals: 0,
+        /** Whether the ring was given a mesh pick (polish round M5). */
+        reticleSurfacePick: false,
+        /** The mesh surfaces started, and how many were disposed. */
+        meshSurfaces: 0,
+        meshSurfaceDisposals: 0,
         /** A tap in AR (authoring plan 2026-09-28-0953 M4): the XR select
          *  listener the app handed the reticle, what the fake camera ray
          *  "hits" (an object id, or null), and the ids it was offered. */
@@ -427,8 +432,9 @@ export async function installTourViewerArFakes(page, options = {}) {
           test.copied.push(text);
           return Promise.resolve();
         },
-        startHitTestReticle: (_group, onSelect) => {
+        startHitTestReticle: (_group, onSelect, surfacePick) => {
           test.xrSelect = onSelect ?? null;
+          test.reticleSurfacePick = typeof surfacePick === "function";
           return {
             isVisible: () => test.reticleVisible,
             getWorldPosition: (out) => {
@@ -501,6 +507,17 @@ export async function installTourViewerArFakes(page, options = {}) {
         // in the scene graph.
         stopCameraFrameCapture: () => {
           test.stopCaptureCalls += 1;
+        },
+        // The e2e scene has no depth to mesh: a stand-in that counts.
+        startMeshSurface: () => {
+          test.meshSurfaces += 1;
+          return {
+            pick: () => null,
+            stats: () => ({ frameMs: null, triangles: 0 }),
+            dispose: () => {
+              test.meshSurfaceDisposals += 1;
+            },
+          };
         },
         startDepthCapture: (config) => {
           test.depthCaptureCalls.push(config);
