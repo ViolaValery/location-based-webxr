@@ -17,10 +17,12 @@
  *
  * Narrowed with the owner's yes (2026-10-13, follow-up F11): the session
  * hook `onRestarted` may be wired in `ar-mode.ts` alone, where it only
- * TELLS the app (the mesh cursor clears its raw-WebXR grid) - its test
- * there pins that it dispatches nothing. The two actions and the
- * loop-closure handler, which would put a segment into the store, stay
- * banned everywhere.
+ * TELLS the app (the mesh cursor clears its raw-WebXR grid). What keeps
+ * the store free of segments is not that file's test (it checks only the
+ * wrapper): `ar-mode.ts` drops the restart's payload and hands the app a
+ * `() => void`, so nothing can build the action from it, and the two
+ * actions and the loop-closure handler, which would put a segment into
+ * the store, stay banned by name everywhere (r837 review #4).
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

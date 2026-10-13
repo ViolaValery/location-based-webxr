@@ -778,12 +778,16 @@ describe("the creator's mesh cursor behind ?mesh=1 (polish round M5)", () => {
     expect(
       (h.seams.startHitTestReticle.mock.calls[0] as unknown[])[2],
     ).toBeUndefined();
+    // The restart hook is the mesh cursor's alone (F11, r837 review #7):
+    // without the flag nothing listens for a restart.
+    expect(h.enabledConfig()!.callbacks?.tracking?.onRestarted).toBeUndefined();
   });
 
   it("never builds a mesh for a visitor", async () => {
     const h = harness({ enableOk: true, meshCursor: true });
     await h.enter();
     expect(h.seams.startMeshSurface).not.toHaveBeenCalled();
+    expect(h.enabledConfig()!.callbacks?.tracking?.onRestarted).toBeUndefined();
   });
 
   // Why (M5 review #9, follow-up F11): the grid's cells are raw WebXR

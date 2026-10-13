@@ -1565,11 +1565,15 @@ describe(
       expect(a.ctx.finishError).toBeNull();
     });
 
-    it("a Done while a code is being measured keeps the session and says why, and finishes once it is measured (PR #598 review)", async () => {
+    it("a Done while a code is being measured keeps the session, says so first, and saves once it is measured (PR #598 review, F17, r837 review)", async () => {
       // Why: a finish waits for an in-flight measurement, so Done's
       // finishNow was false and the session ended with changes unsaved and
-      // nothing said in AR. Now Done stays, the status says so, and the
-      // next Done saves.
+      // nothing said in AR. Then the explanation was appended last and
+      // wiped by the re-render after Done (#599 review), and at the end of
+      // a status clamped to two lines in AR (r837 review #1). Now it LEADS
+      // the line, survives re-renders, and the save the creator asked for
+      // starts by itself when the measurement lands - a window of
+      // milliseconds is no time to read "tap again" (r837 review #2).
       const a = authoring();
       await openFinishableTour(a);
       await a.mint();
@@ -1593,29 +1597,26 @@ describe(
         });
         expect(a.setup.finishNow()).toBe(true);
         expect(a.ctx.finishing).toBe(false);
-        expect(a.dom.status.textContent).toMatch(
-          /code is being measured.*tap Done again/i,
-        );
+        const waits = /^A code is being measured - the tour saves as soon/;
+        expect(a.dom.status.textContent).toMatch(waits);
         // `ar-entry.ts` re-renders right after Done (`renderArState`), and
-        // every store dispatch re-renders too: the line must survive both,
-        // or it never shows (PR #599 review, F17).
+        // every store dispatch re-renders too.
         a.setup.renderAuthorReadout();
-        expect(a.dom.status.textContent).toMatch(
-          /code is being measured.*tap Done again/i,
-        );
+        expect(a.dom.status.textContent).toMatch(waits);
         idHold.gate = null;
         release();
         await vi.waitFor(() => {
           expect(measured()).toBeGreaterThan(before);
         });
-        await flush();
-        // Measured: the wait is over, so the line goes with it.
-        a.setup.renderAuthorReadout();
-        expect(a.dom.status.textContent).not.toMatch(/tap Done again/i);
-        expect(a.setup.finishNow()).toBe(true);
-        expect(a.ctx.finishing).toBe(true);
+        // No second Done: the measurement's landing starts the save. Read
+        // from its result - an unheld archive finishes within a tick, so
+        // `finishing` may already be false again.
+        await vi.waitFor(() => {
+          expect(a.ctx.rebuiltZip).not.toBeNull();
+        });
         await finished(a.ctx);
         expect(a.ctx.finishError).toBeNull();
+        expect(a.dom.status.textContent).not.toMatch(waits);
       } finally {
         idHold.gate = null;
         idHold.held = 0;

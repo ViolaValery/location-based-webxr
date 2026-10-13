@@ -109,8 +109,10 @@ lives here.
   store: it neither dispatches `odometryTrackingRestarted` /
   `arLoopClosureDetected` nor wires the framework's live loop-closure
   handler. The session hook `onRestarted` is wired in `ar-mode.ts` only,
-  and only TELLS (the `?mesh=1` cursor clears its raw-WebXR grid; its test
-  pins that it dispatches nothing - follow-up F11, owner 2026-10-13).
+  and only TELLS (the `?mesh=1` cursor clears its raw-WebXR grid -
+  follow-up F11, owner 2026-10-13): it drops the restart's payload and
+  hands the app a `() => void`, so no action can be built from it, and the
+  two actions stay banned by name (r837 review #4).
   Guarded by `visit-alignment-picks.no-segments.test.ts` (a source scan);
   the day the Tour Viewer dispatches either action, the picks need
   segments first.

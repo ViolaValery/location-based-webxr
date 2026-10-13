@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **`OccluderSinkHandle.triangleCount()`** (`visualization/occluder-sink`):
+  the mesh's triangle count, 0 once disposed, for a readout (Tour Viewer
+  follow-up F17). A required member: a handle built by hand (a test fake)
+  needs it too.
+
+### Fixed
+
+- **`copyWithFeedback` never rejects** (`utils/copy-with-feedback`): a
+  hook that throws is logged as a warning and the copy's outcome stands.
+  1.27.0 rejected then, and its call sites discard the promise, so the
+  throw was an unhandled rejection (Tour Viewer follow-up F17).
+
 ## [1.27.0] - 2026-10-13
 
 ### Changed

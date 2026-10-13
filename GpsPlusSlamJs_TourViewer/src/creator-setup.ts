@@ -92,9 +92,10 @@ import {
 import type { Wizard } from "./wizard.js";
 import { writeSideM } from "./printed-side.js";
 
-/** What a Done says while a code is being measured (PR #598 review). */
+/** What a Done says while a code is being measured (PR #598 review); the
+ *  save then starts by itself (r837 review #2). */
 const DONE_WAITS_FOR_MEASURING =
-  "A code is being measured - tap Done again in a moment to save.";
+  "A code is being measured - the tour saves as soon as it is measured.";
 
 /**
  * Whether an AR session is live, from the controller's status.
@@ -434,10 +435,13 @@ export function wireCreatorSetup(deps: {
    */
   let statusExpanded = false;
 
-  /** A Done tapped while a code was being measured: the readout carries
-   *  `DONE_WAITS_FOR_MEASURING` until that measurement lands. A flag the
-   *  render reads, not a one-off append - `ar-entry.ts` re-renders right
-   *  after Done, and so does every store dispatch (PR #599 review, F17). */
+  /** A Done tapped while a code was being measured. The readout leads with
+   *  `DONE_WAITS_FOR_MEASURING` while the measurement runs - first, so the
+   *  two-line clamp in AR shows it, and read by every render, so the one
+   *  right after Done keeps it (PR #599 review, F17; r837 review #1). When
+   *  the measurement lands the save the creator asked for starts by itself
+   *  (`measuringSettled`, r837 review #2): a window of milliseconds left
+   *  no time to read a "tap again". */
   let doneWaits = false;
   dom.status.addEventListener("click", () => {
     statusExpanded = !statusExpanded;
@@ -533,6 +537,9 @@ export function wireCreatorSetup(deps: {
     // notice fires at tour open, before any measuring - so Save never
     // unlocked (scan-to-open plan §5 #13).
     const lead =
+      (doneWaits && measuring.inFlight()
+        ? `${DONE_WAITS_FOR_MEASURING} · `
+        : "") +
       entryLead() +
       settle.refusalLead() +
       (ctx.placementNote === null ? "" : `${ctx.placementNote} · `);
@@ -590,8 +597,21 @@ export function wireCreatorSetup(deps: {
     if (readiness === "ready" && ctx.session !== null) {
       dom.status.textContent += ` · ${archiveSizeNote(ctx.session.archive.size)}`;
     }
-    if (doneWaits && !measuring.inFlight()) doneWaits = false;
-    if (doneWaits) dom.status.textContent += ` · ${DONE_WAITS_FOR_MEASURING}`;
+  }
+
+  /** The measuring's render: a Done that waited for this measurement now
+   *  starts the save (r837 review #2), which renders itself; otherwise -
+   *  nothing to save any more, or the finish blocked - the readout says
+   *  why. Consumed here, never in the readout, so an early-returning
+   *  render cannot leave it set for a later measurement (review #6). */
+  function measuringSettled(): void {
+    if (doneWaits && !measuring.inFlight()) {
+      doneWaits = false;
+      if (sessionLive() && changedSinceFinish(guardInput()) && finish.start()) {
+        return;
+      }
+    }
+    renderAuthorReadout();
   }
 
   /** Placing a pin or a photo in AR (`creator-placement.ts`). */
@@ -634,7 +654,7 @@ export function wireCreatorSetup(deps: {
       settle.placeEarlierObjects();
     },
     render: () => {
-      renderAuthorReadout();
+      measuringSettled();
     },
   });
 
@@ -762,6 +782,8 @@ export function wireCreatorSetup(deps: {
       editing.reset();
     },
     resetFinishStep: () => {
+      // A Done waiting for a measurement was for the closing tour.
+      doneWaits = false;
       // The code in hand and the book belonged to the closing tour (M5
       // review #9). First, so nothing reset below reads them.
       codes.reset();
