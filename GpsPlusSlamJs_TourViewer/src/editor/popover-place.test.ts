@@ -14,6 +14,23 @@ const FREE = { left: 330, top: 80, right: 1268, bottom: 788 };
 const SIZE = { width: 320, height: 240 };
 
 describe("placePopover", () => {
+  // Why (PR #609 review): a free area narrower than the card (a narrow
+  // window with the rail open) put the card left of the free area, over
+  // the rail; it starts at the free area's edge and overflows on the
+  // right instead.
+  it("never puts the card left of the free area, even when it cannot fit", () => {
+    const p = placePopover({
+      anchor: { x: 330, y: 400 },
+      lift: 24,
+      gap: 30,
+      size: { width: 200, height: 240 },
+      free: { left: 276, top: 80, right: 378, bottom: 788 },
+    });
+    expect(p.visible).toBe(true);
+    if (!p.visible) return;
+    expect(p.x).toBeGreaterThanOrEqual(276);
+  });
+
   it("sits to the right of the marker when there is room, its arrow at the marker", () => {
     const p = placePopover({
       anchor: { x: 600, y: 400 },

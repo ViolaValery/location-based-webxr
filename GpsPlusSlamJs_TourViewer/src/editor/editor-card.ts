@@ -330,8 +330,23 @@ export function createEditorCard(
       key.textContent = "Esc";
       foot.append(key, " close");
       body.push(foot);
+      // `replaceChildren` detaches the reused field, and a focused element
+      // that leaves the document loses the focus: the creator typing while
+      // a save ends would type into nothing (PR #611 review).
+      const typing =
+        field !== null && document.activeElement === field.el
+          ? {
+              el: field.el,
+              from: field.el.selectionStart,
+              to: field.el.selectionEnd,
+            }
+          : null;
       dom.inner.replaceChildren(...body);
       dom.card.hidden = false;
+      if (typing !== null && typing.el.isConnected) {
+        typing.el.focus();
+        typing.el.setSelectionRange(typing.from, typing.to);
+      }
     },
     hide() {
       generation += 1;

@@ -29,6 +29,9 @@ page keeps with it - a photo's bytes, a visit's frame).
 - `moveObjectTo(object, lat, lon)` - a map move keeping height and facing
   (a pin's `headingDeg`, a photo's world-frame rotation); throws a
   `RangeError` for a position off the globe.
+  A longitude past 180 (a drag on one of the map's world copies) is
+  folded back onto the globe; a non-finite one, or a latitude past 90, is
+  refused (PR #611 review).
 - `EditEntry`, `AuthoringObject<P>`, `EditLists<P>`, `DeletedRecord<P>`.
 
 ## Invariants & assumptions

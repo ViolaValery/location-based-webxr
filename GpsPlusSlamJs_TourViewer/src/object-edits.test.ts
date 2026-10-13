@@ -137,7 +137,21 @@ describe("moveObjectTo", () => {
 
   it("refuses a position nobody can draw", () => {
     expect(() => moveObjectTo(pin("a"), 123, 8.8)).toThrow(/latitude/i);
-    expect(() => moveObjectTo(pin("a"), 47.5, 181)).toThrow(/longitude/i);
+    expect(() => moveObjectTo(pin("a"), 47.5, Number.NaN)).toThrow(
+      /longitude/i,
+    );
+    expect(() => moveObjectTo(pin("a"), 47.5, Infinity)).toThrow(/longitude/i);
+  });
+
+  // Why (PR #611 review): the map can pan onto a world copy, where a drag
+  // reports a longitude past 180; that is an ordinary place on the globe,
+  // so it is folded back, not refused.
+  it("folds a longitude from a world copy back onto the globe", () => {
+    expect(moveObjectTo(pin("a"), 47.5, 183.5).geo.lon).toBeCloseTo(-176.5, 9);
+    expect(moveObjectTo(pin("a"), 47.5, -190).geo.lon).toBeCloseTo(170, 9);
+    expect(moveObjectTo(pin("a"), 47.5, 541).geo.lon).toBeCloseTo(-179, 9);
+    expect(moveObjectTo(pin("a"), 47.5, 180).geo.lon).toBe(180);
+    expect(moveObjectTo(pin("a"), 47.5, -180).geo.lon).toBe(-180);
   });
 });
 

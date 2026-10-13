@@ -70,12 +70,15 @@ async function zip(entries) {
   return Buffer.from(await writer.close());
 }
 
-async function editorTour() {
+async function editorTour(options = { station: false }) {
   const codes = [];
+  /** @type {string[]} */
+  const codeIds = [];
   for (const [i, place] of [geo(0, 0), geo(30, 40)].entries()) {
     const id = await qrCodeId(
       `https://gps.csutil.com/tour/?qr=editor&n=${i + 1}`,
     );
+    codeIds.push(id);
     codes.push({
       path: `qr/${id}.json`,
       data: JSON.stringify({
@@ -88,6 +91,20 @@ async function editorTour() {
   const manifest = {
     ...createEmptyTourManifest(),
     title: "Editor fixture",
+    // A story station at the first code's point (PR #609 review).
+    stations: options.station
+      ? [
+          {
+            id: "gate",
+            title: "At the gate",
+            anchor: { code: codeIds[0] },
+            activateRadiusM: 30,
+            foundRadiusM: 5,
+            hint: "arrow",
+            steps: [{ id: "hi", block: { kind: "text", text: "Hello" } }],
+          },
+        ]
+      : [],
     objects: [
       {
         id: "pin-markup",
@@ -650,4 +667,132 @@ test("a dismissed save picker keeps the file, and Save again delivers it", async
     // @ts-expect-error - set by the fake writable.
     await page.evaluate(() => window.__savedBytes),
   ).toBeGreaterThan(0);
+});
+
+test("a station at its code's point and the code are both reachable on the map", async ({
+  page,
+}) => {
+  // Why (PR #609 review): drawn at the same point with the same size, the
+  // station was hidden under the code and could only be found in the rail.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/edit.html");
+  await openThroughChooser(
+    page,
+    await editorTour({ station: true }),
+    "editor-fixture.zip",
+  );
+  await page.locator(".mk-station").click();
+  await expect(page.locator("#card")).toContainText("At the gate");
+  await page.keyboard.press("Escape");
+  await page.locator(".mk-code", { hasText: "1" }).click();
+  await expect(page.locator("#card")).toContainText("Code 1");
+});
+
+test("a file dropped outside the drop box does not take the page away", async ({
+  page,
+}) => {
+  // Why (PR #609 review): the browser's default for a drop is to open the
+  // file, which would drop the open tour.
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  const prevented = await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.items.add(new File(["x"], "other.zip"));
+    const over = new DragEvent("dragover", {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: data,
+    });
+    const dropped = new DragEvent("drop", {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: data,
+    });
+    const target = document.getElementById("map") ?? document.body;
+    target.dispatchEvent(over);
+    target.dispatchEvent(dropped);
+    return over.defaultPrevented && dropped.defaultPrevented;
+  });
+  expect(prevented).toBe(true);
+  await expect(page.locator("#tour-name")).toHaveText("Editor fixture");
+});
+
+test("a refused text committed by clicking away is said in a toast", async ({
+  page,
+}) => {
+  // Why (PR #611 review): the card showed the refusal and the click then
+  // replaced the card, so the creator was never told their text was kept.
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  await page.locator("#card textarea").fill("   ");
+  await page.locator("#rail .row", { hasText: "Fountain" }).click();
+  await expect(
+    page.locator(".toast", { hasText: "A pin needs some text" }),
+  ).toBeVisible();
+  await expect(page.locator("#save-status")).toHaveText("No changes");
+});
+
+test("typing goes on in the field when a save ends mid-typing", async ({
+  page,
+}) => {
+  // Why (PR #611 review): the save's end re-rendered the card and the
+  // reused field lost the focus, so the next keystrokes went nowhere.
+  await page.addInitScript(() => {
+    // @ts-expect-error - the e2e's own picker, held until released.
+    window.showSaveFilePicker = () =>
+      new Promise((resolve) => {
+        // @ts-expect-error - released by the test.
+        window.__release = () =>
+          resolve({
+            createWritable: () =>
+              Promise.resolve({
+                write: () => Promise.resolve(),
+                close: () => Promise.resolve(),
+                abort: () => Promise.resolve(),
+              }),
+          });
+      });
+  });
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  const field = page.locator("#card textarea");
+  await field.fill("First");
+  await page.locator("#save-btn").click();
+  await page.waitForFunction(
+    // @ts-expect-error - set by the held picker.
+    () => typeof window.__release === "function",
+  );
+  await field.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" and");
+  // @ts-expect-error - set by the held picker.
+  await page.evaluate(() => window.__release());
+  // The typing is still pending, so the line says that; the save landed.
+  await expect(page.locator("#save-status")).toHaveAttribute(
+    "data-saved",
+    "Saved as editor-fixture.zip",
+  );
+  await page.keyboard.type(" more");
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue("First and more");
+});
+
+test("the save's result stays until it is closed", async ({ page }) => {
+  // Why (PR #611 review): it says where to put the file, and the 8 s hold
+  // tuned for an Undo took that away before it could be read.
+  await page.clock.install();
+  await noSavePicker(page);
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  await page.locator("#card textarea").fill("Saved, then read");
+  await saveAndRead(page);
+  const result = page.locator(".toast", { hasText: "Put it in place" });
+  await expect(result).toBeVisible();
+  await page.clock.runFor(60_000);
+  await expect(result).toBeVisible();
+  await result.locator("button", { hasText: "Close" }).click();
+  await expect(result).toHaveCount(0);
 });

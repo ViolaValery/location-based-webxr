@@ -8,6 +8,14 @@ the rail and the card in the chosen variant 1 layout, and edits it (E2a).
 
 ## Behaviour
 
+- A text refused when committed by clicking away is said in a toast,
+  since the card then shows something else (PR #611 review).
+- Toasts last the Undo's 8 s, except the save's result, which says where
+  to put the file and stays until it is closed.
+- A file dropped anywhere on the page is held: only the open dialog's
+  drop box opens it, so a stray drop never takes the open tour away (PR
+  #609 review).
+
 - **Open:** the file input's change and a drop on `#drop` call
   `openTourForEditing` (`editor-open.ts`); "Use the sample tour" fetches
   `samples/marienplatz-tour.zip` beside the page. While a file is read the

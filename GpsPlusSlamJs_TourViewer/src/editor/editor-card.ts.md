@@ -40,6 +40,10 @@ view" chip.
 
 ## Invariants & assumptions
 
+- A re-render keeps the typing, the focus and the caret of the text
+  field it reuses (`replaceChildren` would otherwise leave the focus on
+  the page, PR #611 review).
+
 - Every text is set with `textContent`.
 - A photo is read through `loadImage`, checked by `image-cap.ts`
   `pictureProblem` (the tour's pixel cap, by its header) before an

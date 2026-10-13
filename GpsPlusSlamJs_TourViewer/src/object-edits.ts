@@ -151,6 +151,9 @@ export function undoDelete<P extends EditEntry>(
  * world-frame rotation, which a move of a few metres leaves correct. On
  * sloped ground the kept height may be off; the page says so.
  *
+ * A longitude past 180 (a drag on one of the map's world copies, PR #611
+ * review) is folded back onto the globe.
+ *
  * @throws RangeError for a position nobody can draw.
  */
 export function moveObjectTo(
@@ -161,12 +164,15 @@ export function moveObjectTo(
   if (!Number.isFinite(lat) || Math.abs(lat) > 90) {
     throw new RangeError(`latitude ${String(lat)} is not on the globe`);
   }
-  if (!Number.isFinite(lon) || Math.abs(lon) > 180) {
+  if (!Number.isFinite(lon)) {
     throw new RangeError(`longitude ${String(lon)} is not on the globe`);
   }
-  // Per kind, so each spread keeps its own geo shape (a pin's heading, a
-  // photo's rotation) rather than a union of both.
+  const onGlobe =
+    Math.abs(lon) <= 180 ? lon : ((((lon + 180) % 360) + 360) % 360) - 180;
+  // The two arms are the same expression on purpose: the narrowing makes
+  // each spread keep its own geo shape (a pin's heading, a photo's
+  // rotation) instead of a union of both, which TypeScript would refuse.
   return object.kind === "pin"
-    ? { ...object, geo: { ...object.geo, lat, lon } }
-    : { ...object, geo: { ...object.geo, lat, lon } };
+    ? { ...object, geo: { ...object.geo, lat, lon: onGlobe } }
+    : { ...object, geo: { ...object.geo, lat, lon: onGlobe } };
 }

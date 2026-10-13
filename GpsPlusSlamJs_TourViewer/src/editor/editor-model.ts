@@ -42,6 +42,9 @@ export interface EditorItem {
   /** A recorded photo (`captureSpots`), placed for visitors at the Finish
    *  and not editable as a note. */
   readonly recorded?: boolean;
+  /** A station drawn at its code's point (it has no position of its own):
+   *  the map draws it beside the code, never under it. */
+  readonly onCode?: true;
 }
 
 export interface EditorModel {
@@ -121,16 +124,22 @@ export function buildEditorModel(input: {
   });
   const recorded: EditorItem[] = (manifest.captureSpots?.captures ?? [])
     .map((c) => ({ capture: c, at: { lat: c.geo.lat, lng: c.geo.lon } }))
-    .filter(({ at }) => readablePoint(at))
-    .map(({ capture, at }) => ({
-      id: `${RECORDED_PREFIX}${capture.image}`,
-      kind: "photo",
-      title: "Recorded photo",
-      meta: "Photo · recorded on the walk",
-      at,
-      image: capture.image,
-      recorded: true,
-    }));
+    // A fix that cannot be drawn keeps its row, as a note's does (E1 review
+    // #9, PR #609 review): off the map, still findable and counted.
+    .map(({ capture, at }) => {
+      const onMap = readablePoint(at);
+      return {
+        id: `${RECORDED_PREFIX}${capture.image}`,
+        kind: "photo",
+        title: "Recorded photo",
+        meta: onMap
+          ? "Photo · recorded on the walk"
+          : "Photo · recorded on the walk · no position",
+        at: onMap ? at : null,
+        image: capture.image,
+        recorded: true,
+      };
+    });
   // The story's stations (tour kit plan K4): where each starts, at its own
   // position or at the code it is anchored to. A story tour may carry
   // nothing else (the committed sample).
@@ -145,7 +154,8 @@ export function buildEditorModel(input: {
         station.anchor.geo === undefined
           ? null
           : { lat: station.anchor.geo.lat, lng: station.anchor.geo.lon };
-      const at = own !== null && readablePoint(own) ? own : (code?.at ?? null);
+      const ownDrawn = own !== null && readablePoint(own);
+      const at = ownDrawn ? own : (code?.at ?? null);
       const title = station.title?.trim() ?? "";
       return [
         {
@@ -158,6 +168,7 @@ export function buildEditorModel(input: {
               : `Station ${String(number)} · at ${code.title}`,
           at,
           number,
+          ...(!ownDrawn && at !== null ? { onCode: true as const } : {}),
         },
       ];
     },

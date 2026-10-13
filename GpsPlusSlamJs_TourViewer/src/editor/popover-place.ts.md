@@ -28,6 +28,10 @@ as numbers: the chosen prototype's (`public/prototypes/editor-1-left-rail/`)
 
 ## Invariants & assumptions
 
+- Never left of the free area: a card wider than it starts at its left
+  edge and overflows on the right, rather than covering the rail (PR #609
+  review).
+
 - A shown card lies inside `free` whenever the card fits in it (the
   property test sweeps anchors and card sizes).
 - Integer pixels.

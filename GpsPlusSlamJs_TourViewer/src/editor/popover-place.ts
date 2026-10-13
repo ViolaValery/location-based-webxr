@@ -63,7 +63,13 @@ export function placePopover(input: {
   let y: number;
   if (x < free.left) {
     side = "below";
-    x = Math.min(Math.max(anchor.x - w / 2, free.left), free.right - w);
+    // Never left of the free area (PR #609 review): when the card is wider
+    // than it, the card starts at its edge and overflows on the right
+    // rather than covering the rail.
+    x = Math.max(
+      Math.min(Math.max(anchor.x - w / 2, free.left), free.right - w),
+      free.left,
+    );
     y = anchor.y + 14;
     if (y + h > free.bottom) y = Math.max(free.top, free.bottom - h);
   } else {

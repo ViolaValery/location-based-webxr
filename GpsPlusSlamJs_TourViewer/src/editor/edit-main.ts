@@ -93,7 +93,7 @@ let moving: { id: string; drop: { lat: number; lng: number } | null } | null =
 /** Notes moved since the last save: their card says the height was kept. */
 const moved = new Set<string>();
 /** The card's last outcome line, for the item it was said about. */
-let message: { id: string; text: string } | null = null;
+let message: { id: string; text: string; refused?: true } | null = null;
 /** The open delete's Undo, until it times out or a Save starts. */
 let undoOffer: { run: () => void; toast: HTMLElement; timer: number } | null =
   null;
@@ -110,9 +110,15 @@ function openedSummary(opened: EditorModel): string {
   ].join(", ");
 }
 
+/**
+ * A toast. `holdMs` is how long it stays; `null` keeps it until the
+ * creator closes it - the save's result, an instruction they have to act
+ * on, which an 8 s hold tuned for an Undo took away (PR #611 review).
+ */
 function toast(
   text: string,
   action?: { label: string; run: () => void },
+  holdMs: number | null = UNDO_MS,
 ): HTMLElement {
   const t = document.createElement("div");
   t.className = "toast";
@@ -127,10 +133,21 @@ function toast(
     b.addEventListener("click", action.run);
     t.append(b);
   }
+  if (holdMs === null) {
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "btn small";
+    close.textContent = "Close";
+    close.addEventListener("click", () => {
+      t.remove();
+    });
+    t.append(close);
+  } else {
+    setTimeout(() => {
+      t.remove();
+    }, holdMs);
+  }
   toasts.append(t);
-  setTimeout(() => {
-    t.remove();
-  }, UNDO_MS);
   return t;
 }
 
@@ -190,7 +207,15 @@ function showCard(): void {
 
 function select(id: string | null, pan = false): void {
   // Typing in the card's field is committed before it shows something else.
-  if (id !== selected) card.commit();
+  if (id !== selected) {
+    card.commit();
+    // What was typed was refused, and the card is about to show something
+    // else: the refusal goes to a toast, never silently away (PR #611
+    // review).
+    if (message?.refused === true && message.id === selected) {
+      toast(message.text);
+    }
+  }
   if (moving !== null && moving.id !== id) cancelMove();
   selected = id;
   message = null;
@@ -356,7 +381,7 @@ const card = createEditorCard(
       const outcome = editor.editText(id, text);
       message =
         outcome.kind === "refused"
-          ? { id, text: outcome.reason }
+          ? { id, text: outcome.reason, refused: true }
           : outcome.kind === "edited"
             ? { id, text: "Changed - not saved yet." }
             : null;
@@ -589,6 +614,8 @@ async function runSave(): Promise<void> {
             ? []
             : [FINISH_LABELS.photosNotPlaced(save.notPlaced)]),
         ].join(" "),
+        undefined,
+        null,
       );
     }
   } catch (err) {
@@ -615,6 +642,13 @@ zipInput.addEventListener("change", () => {
   zipInput.value = "";
   if (file !== undefined) void openFile(file);
 });
+// A file dropped anywhere else on the page would make the browser open
+// it, and the open tour would be gone (PR #609 review): only #drop opens.
+for (const type of ["dragover", "drop"] as const) {
+  document.addEventListener(type, (event) => {
+    event.preventDefault();
+  });
+}
 drop.addEventListener("dragover", (event) => {
   event.preventDefault();
   drop.classList.add("over");

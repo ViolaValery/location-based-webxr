@@ -40,9 +40,14 @@ name on the phone and on the desktop (M6 E1 plan review #1, #3). Design:
 
 - Titles and metas are text for `textContent`, never markup (a zip anyone
   can write).
-- A position nobody can draw (non-finite, outside the globe) is dropped:
-  the summary's `readablePoint` decides, for notes, recorded photos and
-  stations alike.
+- A position nobody can draw (non-finite, outside the globe) is not
+  drawn: the summary's `readablePoint` decides. The item keeps its row with
+  `at: null` so it can still be found (E1 review #9) - a note ("· no
+  position"), a recorded photo (the same, PR #609 review) and a station
+  without its own position or a code's.
+- A station drawn at its code's point (no drawable position of its own)
+  carries `onCode: true`: the map draws it beside the code, never under it
+  (PR #609 review).
 - The distance lines use the licensed library's geo maths, so a store must
   exist (any test builds one first).
 

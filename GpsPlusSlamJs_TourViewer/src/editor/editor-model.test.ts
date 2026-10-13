@@ -147,6 +147,37 @@ describe("buildEditorModel", () => {
     expect(m.counts.photo).toBe(1);
   });
 
+  // Why (PR #609 review): a recorded photo whose fix cannot be drawn was
+  // dropped from the list and the counts; like a note's, its row stays so
+  // the creator can see the walk produced a photo the map cannot place.
+  it("keeps a recorded photo whose fix cannot be drawn, without a position", () => {
+    const m = buildEditorModel({
+      manifest: manifest({
+        captureSpots: {
+          fixes: 3,
+          gpsAccuracyMedianM: 4,
+          captures: [
+            {
+              image: "images/frame-000003.jpg",
+              geo: { ...AT, lat: 123, rotation: [0, 0, 0, 1] },
+            },
+          ],
+        },
+      }),
+      levels: new Map(),
+      fileName: "tour.zip",
+    });
+    expect(m.items).toEqual([
+      expect.objectContaining({
+        kind: "photo",
+        at: null,
+        recorded: true,
+        meta: expect.stringMatching(/no position/),
+      }),
+    ]);
+    expect(m.counts.photo).toBe(1);
+  });
+
   it("lists the story's stations at their own position or their code's", () => {
     // Why: a story tour (the committed sample) may carry no pins or photos
     // at all - only stations; an editor that ignored them opened it as an
@@ -182,6 +213,11 @@ describe("buildEditorModel", () => {
       ["station:gate", "Station 2", "Station 2 · at The code"],
     ]);
     expect(stations[1]?.at).toEqual(m.items[0]?.at);
+    // Drawn at its code's point, so the map draws it beside the code
+    // (PR #609 review): the same point and size would hide one under the
+    // other.
+    expect(stations[1]?.onCode).toBe(true);
+    expect(stations[0]?.onCode).toBeUndefined();
     expect(m.counts.station).toBe(2);
   });
 
