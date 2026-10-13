@@ -12,7 +12,9 @@ the button usable again in every case.
 - `copyWithFeedback(button, text, write, labels) → Promise<boolean>` -
   `write` is normally `navigator.clipboard.writeText` (undefined where the
   page has none); `labels` is `{ busy, done, failed, onDone?, onFailed? }`.
-  Resolves `true` when copied, `false` otherwise; never rejects.
+  Resolves `true` when copied, `false` otherwise. A failed write never
+  rejects it; a hook that throws does (the button is enabled again either
+  way), so the hooks stay plain assignments.
 - `CopyButton` - `{ disabled, textContent }`, structural so unit tests pass
   a plain object.
 - `CopyFeedback` - the labels and the two hooks.

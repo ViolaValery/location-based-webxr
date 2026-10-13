@@ -51,10 +51,17 @@ printed in.
   warns; the orphan warning remains for a genuinely different link.
 - **A spelling outside the list** (Drive for desktop's
   `open?id=...&usp=drive_fs`, a share tail Drive adds later) is found
-  only through a stored text (F2); a tour printed before F2 keeps the
-  search until its codes are measured again. The orphan warning needs no
+  only through a stored text (F2); a code stored before F2 keeps the search
+  until a re-measure re-mints it (a replace or a move at the visit's
+  settle; see `level-printed.ts.md`). The orphan warning needs no
   change of its own: it checks the spelling of record, which the stored
   text now names.
+- **The `D/<id>` short form would break the mixed search.** If
+  `allowDriveShortForm` is ever turned on for printing, `idOf(link, k)`
+  builds `D/<id>` texts, which never match older full-link codes without a
+  stored text; the search would miss them and could reuse a number. Turn
+  it on only together with a search over both forms (r834 milestone
+  review #7).
 - **Measured (R5):** a phone-shared link prints at QR version 8, trimmed at
   7 (`print-link.test.ts`; the framework's `qr-launch-url.ts.md` has the
   full table and the `D/<id>` short form, whose writer is off until `main`

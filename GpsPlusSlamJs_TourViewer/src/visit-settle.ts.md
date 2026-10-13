@@ -244,7 +244,9 @@ draft and logs `tourAuthoring/settled`.
     plan M6 v5.1). The mint builds a fresh level, so `remintedLevel`
     carries the memory over with `carryCodeSpots` (`level-spots.ts`), and
     the code's printed text with `carryPrintedText` (`level-printed.ts`,
-    follow-up F2). This is the one seam every re-mint of a stored code
+    follow-up F2) - or, for a code stored before F2 that has none, the
+    measurement's own text (its hash is the level's id; r834 milestone
+    review #1). This is the one seam every re-mint of a stored code
     goes through.
   - **Why the block describes the SETTLE, not the tap.** `mintQuality` is
     the record the field validation (QR-pose plan M5) attributes a code's

@@ -1923,10 +1923,12 @@ describe(
       // the visit's end - the text must survive that.
       const a = authoring();
       await a.mint();
-      expect(readPrintedText(a.codes.inHand()!.json)).toBe(TEXT);
+      const measured = a.codes.inHand()!.json;
+      expect(readPrintedText(measured)).toBe(TEXT);
       a.setAlignment(yawAlignment(3, [1, 400, 1]));
       a.endVisit();
-      expect(a.settledLogs()).not.toHaveLength(0);
+      // The settle re-minted it (r834 review #3: else the carry is untested).
+      expect(a.codes.inHand()!.json).not.toBe(measured);
       expect(readPrintedText(a.codes.inHand()!.json)).toBe(TEXT);
     });
   },
@@ -2580,12 +2582,20 @@ describe(
       northM: number;
       walkM: number;
       accuracyM?: number;
+      /** The stored level as a build before F2 wrote it: no printed text. */
+      storedWithoutText?: boolean;
     }) {
       const a = authoring();
       await a.mint();
       await a.placePin("near", [2, 0, -1]);
       await a.placePin("far", [60, 0, 0]);
       a.endVisit();
+      if (opts.storedWithoutText === true) {
+        const level = a.codes.inHand()!;
+        const data = JSON.parse(level.json) as { qr: Record<string, unknown> };
+        delete data.qr["printed"];
+        a.codes.saveLevel({ id: level.id, json: JSON.stringify(data) });
+      }
       const stored = a.codes.inHand()!;
       const pins = () =>
         new Map(
@@ -2805,6 +2815,25 @@ describe(
       await finished(a.ctx);
       expect(a.dom.finishStatus.textContent).toMatch(/Code 1: /);
       expect(a.dom.finishStatus.textContent).toMatch(/Code 2: /);
+    });
+
+    // Why (r834 milestone review #1): a code measured before F2 is kept as
+    // the stored reference when it is measured again, so the fresh level
+    // that carried the text was dropped and the re-mint carried nothing -
+    // F2 then never reached the tours it was written for. The re-mint
+    // writes the measurement's own text when the level has none.
+    it("writes the printed text on a code measured before F2 when a re-measure re-mints it", async () => {
+      const { a, stored } = await secondVisit({
+        yawDeg: 20,
+        northM: 3,
+        walkM: 30,
+        storedWithoutText: true,
+      });
+      expect(readPrintedText(stored.json)).toBeNull();
+      a.endVisit();
+      expect(codePosition(a)?.decision).toEqual({ kind: "replace" });
+      expect(a.codes.inHand()?.json).not.toBe(stored.json);
+      expect(readPrintedText(a.codes.inHand()!.json)).toBe(TEXT);
     });
 
     it("replaces a stored position of unknown quality after a reliable walk, and takes the pin next to the code along", async () => {

@@ -29,10 +29,15 @@ of the tour link the code was printed from (`print-link.ts`).
   never a reason to reject the level.
 - Believed only when it is the level's own: `print-link.ts`
   `printedCodes` checks that the text's hash is the level's id.
-- Written at the measurement (`creator-measuring.ts`) and carried at the
-  one re-mint seam (`visit-settle.ts` `remintedLevel`, with
-  `carryCodeSpots`). Codes printed before F2 have no text until they are
-  measured again.
+- Written at the first measurement of a code (`creator-measuring.ts`)
+  and carried at the one re-mint seam (`visit-settle.ts` `remintedLevel`,
+  with `carryCodeSpots`). A code stored BEFORE F2 is kept as the stored
+  reference when it is measured again, so the fresh level with the text
+  is not what is kept; it gains the text only when the visit's settle
+  re-mints it (a replace or a move: `remintedLevel` writes the
+  measurement's own text when the level has none - r834 milestone review
+  #1). A keep or a confirm leaves it without one (backfilling those would
+  make an unchanged tour's Done save: an owner question).
 - The text is what the poster prints; it names the tour's link.
 
 ## Examples

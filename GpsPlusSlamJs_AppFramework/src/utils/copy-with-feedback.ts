@@ -34,7 +34,9 @@ export interface CopyFeedback {
 /**
  * Write `text` with `write` (normally `navigator.clipboard.writeText`;
  * undefined where there is none), showing `labels` on `button`. Resolves
- * whether it was copied; never rejects.
+ * whether it was copied. A failed write never rejects it; a hook that
+ * throws does (the button is enabled again either way), so keep the hooks
+ * to plain assignments.
  */
 export function copyWithFeedback(
   button: CopyButton,

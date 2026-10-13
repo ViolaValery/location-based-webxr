@@ -232,6 +232,55 @@ describe("the printed text on the levels (F2)", () => {
     ).resolves.toEqual({ link: PHONE, next: 4 });
   });
 
+  // r834 milestone review #2a: the textless codes are searched in the
+  // STORED spelling, not the link as given - the case F2 exists for.
+  it("searches codes without a text in the stored spelling, not the link as given", async () => {
+    const one = await level(DRIVE_FS, 1);
+    const measured = new Set([
+      one.id,
+      await idOf(DRIVE_FS, 2),
+      await idOf(DRIVE_FS, 3),
+    ]);
+    await expect(
+      spellingOfRecord(DESKTOP, measured, idOf, 50, await printedCodes([one])),
+    ).resolves.toEqual({ link: DRIVE_FS, next: 4 });
+  });
+
+  // r834 review #2b: two spellings of one tour - the one with more codes
+  // wins; on a tie, the one with the higher number.
+  it("prefers the spelling with more codes, then the higher number", async () => {
+    const more = await printedCodes([
+      await level(PHONE, 1),
+      await level(PHONE, 2),
+      await level(DRIVE_FS, 5),
+    ]);
+    await expect(
+      spellingOfRecord(BARE, new Set(more.map((c) => c.id)), idOf, 50, more),
+    ).resolves.toEqual({ link: PHONE, next: 3 });
+    const tie = await printedCodes([
+      await level(PHONE, 1),
+      await level(DRIVE_FS, 4),
+    ]);
+    await expect(
+      spellingOfRecord(BARE, new Set(tie.map((c) => c.id)), idOf, 50, tie),
+    ).resolves.toEqual({ link: DRIVE_FS, next: 5 });
+  });
+
+  // r834 review #2c: a link that is not a Drive file matches only itself.
+  it("reads a non-Drive tour's own stored codes", async () => {
+    const LINK = "https://h.example/tours/mill.zip";
+    const two = await level(LINK, 2);
+    await expect(
+      spellingOfRecord(
+        LINK,
+        new Set([two.id]),
+        idOf,
+        50,
+        await printedCodes([two]),
+      ),
+    ).resolves.toEqual({ link: LINK, next: 3 });
+  });
+
   it("ignores stored texts that name another tour", async () => {
     const other = await level("https://h.example/other.zip", 4);
     await expect(

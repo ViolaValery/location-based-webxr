@@ -11,31 +11,16 @@
  * @see level-printed.ts.md
  */
 
+import { objectOf } from "./level-spots.js";
+
 /** Longer than any text a QR code can carry (version 40 holds at most
  *  2 953 bytes); a longer field is damage, not a code's text. */
 const MAX_PRINTED_LENGTH = 4096;
 
-type LevelObject = { qr: Record<string, unknown> } & Record<string, unknown>;
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
-
-/** The level's JSON object, or null when it is not one. */
-function levelObject(json: string): LevelObject | null {
-  try {
-    const data = JSON.parse(json) as unknown;
-    return isRecord(data) && isRecord(data["qr"])
-      ? (data as LevelObject)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 /** The text the code was printed with, or null (none, damaged, or not a
  *  level). */
 export function readPrintedText(json: string): string | null {
-  const printed = levelObject(json)?.qr["printed"];
+  const printed = objectOf(json)?.qr["printed"];
   return typeof printed === "string" &&
     printed !== "" &&
     printed.length <= MAX_PRINTED_LENGTH
@@ -49,7 +34,7 @@ export function readPrintedText(json: string): string | null {
  * @throws SyntaxError when `json` is not a level object
  */
 export function withPrintedText(json: string, text: string): string {
-  const data = levelObject(json);
+  const data = objectOf(json);
   if (data === null) throw new SyntaxError("not a level file");
   return JSON.stringify({ ...data, qr: { ...data.qr, printed: text } });
 }
@@ -63,5 +48,5 @@ export function withPrintedText(json: string, text: string): string {
 export function carryPrintedText(fromJson: string, toJson: string): string {
   const text = readPrintedText(fromJson);
   if (text === null || readPrintedText(toJson) !== null) return toJson;
-  return levelObject(toJson) === null ? toJson : withPrintedText(toJson, text);
+  return objectOf(toJson) === null ? toJson : withPrintedText(toJson, text);
 }

@@ -81,6 +81,16 @@ describe('copyWithFeedback', () => {
     expect(b.textContent).toBe('Copy failed');
   });
 
+  it('runs the failed hook once, after the label', async () => {
+    const b = button();
+    const seen: (string | null)[] = [];
+    await copyWithFeedback(b, 'text', () => Promise.reject(new Error('x')), {
+      ...LABELS,
+      onFailed: () => seen.push(b.textContent),
+    });
+    expect(seen).toEqual(['Copy failed']);
+  });
+
   it('runs the done hook once, after the label', async () => {
     const b = button();
     const seen: (string | null)[] = [];
@@ -91,25 +101,30 @@ describe('copyWithFeedback', () => {
     expect(seen).toEqual(['Copied']);
   });
 
-  it('always ends enabled, on one of the two outcome labels (property)', async () => {
+  it('for any text and any kind of write, writes that text and ends enabled on the matching label (property)', async () => {
     await fc.assert(
       fc.asyncProperty(
+        fc.string(),
         fc.constantFrom('resolve', 'reject', 'throw', 'missing'),
-        async (kind) => {
-          const b = button();
+        fc.boolean(),
+        async (text, kind, startDisabled) => {
+          const b = { disabled: startDisabled, textContent: 'Copy' };
+          const written: string[] = [];
           const write =
             kind === 'missing'
               ? undefined
-              : () => {
+              : (t: string) => {
+                  written.push(t);
                   if (kind === 'throw') throw new Error('x');
                   return kind === 'resolve'
                     ? Promise.resolve()
                     : Promise.reject(new Error('x'));
                 };
-          const ok = await copyWithFeedback(b, 'text', write, LABELS);
+          const ok = await copyWithFeedback(b, text, write, LABELS);
           expect(b.disabled).toBe(false);
           expect(b.textContent).toBe(ok ? 'Copied' : 'Copy failed');
           expect(ok).toBe(kind === 'resolve');
+          expect(written).toEqual(kind === 'missing' ? [] : [text]);
         }
       )
     );
