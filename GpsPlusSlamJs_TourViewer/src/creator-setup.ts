@@ -311,6 +311,10 @@ export function wireCreatorSetup(deps: {
    *  §3.4, M4): edit, move and delete over the same in-memory state the
    *  placement fills, and the selection a tap in AR makes. */
   const editing = wireObjectEditing({
+    // Object mode moves the place buttons aside (polish round M3).
+    selectionChanged: () => {
+      renderAuthorReadout();
+    },
     ctx,
     arStore,
     view: dom.objectList,
@@ -555,6 +559,7 @@ export function wireCreatorSetup(deps: {
 
   /** Placing a pin or a photo in AR (`creator-placement.ts`). */
   const placement = wireCreatorPlacement({
+    objectSelected: () => editing.selected() !== null,
     ctx,
     arStore,
     arController,

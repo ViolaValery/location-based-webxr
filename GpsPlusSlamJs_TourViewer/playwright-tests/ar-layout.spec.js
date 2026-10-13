@@ -133,14 +133,13 @@ for (const viewport of PHONES) {
 }
 
 for (const viewport of PHONES) {
-  test(`every AR panel control fits a ${viewport.width}x${viewport.height} screen, with an object selected through the chooser`, async ({
+  test(`every AR panel control fits a ${viewport.width}x${viewport.height} screen, with an object selected by a tap`, async ({
     page,
   }) => {
     // The editing state (authoring plan 2026-09-28-0953 M4; review #4): a
     // hosted tour reopened, its stored code measured again, and the hosted
-    // pin selected with the AR
-    // chooser - the selected row's Edit / Move / Delete / Done, the
-    // chooser's own line, the placement controls and the recording marker
+    // pin selected by a tap on it - the selected row's Edit / Move /
+    // Delete / Done, the placement controls and the recording marker
     // together. The previous layout test never reached this state.
     await page.setViewportSize(viewport);
     await installTourViewerArFakes(page);
@@ -178,12 +177,19 @@ for (const viewport of PHONES) {
     );
     await expect(page.getByTestId("setup-pin")).toBeEnabled();
 
-    await page.getByTestId("object-next").click();
+    // Selected by a tap on it (polish round M3: the chooser is gone).
+    await page.evaluate(() => {
+      const t = /** @type {any} */ (window).__tourViewerTest;
+      t.pickId = "fixturepin01";
+      t.tapXr();
+    });
     const selected = page.locator(
       '[data-testid="object-row"][data-selected="true"]',
     );
     await expect(selected.getByTestId("object-move")).toBeVisible();
-    await expect(page.getByTestId("object-position")).toHaveText(/^1 of \d+$/);
+    await expect(selected.getByTestId("object-done")).toBeVisible();
+    // Object mode: the place buttons step aside.
+    await expect(page.getByTestId("setup-pin")).toBeHidden();
 
     expect(await controlsBelowTheFold(page)).toEqual([]);
   });
