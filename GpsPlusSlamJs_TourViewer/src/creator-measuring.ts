@@ -23,6 +23,7 @@ import {
   selectZeroReference,
 } from "gps-plus-slam-app-framework/state";
 import { qrCodeId } from "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id";
+import { withPrintedText } from "./level-printed.js";
 import type { CreatorAlignmentPicks } from "./creator-alignment-picks.js";
 import type { CreatorCodes } from "./creator-codes.js";
 import { hostedLevelJson, type CreatorDraft } from "./creator-draft.js";
@@ -498,6 +499,9 @@ export function wireCreatorMeasuring(deps: {
     // superseded by the newest.
     const mintedText = ctx.lastDetectedText;
     const mintGeneration = ++ctx.mintGeneration;
+    // The text this code carries, on its level: a re-print reads the
+    // spelling and number it was printed with from it (follow-up F2).
+    const levelJson = withPrintedText(result.json, mintedText);
     // The raw inputs, captured at the tap: the level's id lands later.
     const measured = {
       text: mintedText,
@@ -505,7 +509,7 @@ export function wireCreatorMeasuring(deps: {
       sizeM: sizeOf(mintedText),
       alignmentMatrix: selectAlignmentMatrix(state),
       alignment: deps.alignmentInfo(),
-      levelJson: result.json,
+      levelJson,
       arVisitIndex: ctx.arSessionGeneration,
       atMs: Date.now(),
     };
@@ -547,7 +551,7 @@ export function wireCreatorMeasuring(deps: {
         hostedJson,
       });
       adoptMeasurement(role, prior.measurement, {
-        level: { id, json: result.json },
+        level: { id, json: levelJson },
         // What the settle re-mints the code from at the visit's end, and
         // a sighting of it in this visit (plan §3.2, M2c).
         measurement: {

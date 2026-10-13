@@ -103,6 +103,7 @@ function wire(
     tourTitle?: () => string | null;
     store?: ReturnType<typeof memoryStore>;
     measuredCodeIds?: () => readonly string[];
+    measuredCodeTexts?: () => readonly { id: string; text: string }[];
   } = {},
 ) {
   const dom = {
@@ -139,6 +140,9 @@ function wire(
     ...(options.measuredCodeIds === undefined
       ? {}
       : { measuredCodeIds: options.measuredCodeIds }),
+    ...(options.measuredCodeTexts === undefined
+      ? {}
+      : { measuredCodeTexts: options.measuredCodeTexts }),
   });
   return { dom, panel, downloadPdf };
 }
@@ -328,6 +332,36 @@ describe("the link the codes carry (r820 feedback R4, R5)", () => {
     dom.pdfButton.fire("click");
     await settled(dom);
     expect(new Set(spies.planned)).toEqual(new Set([PHONE]));
+  });
+
+  // Follow-up F2 (M0c review, finding 3): a spelling outside the searched
+  // list - Drive for desktop's `open?id=...&usp=drive_fs` - was a new code
+  // to the search: numbering from 1 and a warning about a link the creator
+  // never changed. The text stored on the level names it.
+  it("prints a measured tour in an unlisted spelling its codes' texts name, without a warning", async () => {
+    const plan =
+      await import("gps-plus-slam-app-framework/utils/qr-payload/qr-print-plan");
+    const { qrCodeId } =
+      await import("gps-plus-slam-app-framework/utils/qr-payload/qr-code-id");
+    const DRIVE_FS = `https://drive.google.com/open?id=${ID}&usp=drive_fs`;
+    const text = (await plan.planPrintCode(DRIVE_FS, { codeIndex: 2 })).url;
+    const id = await qrCodeId(text);
+    const { dom, panel } = wire({
+      measuredCodeIds: () => [id],
+      measuredCodeTexts: () => [{ id, text }],
+    });
+    panel.presentTour(DESKTOP);
+    panel.presentCodes();
+    await vi.waitFor(() => {
+      expect(dom.codeInput.value).toBe("3");
+    });
+    await vi.waitFor(() => {
+      expect(dom.info.textContent).not.toMatch(/Note:/);
+    });
+    spies.planned.length = 0;
+    dom.pdfButton.fire("click");
+    await settled(dom);
+    expect(new Set(spies.planned)).toEqual(new Set([DRIVE_FS]));
   });
 
   // M0c review, finding 2: while the tour's codes are matched, the warning

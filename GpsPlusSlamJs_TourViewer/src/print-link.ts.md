@@ -28,9 +28,19 @@ printed in.
   (moved here from `print-panel.ts`): one past the highest number whose code
   the tour holds, 1 for none; stops once every id is found (PR #586
   review).
-- `spellingOfRecord(url, measuredIds, idOf, limit)` - the first spelling
-  with a code the tour holds, and the next free number in it; else the
-  trimmed address from 1.
+- `printedCodes(levels, hash?) → Promise<PrintedCode[]>` (follow-up F2) -
+  the measured codes whose level carries its printed text
+  (`level-printed.ts`), read back into `{ id, link, index }` through the
+  boot's own parse (`code-tour.ts` `launchPayload`, the framework's
+  `resolveQrPayload`; no `n` is number 1). A text counts only when its
+  hash is its level's id; one that is not a launch URL is skipped.
+- `spellingOfRecord(url, measuredIds, idOf, limit, printed?)` - the
+  stored texts decide first: among those naming this tour (the same Drive
+  file in any spelling, else the same link), the spelling with the most
+  codes (ties: the higher number), next = its highest + 1; codes without a
+  text are still searched in that spelling and the higher next wins.
+  Without one: the first of `linkSpellings` with a code the tour holds,
+  and the next free number in it; else the trimmed address from 1.
 
 ## Invariants & assumptions
 
@@ -39,6 +49,12 @@ printed in.
   another. `spellingOfRecord` makes that case print in the measured
   spelling, so a re-print matches the posters already hanging and nothing
   warns; the orphan warning remains for a genuinely different link.
+- **A spelling outside the list** (Drive for desktop's
+  `open?id=...&usp=drive_fs`, a share tail Drive adds later) is found
+  only through a stored text (F2); a tour printed before F2 keeps the
+  search until its codes are measured again. The orphan warning needs no
+  change of its own: it checks the spelling of record, which the stored
+  text now names.
 - **Measured (R5):** a phone-shared link prints at QR version 8, trimmed at
   7 (`print-link.test.ts`; the framework's `qr-launch-url.ts.md` has the
   full table and the `D/<id>` short form, whose writer is off until `main`
@@ -63,6 +79,9 @@ await spellingOfRecord(desktopLink, measured, idOf, 50);
 
 `print-link.test.ts` (every Drive spelling, non-Drive links, the measured
 version gain, the spelling order and a property, the owner's r820 case,
-the fallbacks, the early stop); `print-panel.test.ts` (`nextCodeIndex`);
+the fallbacks, the early stop; F2: a text read back, a foreign or
+unusable text ignored, an unlisted spelling continued, stored and unstored
+codes mixed, another tour's text ignored, and a property);
+`print-panel.test.ts` (`nextCodeIndex`);
 `print-panel.wiring.test.ts` (the panel printing trimmed, and in the
 spelling of record after `presentCodes`).

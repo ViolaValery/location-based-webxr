@@ -10,6 +10,10 @@
  */
 
 import { driveFileId } from "gps-plus-slam-app-framework/utils/drive-file-id";
+import { qrCodeId } from "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id";
+import { resolveQrPayload } from "gps-plus-slam-app-framework/utils/qr-payload/qr-launch-dispatch";
+
+import { DEFAULT_ASSET_PREFIX, launchPayload } from "./code-tour.js";
 
 /** The spelling a NEW code prints: a Drive file link trimmed to the file's
  *  address; any other link as it is. */
@@ -73,19 +77,118 @@ export async function nextCodeIndex(
   return highest + 1;
 }
 
+/** A measured code read from the text on its level (follow-up F2). */
+export interface PrintedCode {
+  /** The level's id: the hash of the text. */
+  readonly id: string;
+  /** The tour link the code was built from, as it was spelled. */
+  readonly link: string;
+  /** Its code number (`n`; a code without one is number 1). */
+  readonly index: number;
+}
+
+/** The link and number a launch URL was built from, or null. */
+async function printedCodeOf(
+  text: string,
+): Promise<{ link: string; index: number } | null> {
+  const payload = launchPayload(text);
+  if (payload === null) return null;
+  const n = new URL(text).searchParams.get("n");
+  const index = n === null ? 1 : Number(n);
+  if (!Number.isInteger(index) || index < 1) return null;
+  try {
+    const link = await resolveQrPayload(payload, DEFAULT_ASSET_PREFIX);
+    return link === null ? null : { link, index };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The measured codes whose level carries its printed text (`qr.printed`,
+ * `level-printed.ts`), read back into link and number. A text counts only
+ * when its hash is its level's id - one carried onto the wrong level, or
+ * edited by hand, is ignored rather than believed.
+ */
+export async function printedCodes(
+  levels: readonly { readonly id: string; readonly text: string }[],
+  hash: (text: string) => Promise<string> = qrCodeId,
+): Promise<PrintedCode[]> {
+  const codes: PrintedCode[] = [];
+  // One at a time: a hash and a decode each, on the main thread.
+  for (const { id, text } of levels) {
+    if ((await hash(text)) !== id) continue;
+    const code = await printedCodeOf(text);
+    if (code !== null) codes.push({ id, ...code });
+  }
+  return codes;
+}
+
+/** Whether `link` names the same tour as `url`: the same Drive file in
+ *  any spelling, or the same link. */
+function sameTour(link: string, url: string): boolean {
+  const id = driveFileId(url);
+  return id === null ? link === url : driveFileId(link) === id;
+}
+
+/** Among stored codes of this tour, the spelling with the most codes (ties:
+ *  the higher number) and its highest number; null when none names it. */
+function storedSpelling(
+  url: string,
+  printed: readonly PrintedCode[],
+): { link: string; highest: number; ids: Set<string> } | null {
+  const bySpelling = new Map<string, PrintedCode[]>();
+  for (const code of printed) {
+    if (!sameTour(code.link, url)) continue;
+    bySpelling.set(code.link, [...(bySpelling.get(code.link) ?? []), code]);
+  }
+  let best: { link: string; highest: number; ids: Set<string> } | null = null;
+  for (const [link, codes] of bySpelling) {
+    const highest = Math.max(...codes.map((c) => c.index));
+    if (
+      best === null ||
+      codes.length > best.ids.size ||
+      (codes.length === best.ids.size && highest > best.highest)
+    ) {
+      best = { link, highest, ids: new Set(codes.map((c) => c.id)) };
+    }
+  }
+  return best;
+}
+
 /**
  * The spelling a tour's measured codes were printed from, and the next free
- * number in it: the first of `linkSpellings` with a code the tour holds.
- * None - a tour with no codes, or codes from another link altogether - is
- * the trimmed address from number 1 (the panel's orphan warning speaks for
- * the second case).
+ * number in it. The codes' stored texts decide first (`printed`, F2): any
+ * spelling, even one outside `linkSpellings`. Codes without a text (printed
+ * before F2) are still searched for in that spelling, and the higher next
+ * wins - an old code 2 must not be printed again because only code 1 was
+ * measured since. Without a stored text that names this tour: the first of
+ * `linkSpellings` with a code the tour holds. None - a tour with no codes,
+ * or codes from another link altogether - is the trimmed address from
+ * number 1 (the panel's orphan warning speaks for the second case).
  */
 export async function spellingOfRecord(
   url: string,
   measuredIds: ReadonlySet<string>,
   idOf: (link: string, index: number) => Promise<string>,
   limit: number,
+  printed: readonly PrintedCode[] = [],
 ): Promise<{ link: string; next: number }> {
+  const stored = storedSpelling(url, printed);
+  if (stored !== null) {
+    const textless = new Set(
+      [...measuredIds].filter((id) => !printed.some((c) => c.id === id)),
+    );
+    const searched =
+      textless.size === 0
+        ? 1
+        : await nextCodeIndex(
+            textless,
+            (index) => idOf(stored.link, index),
+            limit,
+          );
+    return { link: stored.link, next: Math.max(stored.highest + 1, searched) };
+  }
   if (measuredIds.size > 0) {
     for (const link of linkSpellings(url)) {
       // eslint-disable-next-line no-await-in-loop

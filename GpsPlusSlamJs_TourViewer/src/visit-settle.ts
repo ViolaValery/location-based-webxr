@@ -69,6 +69,7 @@ import type { LatLong } from "gps-plus-slam-app-framework/core";
 import { visitHeadingSigmaDeg } from "./code-visit-combine.js";
 import { objectPoseNue } from "./content-placement.js";
 import { carryCodeSpots } from "./level-spots.js";
+import { carryPrintedText } from "./level-printed.js";
 import {
   correctedAlignment,
   correctionSize,
@@ -1155,12 +1156,16 @@ function remintedLevel(
     nowIso: input.nowIso,
     quality: qrMintHeadingMarker(quality.gpsExtentM),
   });
-  // A fresh level: the code's automatic-move memory is carried over
-  // (code book plan M6 v5.1; the one seam every re-mint goes through).
+  // A fresh level: the code's automatic-move memory (code book plan M6
+  // v5.1) and its printed text (follow-up F2) are carried over - the one
+  // seam every re-mint goes through.
   return result.ok
     ? {
         id: mintedLevel.id,
-        json: carryCodeSpots(mintedLevel.json, result.json),
+        json: carryPrintedText(
+          mintedLevel.json,
+          carryCodeSpots(mintedLevel.json, result.json),
+        ),
       }
     : null;
 }

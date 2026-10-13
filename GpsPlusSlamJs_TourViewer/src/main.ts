@@ -69,6 +69,7 @@ import { wireFoldingLabel } from "./folding-label.js";
 import { pictureProblem } from "./image-cap.js";
 import { driveProxyBaseUrl } from "./drive-proxy-url.js";
 import { stepStoreOrUndefined, wireWizard } from "./wizard.js";
+import { readPrintedText } from "./level-printed.js";
 
 /** Keep at most this many archives cached (LRU) — see BoundedLocalCacheStore. */
 const MAX_CACHED_ARCHIVES = 5;
@@ -205,13 +206,26 @@ const print = wirePrintPanel({
   // swapped without the panel being rewired.
   // With the codes measured on this page that the tour does not host yet
   // (code book plan M4d): printing over them strands them too.
-  measuredCodeIds: () => [
+  measuredCodeIds: () => measuredCodeIds(),
+  // The texts those codes were printed with, from their levels (follow-up
+  // F2): this page's newest level first, else the hosted one.
+  measuredCodeTexts: () =>
+    measuredCodeIds().flatMap((id) => {
+      const json =
+        setup.codes.savedText(id) ?? ctx.currentLevelTexts?.get(id) ?? null;
+      const text = json === null ? null : readPrintedText(json);
+      return text === null ? [] : [{ id, text }];
+    }),
+});
+
+function measuredCodeIds(): string[] {
+  return [
     ...new Set([
       ...(ctx.currentLevels?.keys() ?? []),
       ...setup.measuredCodeIds(),
     ]),
-  ],
-});
+  ];
+}
 
 const stepStore = stepStoreOrUndefined();
 const wizard = wireWizard({

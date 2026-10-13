@@ -22,6 +22,7 @@ import { driveFileId } from "gps-plus-slam-app-framework/utils/drive-file-id";
 import {
   linkSpellings,
   printableLink,
+  printedCodes,
   spellingOfRecord,
 } from "./print-link.js";
 
@@ -166,5 +167,109 @@ describe("spellingOfRecord", () => {
     expect(asked.filter((l) => l === PHONE)).toHaveLength(50);
     expect(asked.filter((l) => l === BARE)).toHaveLength(1);
     expect(asked.at(-1)).toBe(BARE);
+  });
+});
+
+describe("the printed text on the levels (F2)", () => {
+  // Why: a spelling outside `linkSpellings` - Drive for desktop's
+  // `open?id=...&usp=drive_fs` - was a different code to the search, so the
+  // re-print started a new numbering and the orphan warning fired on a
+  // link the creator never changed (M0c milestone review #3). A code
+  // measured since F2 carries its text; the spelling and number are read.
+  const DRIVE_FS = `https://drive.google.com/open?id=${ID}&usp=drive_fs`;
+
+  async function level(link: string, index: number) {
+    const text = (await planPrintCode(link, { codeIndex: index })).url;
+    return { id: await qrCodeId(text), text };
+  }
+
+  it("reads a code's link and number back from its text", async () => {
+    const two = await level(DRIVE_FS, 2);
+    const one = await level(DRIVE_FS, 1);
+    await expect(printedCodes([two, one])).resolves.toEqual([
+      { id: two.id, link: DRIVE_FS, index: 2 },
+      { id: one.id, link: DRIVE_FS, index: 1 },
+    ]);
+  });
+
+  it("ignores a text that is not its level's own, and one that is not a launch URL", async () => {
+    const two = await level(DRIVE_FS, 2);
+    const one = await level(DRIVE_FS, 1);
+    await expect(
+      printedCodes([
+        { id: one.id, text: two.text },
+        { id: await qrCodeId("hello"), text: "hello" },
+      ]),
+    ).resolves.toEqual([]);
+  });
+
+  it("continues an unlisted spelling's numbering from the stored texts", async () => {
+    expect(linkSpellings(DESKTOP)).not.toContain(DRIVE_FS);
+    const codes = [await level(DRIVE_FS, 1), await level(DRIVE_FS, 2)];
+    const printed = await printedCodes(codes);
+    await expect(
+      spellingOfRecord(
+        DESKTOP,
+        new Set(codes.map((c) => c.id)),
+        idOf,
+        50,
+        printed,
+      ),
+    ).resolves.toEqual({ link: DRIVE_FS, next: 3 });
+  });
+
+  it("takes the higher next when older codes of the same spelling have no text", async () => {
+    // Codes 1-3 printed before F2; only code 1 was measured again since,
+    // so only it carries its text. Number 2 must not be printed again.
+    const one = await level(PHONE, 1);
+    const measured = new Set([
+      one.id,
+      await idOf(PHONE, 2),
+      await idOf(PHONE, 3),
+    ]);
+    await expect(
+      spellingOfRecord(PHONE, measured, idOf, 50, await printedCodes([one])),
+    ).resolves.toEqual({ link: PHONE, next: 4 });
+  });
+
+  it("ignores stored texts that name another tour", async () => {
+    const other = await level("https://h.example/other.zip", 4);
+    await expect(
+      spellingOfRecord(
+        PHONE,
+        new Set([other.id]),
+        idOf,
+        50,
+        await printedCodes([other]),
+      ),
+    ).resolves.toEqual({ link: BARE, next: 1 });
+  });
+
+  it("numbers on from the highest stored number of a spelling (property)", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.uniqueArray(fc.integer({ min: 1, max: 9 }), {
+          minLength: 1,
+          maxLength: 4,
+        }),
+        async (indexes) => {
+          const codes = await Promise.all(
+            indexes.map((i) => level(DRIVE_FS, i)),
+          );
+          const result = await spellingOfRecord(
+            DRIVE_FS,
+            new Set(codes.map((c) => c.id)),
+            idOf,
+            50,
+            await printedCodes(codes),
+          );
+          expect(result).toEqual({
+            link: DRIVE_FS,
+            next: Math.max(...indexes) + 1,
+          });
+        },
+      ),
+      { numRuns: 15 },
+    );
   });
 });

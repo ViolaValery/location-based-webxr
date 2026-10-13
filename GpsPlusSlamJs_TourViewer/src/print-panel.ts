@@ -28,7 +28,7 @@ import type { PdfTab } from "./seams.js";
 import { codeIndexFromInput, reprintOrphanWarning } from "./qr-author-mode.js";
 import { qrCodeId } from "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id";
 import { readSideM } from "./printed-side.js";
-import { printableLink, spellingOfRecord } from "./print-link.js";
+import { printableLink, printedCodes, spellingOfRecord } from "./print-link.js";
 import { winAnsiText } from "gps-plus-slam-app-framework/utils/qr-payload/pdf-text";
 import {
   defaultPosterFields,
@@ -243,6 +243,10 @@ export function wirePrintPanel(deps: {
    *  so a panel wired without it simply never warns rather than warning
    *  wrongly. */
   measuredCodeIds?: () => readonly string[];
+  /** The printed texts stored on those codes' levels (`qr.printed`,
+   *  follow-up F2): the spelling and numbering are read from them before
+   *  any is guessed. Defaults to none. */
+  measuredCodeTexts?: () => readonly { id: string; text: string }[];
   /** The light link check (`link-check.ts`), run before the PDF while
    *  the link is unverified. Without it the PDF is built unchecked. */
   checkLink?: (url: string) => Promise<LinkCheckResult>;
@@ -257,6 +261,9 @@ export function wirePrintPanel(deps: {
   const onLaunchUrl = deps.onLaunchUrl ?? (() => undefined);
   const downloadPdf = deps.downloadPdf ?? (() => Promise.resolve(false));
   const measuredCodeIds = deps.measuredCodeIds ?? ((): readonly string[] => []);
+  const measuredCodeTexts =
+    deps.measuredCodeTexts ??
+    ((): readonly { id: string; text: string }[] => []);
   const creator = mode === "creator";
   /** The link step 2 handed over unconfirmed, until a check confirms it. */
   let unverifiedUrl: string | null = null;
@@ -577,13 +584,17 @@ export function wirePrintPanel(deps: {
         matching = url;
         restPdfButton();
       }
-      spellingOfRecord(
-        url,
-        ids,
-        async (link, index) =>
-          qrCodeId((await planPrintCode(link, { codeIndex: index })).url),
-        MAX_PRINTED_CODES,
-      )
+      printedCodes(measuredCodeTexts())
+        .then((printed) =>
+          spellingOfRecord(
+            url,
+            ids,
+            async (link, index) =>
+              qrCodeId((await planPrintCode(link, { codeIndex: index })).url),
+            MAX_PRINTED_CODES,
+            printed,
+          ),
+        )
         .then(({ link, next }) => {
           // Still the same tour.
           if (presentedUrl !== url) return;

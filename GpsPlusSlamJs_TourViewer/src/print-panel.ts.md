@@ -24,7 +24,7 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
 
 ## Public API
 
-- `wirePrintPanel({ dom, mode, onLaunchUrl?, downloadPdf?, openPdfTab?, measuredCodeIds?, checkLink?, tourTitle?, posterStore? }): PrintPanel`
+- `wirePrintPanel({ dom, mode, onLaunchUrl?, downloadPdf?, openPdfTab?, measuredCodeIds?, measuredCodeTexts?, checkLink?, tourTitle?, posterStore? }): PrintPanel`
   - `openPdfTab` (`seams.openPdfTab`) - where the browser shows PDFs
     itself, a tab opened inside the tap, BEFORE any await (a pop-up blocker
     refuses one opened later), filled with the built PDF; the info line
@@ -143,6 +143,10 @@ the print stylesheet, `--print-side`, the `beforeprint` listener and the
   levels arrive asynchronously after an open. `main.ts` passes the tour's
   codes together with every code this page measured, so a code measured but
   not yet finished counts for the orphaning warning and the numbering.
+- **`measuredCodeTexts` (follow-up F2)**: the printed texts stored on those
+  codes' levels (`main.ts`: this page's level first, else the hosted
+  one), read by `printedCodes` before `spellingOfRecord`, so a spelling
+  outside the searched list is printed on without a warning.
 - **The OPEN TOUR'S link always wins.** `presentTour` assigns it
   unconditionally (since F7 the field is replaced by the link as text while
   a tour is open; typed text is only for the no-tour case).

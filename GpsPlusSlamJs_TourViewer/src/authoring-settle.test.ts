@@ -60,6 +60,7 @@ import type { SummaryModel } from "./summary-model.js";
 import type { SummaryPanel } from "./summary-panel.js";
 import { parseVisitLogEntry } from "./visit-log.js";
 import { readCodeSpots } from "./level-spots.js";
+import { readPrintedText } from "./level-printed.js";
 import { qrCodeId } from "gps-plus-slam-app-framework/utils/qr-payload/qr-code-id";
 import { mintQrGeoPose } from "gps-plus-slam-app-framework/ar/qr/qr-geo-pose-minting";
 import { OUTCOME_HOLD_MS } from "./object-editing.js";
@@ -1904,6 +1905,20 @@ describe(
         a.dispatched.filter((x) => x.type === "tourAuthoring/codeMeasured"),
       ).toHaveLength(1);
       expect(a.codes.inHand()!.json).toBe(firstJson);
+    });
+
+    it("writes the code's printed text on its level, and the visit's re-mint keeps it (F2)", async () => {
+      // Why: the level is filed under a hash of the text, so a re-print
+      // could only guess the spelling it was printed from; the text on the
+      // level is what it reads instead. The settle re-mints the level at
+      // the visit's end - the text must survive that.
+      const a = authoring();
+      await a.mint();
+      expect(readPrintedText(a.codes.inHand()!.json)).toBe(TEXT);
+      a.setAlignment(yawAlignment(3, [1, 400, 1]));
+      a.endVisit();
+      expect(a.settledLogs()).not.toHaveLength(0);
+      expect(readPrintedText(a.codes.inHand()!.json)).toBe(TEXT);
     });
   },
 );
