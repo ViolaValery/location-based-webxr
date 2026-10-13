@@ -37,8 +37,15 @@ the rail and the card in the chosen variant 1 layout, and edits it (E2a).
   switch, shown only for a tour that carries a walk) and downloads it
   through the framework's `downloadZip` under `finishedFileName`; the
   status reads "N changes not saved" / "Saving…" / "Saved as <name>" /
-  the error. A dismissed picker or a failed download keeps the built
-  file, and Save offers it again ("Not saved yet - tap Save again").
+  the error, with the Finish's result sentences (the walk left out,
+  photos not placed) in the toast. Save is on whenever a tour is open
+  and commits the card's typing first ("Nothing to save" when there is
+  none); a save belongs to its tour and ends quietly if another was
+  opened meanwhile; the walk switch hides once a save is built (a later
+  save rebuilds from it and could not bring the walk back). A dismissed
+  save picker - the one undelivered case the page can see, since an
+  `<a download>` always reports started - keeps the built file, and
+  Save offers it again ("Not saved yet - tap Save again").
 - **Leaving** with unsaved work asks first (`beforeunload`), and so does
   "Open another tour" (`window.confirm`).
 - **Free area** for the card: right of the rail, under the top bar (read

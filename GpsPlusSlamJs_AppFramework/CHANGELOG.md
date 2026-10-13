@@ -13,8 +13,8 @@
 
 - **`downloadBlob` and `syncToExternalZip` abort a failed write**
   (`storage/zip-export`): both wrote through the save picker or the external
-  handle without `abort()`, so a failed write could later commit a partial
-  file over the user's and left the lock held. They use `writeFileOrAbort`
+  handle without `abort()`, so a failed write left the writable open, holding
+  the lock and the temporary file. They use `writeFileOrAbort`
   (Tour Viewer M6 E2 plan review #7).
 - **`copyWithFeedback` never rejects** (`utils/copy-with-feedback`): a
   hook that throws is logged as a warning and the copy's outcome stands.

@@ -271,6 +271,15 @@ for (const viewport of [
     expect(rail.width).toBe(
       viewport.collapsed ? 58 : viewport.width <= 980 ? 252 : 304,
     );
+    // Every top-bar control inside the window (E2a review #11): the bar
+    // is fixed, so the page's scroll width cannot see an overflow.
+    for (const control of await page
+      .locator("#topbar button, #save-status")
+      .all()) {
+      if (!(await control.isVisible())) continue;
+      const b = await box(control);
+      expect(b.x + b.width).toBeLessThanOrEqual(viewport.width);
+    }
     // Nothing wider than the window.
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
@@ -549,4 +558,96 @@ test("asks before Open another tour drops unsaved changes", async ({
   await expect.poll(() => asked.length).toBe(1);
   expect(asked[0]).toMatch(/not saved/);
   await expect(page.locator("#open-modal")).toBeHidden();
+});
+
+test("a click right after typing lands: on another row, and on Save", async ({
+  page,
+}) => {
+  // Why (E2a review #3): the commit on blur redrew the rail and the card,
+  // so the click that caused the blur hit a replaced node and was lost;
+  // and Save stayed disabled until the field blurred.
+  await noSavePicker(page);
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  await page.locator("#card textarea").fill("Typed, then a row");
+  await page.locator("#rail .row", { hasText: "Fountain" }).click();
+  await expect(
+    page.locator("#rail .row", { hasText: "Fountain" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#save-status")).toHaveText("1 change not saved");
+  await page.locator("#rail .row", { hasText: "Typed, then a row" }).click();
+  await page.locator("#card textarea").fill("Typed, then Save");
+  const saved = await saveAndRead(page);
+  const pinSaved = saved.manifest.objects.find(
+    (/** @type {{ id: string }} */ o) => o.id === "pin-markup",
+  );
+  expect(pinSaved.label).toBe("Typed, then Save");
+});
+
+test("Ctrl+Enter commits the text, Esc cancels a move", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  await page.locator("#card textarea").fill("By keyboard");
+  await page.keyboard.press("Control+Enter");
+  await expect(page.locator("#save-status")).toHaveText("1 change not saved");
+  await page.locator("#card button", { hasText: "Move" }).click();
+  const marker = await box(page.locator(".mk-wrap.sel"));
+  await page.mouse.move(marker.x + marker.width / 2, marker.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(marker.x + 200, marker.y + 120, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#card")).not.toContainText(
+    "Drag the marker to its new place.",
+  );
+  // Only the text edit is pending: the cancelled move changed nothing.
+  await expect(page.locator("#save-status")).toHaveText("1 change not saved");
+});
+
+test("a dismissed save picker keeps the file, and Save again delivers it", async ({
+  page,
+}) => {
+  // Why (E2a review #6): the one undelivered case the page can see is a
+  // dismissed picker; the built file must not be lost with it.
+  await page.addInitScript(() => {
+    let calls = 0;
+    // @ts-expect-error - the e2e's own picker.
+    window.showSaveFilePicker = () => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.reject(new DOMException("dismissed", "AbortError"));
+      }
+      return Promise.resolve({
+        createWritable: () =>
+          Promise.resolve({
+            write: (/** @type {Blob} */ blob) => {
+              // @ts-expect-error - read back by the test.
+              window.__savedBytes = blob.size;
+              return Promise.resolve();
+            },
+            close: () => Promise.resolve(),
+            abort: () => Promise.resolve(),
+          }),
+      });
+    };
+  });
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  await page.locator("#card textarea").fill("Saved on the second try");
+  await page.locator("#save-btn").click();
+  await expect(page.locator("#save-status")).toHaveText(
+    "Not saved yet - tap Save again",
+  );
+  await page.locator("#save-btn").click();
+  await expect(page.locator("#save-status")).toHaveText(
+    "Saved as editor-fixture.zip",
+  );
+  expect(
+    // @ts-expect-error - set by the fake writable.
+    await page.evaluate(() => window.__savedBytes),
+  ).toBeGreaterThan(0);
 });

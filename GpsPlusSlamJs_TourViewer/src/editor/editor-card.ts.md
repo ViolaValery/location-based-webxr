@@ -3,7 +3,7 @@
 ## Purpose
 
 The card beside the selected marker in the desktop editor (M6 E1, the
-chosen variant 1's popover), read-only until E2, and the "off the map
+chosen variant 1's popover), editing since E2a, and the "off the map
 view" chip.
 
 ## Public API
@@ -26,6 +26,15 @@ view" chip.
     kept from the phone; on sloped ground it may be off."), `message`
     (the last outcome). The same photo stays on screen across re-renders.
   - `hide()`, `shown()`.
+  - `note(text)` - the outcome line set in place (no rebuild, so a click
+    that blurred the field still lands on its button, E2a review #3);
+    `commit()` - commits the field's typing (a Save and a new selection
+    do it first); `dirty()` - typing not yet committed (the leave guard).
+  - The pin's text field is kept across re-renders of the same item, its
+    typing too (a save ending mid-typing).
+- `CARD_RESIZED` - the event the card fires when its content changed
+  size (a photo landed, its error line), so the page places it again.
+- `CardView`.
 - The precision line (`PRECISION_LINE`, internal) - R7's two figures: "about 0.1-0.7 m near a code, 1-3 m
   further away" (M6 E1 plan review #10).
 
@@ -45,4 +54,6 @@ view" chip.
 ## Tests
 
 The placement is `popover-place.test.ts`; the card's photo, the capped
-photo's line and Esc are pinned by `playwright-tests/editor.spec.js`.
+photo's line, Esc, the text edit (blur, Ctrl+Enter, a click right after
+typing), Move with Done and Esc, and Delete with Undo are pinned by
+`playwright-tests/editor.spec.js`.

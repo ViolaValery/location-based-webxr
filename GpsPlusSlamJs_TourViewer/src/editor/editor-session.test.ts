@@ -9,7 +9,10 @@
  */
 import { beforeAll, describe, expect, it } from "vitest";
 import { packFilesAsZip } from "gps-plus-slam-app-framework/storage";
-import { readStoredEntryBytes } from "gps-plus-slam-app-framework/test-utils/zip-central-directory";
+import {
+  readStoredCentralDirectory,
+  readStoredEntryBytes,
+} from "gps-plus-slam-app-framework/test-utils/zip-central-directory";
 import {
   createEmptyTourManifest,
   parseTourManifest,
@@ -160,6 +163,91 @@ describe("createEditorSession", () => {
     });
     editor.editText("a", "x");
     expect((await editor.save({ keepScan: false })).filename).toBe("tour.zip");
+    await session.close();
+  });
+});
+
+describe("createEditorSession, the review's cases (E0c + E2a review #9, #10, #12)", () => {
+  it("counts a text edited back to the tour's own as no change", async () => {
+    const { session, manifest } = await opened([pin("a", "Old")]);
+    const editor = createEditorSession({
+      session,
+      manifest,
+      levels: new Map(),
+    });
+    editor.editText("a", "New");
+    expect(editor.changeCount()).toBe(1);
+    editor.editText("a", "Old");
+    expect(editor.changeCount()).toBe(0);
+    await session.close();
+  });
+
+  it("runs two saves one after the other, the second carrying both edits", async () => {
+    const { session, manifest } = await opened([pin("a"), pin("b")]);
+    const editor = createEditorSession({
+      session,
+      manifest,
+      levels: new Map(),
+    });
+    editor.editText("a", "One");
+    const first = editor.save({ keepScan: false });
+    editor.editText("b", "Two");
+    const second = editor.save({ keepScan: false });
+    await first;
+    const tour = await carried((await second).blob);
+    expect(tour.objects.map((o) => (o as { label: string }).label)).toEqual([
+      "One",
+      "Two",
+    ]);
+    expect(editor.changeCount()).toBe(0);
+    await session.close();
+  });
+
+  it("refuses an undo once a save wrote the delete", async () => {
+    const { session, manifest } = await opened([pin("a"), pin("b")]);
+    const editor = createEditorSession({
+      session,
+      manifest,
+      levels: new Map(),
+    });
+    const undo = editor.remove("a");
+    await editor.save({ keepScan: false });
+    expect(undo()).toBe(false);
+    expect(editor.model().items.map((i) => i.id)).toEqual(["b"]);
+    await session.close();
+  });
+
+  it("keeps a deleted photo's file gone across two saves", async () => {
+    // Why: the second save rebuilds from the first one's bytes; from the
+    // opened zip again, the deleted photo's file would come back.
+    const { session, manifest } = await opened([photo("p"), pin("a")]);
+    const editor = createEditorSession({
+      session,
+      manifest,
+      levels: new Map(),
+    });
+    editor.remove("p");
+    await editor.save({ keepScan: false });
+    editor.editText("a", "later");
+    const second = await editor.save({ keepScan: false });
+    const names = readStoredCentralDirectory(
+      new Uint8Array(await second.blob.arrayBuffer()),
+    ).map((e) => e.name);
+    expect(names).not.toContain("content/p.jpg");
+    await session.close();
+  });
+
+  it("names the pending notes, for the page's moved lines", async () => {
+    const { session, manifest } = await opened([pin("a"), pin("b")]);
+    const editor = createEditorSession({
+      session,
+      manifest,
+      levels: new Map(),
+    });
+    editor.move("a", 48.53, 9.06);
+    expect(editor.pendingIds()).toEqual(["a"]);
+    await editor.save({ keepScan: false });
+    expect(editor.pendingIds()).toEqual([]);
     await session.close();
   });
 });

@@ -122,31 +122,34 @@ export function createEditorMap(
     });
   }
 
+  function addMarker(item: EditorItem, at: { lat: number; lng: number }): void {
+    const marker = L.marker([at.lat, at.lng], {
+      icon: iconFor(item),
+      keyboard: false,
+      zIndexOffset: baseZ(item),
+    });
+    marker.on("click", (event) => {
+      L.DomEvent.stopPropagation(event);
+      handlers.onSelect(item.id);
+    });
+    marker.on("mouseover", () => {
+      handlers.onHover(item.id, true);
+    });
+    marker.on("mouseout", () => {
+      handlers.onHover(item.id, false);
+    });
+    marker.on("drag", () => {
+      handlers.onView();
+    });
+    marker.addTo(map);
+    markers.set(item.id, { marker, item });
+  }
+
   function draw(model: EditorModel): void {
     for (const { marker } of markers.values()) marker.remove();
     markers.clear();
     for (const item of model.items) {
-      if (item.at === null) continue;
-      const marker = L.marker([item.at.lat, item.at.lng], {
-        icon: iconFor(item),
-        keyboard: false,
-        zIndexOffset: baseZ(item),
-      });
-      marker.on("click", (event) => {
-        L.DomEvent.stopPropagation(event);
-        handlers.onSelect(item.id);
-      });
-      marker.on("mouseover", () => {
-        handlers.onHover(item.id, true);
-      });
-      marker.on("mouseout", () => {
-        handlers.onHover(item.id, false);
-      });
-      marker.on("drag", () => {
-        handlers.onView();
-      });
-      marker.addTo(map);
-      markers.set(item.id, { marker, item });
+      if (item.at !== null) addMarker(item, item.at);
     }
   }
 
@@ -169,10 +172,35 @@ export function createEditorMap(
       frame(model, padding);
     },
     update(model) {
+      // In place (E2a review #3, #4): a marker whose item is still there
+      // stays - under the pointer, and draggable mid-Move - and only moves
+      // when its position changed (never under a drag); the rest go or
+      // are added.
       const keep = selected;
-      selected = null;
-      draw(model);
-      markSelected(keep);
+      const next = new Map(
+        model.items.flatMap((item) =>
+          item.at === null ? [] : [[item.id, { item, at: item.at }] as const],
+        ),
+      );
+      for (const [id, entry] of markers) {
+        const now = next.get(id);
+        if (now === undefined || now.item.kind !== entry.item.kind) {
+          entry.marker.remove();
+          markers.delete(id);
+          if (selected === id) selected = null;
+          continue;
+        }
+        const was = entry.marker.getLatLng();
+        const dragging = entry.marker.dragging?.enabled() ?? false;
+        if (!dragging && (was.lat !== now.at.lat || was.lng !== now.at.lng)) {
+          entry.marker.setLatLng([now.at.lat, now.at.lng]);
+        }
+        markers.set(id, { marker: entry.marker, item: now.item });
+      }
+      for (const [id, now] of next) {
+        if (!markers.has(id)) addMarker(now.item, now.at);
+      }
+      markSelected(keep !== null && markers.has(keep) ? keep : null);
     },
     drag(id, onDrop) {
       const entry = markers.get(id);

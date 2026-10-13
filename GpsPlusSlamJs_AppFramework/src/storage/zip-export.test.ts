@@ -455,8 +455,9 @@ describe('zip-export', () => {
 
     // Why (Tour Viewer M6 E2 plan review #7, DEC-A3): the save picker's
     // write was hand-rolled without abort(), so a failed write left the
-    // writable open - its close() would commit a partial file over a good
-    // one, and the lock leaked. It goes through writeFileOrAbort now.
+    // writable open, holding the lock and the temp file (a failed write()
+    // throws before close(), so nothing partial was committed). It goes
+    // through writeFileOrAbort now.
     it('aborts, never closes, a picked file whose write fails', async () => {
       const writable = {
         write: vi.fn(() => Promise.reject(new Error('disk full'))),

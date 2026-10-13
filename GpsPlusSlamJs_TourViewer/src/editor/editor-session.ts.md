@@ -13,11 +13,14 @@ phone's own Finish rules (`finish-rebuild.ts`). Page-free: the page draws
 
 - `createEditorSession({ session, manifest, levels, fileName? }): EditorSession`
   - `model()` - the `EditorModel` of the tour with the edits applied.
-  - `changeCount()` - edits and deletions not yet in a saved file.
+  - `changeCount()` - edits and deletions not yet in a saved file, by
+    content (a text edited back is no change); `pendingIds()` - the notes
+    with an edit or a move not yet saved.
   - `editText(id, text)` - `pinTextEdit`'s outcome (`edited`, `unchanged`,
     `refused` with the phone's sentence).
   - `move(id, lat, lon)` - `moveObjectTo` (height and facing kept).
-  - `remove(id)` - `deleteObject`; returns the undo (`undoDelete`).
+  - `remove(id)` - `deleteObject`; returns the undo (`undoDelete`), which
+    refuses (`false`) once a save wrote the delete.
   - `save({ keepScan })` - `rebuildFinishedTour` with `levels: []`, the
     photo spots decided once per open (`captureSpotsForRebuild`, its result
     kept), `previous` = the last save's bytes; returns `{ blob, filename,
@@ -27,6 +30,8 @@ scanLeftOut, notPlaced? }` and advances to what was written
 
 ## Invariants & assumptions
 
+- Saves run one after another: one called while another runs starts when
+  it ends (E2a review #9).
 - The edits are snapshotted before the save's first await: an edit made
   while it runs stays for the next save, by content.
 - `filename` is `finishedFileName(session)` (the opened file's name, made

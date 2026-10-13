@@ -13,7 +13,9 @@ both ways with the map, and a folded form with one count per group.
     (Codes, Pins, Photos, Stations; a group with no match is left out while
     searching; "Nothing matches that text." when nothing does) and the
     folded counts.
-  - `update(model)` - redraws after an edit; the search stays (M6 E2a).
+  - `update(model)` - after an edit: the same rows on screen get their
+    texts in place (a click that blurred the card's field still lands on
+    its row, E2a review #3); anything else redraws. The search stays.
   - `select(id | null)` - the `sel` class and `aria-pressed`, scrolled into
     view; `hover(id, on)`; `collapse(on)` - folds to the counts (a count
     button opens the rail at its group); `right()` - the rail's right edge

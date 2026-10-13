@@ -1,6 +1,6 @@
 /**
  * The desktop editor's card beside the selected marker (M6 E1, the chosen
- * variant 1's popover), read-only until E2: what the object is, its text,
+ * variant 1's popover; editing since E2a): what the object is, its text,
  * a photo from the zip, how precise its position is, and the arrow that
  * points at its marker; the "off the map view" chip when the marker
  * leaves the view. Every text is set with `textContent`; a photo is
@@ -74,6 +74,13 @@ export interface EditorCard {
   place(anchor: { x: number; y: number } | null, free: Box): void;
   /** The item shown, or null. */
   shown(): EditorItem | null;
+  /** Set the outcome line in place - no rebuild, so a click that blurred
+   *  the text field still lands on its button (E2a review #3). */
+  note(text: string): void;
+  /** Commit the text field's typing, if any (a Save does it first). */
+  commit(): void;
+  /** The text field holds typing not yet committed. */
+  dirty(): boolean;
 }
 
 function kindLabel(item: EditorItem): string {
@@ -104,6 +111,50 @@ export function createEditorCard(
   /** Bumped on every show and hide: a photo read that lands for an item
    *  no longer shown is dropped. */
   let generation = 0;
+
+  /** The pin's text field shown, its item, and the text last committed:
+   *  kept across re-renders of the same item, so typing survives a
+   *  refresh (a save ending mid-typing, E2a review #3). */
+  let field: {
+    readonly el: HTMLTextAreaElement;
+    readonly label: HTMLLabelElement;
+    readonly id: string;
+    committed: string;
+  } | null = null;
+  /** The outcome line, set in place by `note`. */
+  let messageEl: HTMLElement | null = null;
+
+  function commitField(): void {
+    if (field === null || field.el.value === field.committed) return;
+    field.committed = field.el.value;
+    deps.onText?.(field.id, field.el.value);
+  }
+
+  function textField(item: EditorItem): HTMLElement[] {
+    if (field !== null && field.id === item.id) {
+      // The same pin again (a refresh): the field and its typing stay.
+      if (field.el.value === field.committed) field.el.value = item.title;
+      field.committed = item.title;
+      return [field.label, field.el];
+    }
+    const label = document.createElement("label");
+    label.className = "field-label";
+    label.textContent = "Text";
+    label.htmlFor = "card-text";
+    const el = document.createElement("textarea");
+    el.id = "card-text";
+    el.rows = 3;
+    el.value = item.title;
+    el.addEventListener("blur", commitField);
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        commitField();
+      }
+    });
+    field = { el, label, id: item.id, committed: item.title };
+    return [label, el];
+  }
 
   /** Tell the page the card changed size, so it is placed again. */
   function resized(): void {
@@ -248,26 +299,9 @@ export function createEditorCard(
         }
       }
       if (view.editable && item.kind === "pin") {
-        const label = document.createElement("label");
-        label.className = "field-label";
-        label.textContent = "Text";
-        label.htmlFor = "card-text";
-        const field = document.createElement("textarea");
-        field.id = "card-text";
-        field.rows = 3;
-        field.value = item.title;
-        const commit = (): void => {
-          if (field.value !== item.title) deps.onText?.(item.id, field.value);
-        };
-        field.addEventListener("blur", commit);
-        field.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-            event.preventDefault();
-            commit();
-          }
-        });
-        body.push(label, field);
+        body.push(...textField(item));
       } else if (item.kind !== "code") {
+        field = null;
         const text = document.createElement("p");
         text.className = "card-text";
         text.textContent = item.title;
@@ -286,7 +320,9 @@ export function createEditorCard(
         line(item.meta),
       );
       if (view.moved) body.push(line(MOVED_LINE, false, true));
-      if (view.message !== "") body.push(line(view.message));
+      messageEl = line(view.message);
+      messageEl.hidden = view.message === "";
+      body.push(messageEl);
       if (view.editable) body.push(actionsFor(item, view));
       const foot = document.createElement("div");
       foot.className = "card-foot";
@@ -301,6 +337,8 @@ export function createEditorCard(
       generation += 1;
       freeUrl();
       current = null;
+      field = null;
+      messageEl = null;
       dom.card.hidden = true;
       dom.chip.hidden = true;
       dom.inner.replaceChildren();
@@ -361,6 +399,16 @@ export function createEditorCard(
     },
     shown() {
       return current;
+    },
+    note(text) {
+      if (messageEl === null) return;
+      messageEl.textContent = text;
+      messageEl.hidden = text === "";
+      resized();
+    },
+    commit: commitField,
+    dirty() {
+      return field !== null && field.el.value !== field.committed;
     },
   };
 }

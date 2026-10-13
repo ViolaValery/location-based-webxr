@@ -204,7 +204,24 @@ export function createEditorRail(
     },
     update(next) {
       model = next;
-      draw();
+      // The same rows on screen (an edited text, a move): their texts and
+      // counts change in place, so a click that blurred the card's field
+      // still lands on its row (E2a review #3). Anything else redraws.
+      const shown = filterItems(next.items, dom.filter.value);
+      const same =
+        shown.length === rows.size && shown.every((item) => rows.has(item.id));
+      if (!same) {
+        draw();
+        drawMini();
+        return;
+      }
+      for (const item of shown) {
+        const row = rows.get(item.id);
+        const title = row?.querySelector(".row-title");
+        const meta = row?.querySelector(".row-meta");
+        if (title) title.textContent = item.title;
+        if (meta) meta.textContent = item.meta;
+      }
       drawMini();
     },
     select(id) {

@@ -93,7 +93,8 @@ describe("deleteObject and undoDelete", () => {
         fc.integer({ min: 1, max: 6 }),
         fc.integer({ min: 0, max: 5 }),
         fc.boolean(),
-        (n, pick, hostedToo) => {
+        fc.subarray(["t1", "t2"]),
+        (n, pick, hostedToo, earlier) => {
           const placed: Entry[] = Array.from({ length: n }, (_, i) => ({
             object: i % 2 === 0 ? pin(`o${String(i)}`) : photo(`o${String(i)}`),
             ...(i % 2 === 0 ? {} : { blob: new Blob([String(i)]) }),
@@ -101,7 +102,8 @@ describe("deleteObject and undoDelete", () => {
           const manifest = hostedToo ? placed.map((p) => p.object) : [];
           const entries = authoringObjects(manifest, placed, []);
           const target = entries[pick % entries.length]!;
-          const before = { placed, deleted: [] as string[] };
+          // Deletions made before this one stay as they were (E2a review #12).
+          const before = { placed, deleted: [...earlier] };
           const gone = deleteObject(before, target);
           const back = undoDelete(
             { placed: gone.placed, deleted: gone.deleted },
@@ -135,6 +137,7 @@ describe("moveObjectTo", () => {
 
   it("refuses a position nobody can draw", () => {
     expect(() => moveObjectTo(pin("a"), 123, 8.8)).toThrow(/latitude/i);
+    expect(() => moveObjectTo(pin("a"), 47.5, 181)).toThrow(/longitude/i);
   });
 });
 

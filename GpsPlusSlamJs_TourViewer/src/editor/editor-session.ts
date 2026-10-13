@@ -21,6 +21,7 @@ import {
   pendingAfterRebuild,
   rebuildFinishedTour,
 } from "../finish-rebuild.js";
+import { objectContentKey } from "../authoring-draft.js";
 import {
   authoringObjects,
   deleteObject,
@@ -51,18 +52,24 @@ export interface EditorSave {
 export interface EditorSession {
   /** The tour as it stands with the edits, for the rail and the map. */
   model(): EditorModel;
-  /** Edits and deletions not yet in a saved file. */
+  /** Edits and deletions not yet in a saved file, by content: a text
+   *  edited back to the tour's own is no change (E2a review #10). */
   changeCount(): number;
+  /** The ids of the notes with an edit or a move not yet saved. */
+  pendingIds(): string[];
   editText(
     id: string,
     text: string,
   ): { kind: "edited" | "unchanged" } | { kind: "refused"; reason: string };
   /** Move a note on the map (its height and facing kept). */
   move(id: string, lat: number, lon: number): void;
-  /** Delete; returns its undo. */
-  remove(id: string): () => void;
+  /** Delete; returns its undo, which refuses (false) once a save wrote
+   *  the delete - the saved file no longer carries the object or its
+   *  photo (E2a review #9). */
+  remove(id: string): () => boolean;
   /** Build the saved zip from the newest bytes; edits made while it runs
-   *  wait for the next save. */
+   *  wait for the next save. Saves run one after another: one called
+   *  while another runs starts when it ends (E2a review #9). */
   save(options: { readonly keepScan: boolean }): Promise<EditorSave>;
 }
 
@@ -88,6 +95,22 @@ export function createEditorSession(input: {
   /** The name the page shows when the tour has no title. */
   const shownName = input.fileName ?? savedName;
 
+  /** Completed saves: an undo made before one is refused after it. */
+  let saves = 0;
+  /** The saves started and not yet ended, and the end of the last. */
+  let inFlight = 0;
+  let tail: Promise<unknown> = Promise.resolve();
+
+  /** The entries whose content the tour does not carry yet. */
+  function unsaved(): EditorEntry[] {
+    const hosted = new Map(
+      manifest.objects.map((o) => [o.id, objectContentKey(o)]),
+    );
+    return placed.filter(
+      (p) => hosted.get(p.object.id) !== objectContentKey(p.object),
+    );
+  }
+
   function objects(): AuthoringObject<EditorEntry>[] {
     return authoringObjects(manifest.objects, placed, deleted);
   }
@@ -107,7 +130,10 @@ export function createEditorSession(input: {
       });
     },
     changeCount() {
-      return placed.length + deleted.length;
+      return unsaved().length + deleted.length;
+    },
+    pendingIds() {
+      return unsaved().map((p) => p.object.id);
     },
     editText(id, text) {
       const found = find(id);
@@ -128,53 +154,71 @@ export function createEditorSession(input: {
       const gone = deleteObject({ placed, deleted }, find(id));
       placed = gone.placed;
       deleted = gone.deleted;
+      const at = saves;
       return () => {
+        if (saves !== at) return false;
         const back = undoDelete({ placed, deleted }, gone.record);
         placed = back.placed;
         deleted = back.deleted;
+        return true;
       };
     },
-    async save(options) {
-      // Snapshots before the first await: an edit made from here on waits
-      // for the next save (`pendingAfterRebuild`).
-      const placedNow = [...placed];
-      const deletedNow = [...deleted];
-      const manifestNow = manifest;
-      spots ??= captureSpotsForRebuild(session, manifestNow);
-      const photos = await spots;
-      const finished = await rebuildFinishedTour({
-        tour: session,
-        manifest: manifestNow,
-        placed: placedNow,
-        deleted: deletedNow,
-        levels: [],
-        keepScan: options.keepScan,
-        ...(photos.spots === undefined ? {} : { captureSpots: photos.spots }),
-        previous,
-      });
-      if (finished === null) throw new Error("the save was stopped");
-      previous = {
-        blob: finished.blob,
-        ...(finished.signedManifest === undefined
-          ? {}
-          : { signedManifest: finished.signedManifest }),
-      };
-      manifest = finished.written;
-      const pending = pendingAfterRebuild(
-        { placed, deleted },
-        finished.written,
-        deletedNow,
-      );
-      placed = pending.placed;
-      deleted = pending.deleted;
-      return {
-        blob: finished.blob,
-        filename: savedName,
-        scanLeftOut: finished.scanLeftOut,
-        ...(photos.notPlaced === undefined
-          ? {}
-          : { notPlaced: photos.notPlaced }),
-      };
+    save(options) {
+      const start = (): Promise<EditorSave> => runSave(options);
+      const next = inFlight === 0 ? start() : tail.then(start, start);
+      inFlight += 1;
+      tail = next
+        .catch(() => undefined)
+        .finally(() => {
+          inFlight -= 1;
+        });
+      return next;
     },
   };
+
+  async function runSave(options: {
+    readonly keepScan: boolean;
+  }): Promise<EditorSave> {
+    // Snapshots before the first await: an edit made from here on waits
+    // for the next save (`pendingAfterRebuild`).
+    const placedNow = [...placed];
+    const deletedNow = [...deleted];
+    const manifestNow = manifest;
+    spots ??= captureSpotsForRebuild(session, manifestNow);
+    const photos = await spots;
+    const finished = await rebuildFinishedTour({
+      tour: session,
+      manifest: manifestNow,
+      placed: placedNow,
+      deleted: deletedNow,
+      levels: [],
+      keepScan: options.keepScan,
+      ...(photos.spots === undefined ? {} : { captureSpots: photos.spots }),
+      previous,
+    });
+    if (finished === null) throw new Error("the save was stopped");
+    previous = {
+      blob: finished.blob,
+      ...(finished.signedManifest === undefined
+        ? {}
+        : { signedManifest: finished.signedManifest }),
+    };
+    manifest = finished.written;
+    const pending = pendingAfterRebuild(
+      { placed, deleted },
+      finished.written,
+      deletedNow,
+    );
+    placed = pending.placed;
+    deleted = pending.deleted;
+    saves += 1;
+    return {
+      blob: finished.blob,
+      filename: savedName,
+      scanLeftOut: finished.scanLeftOut,
+      ...(photos.notPlaced === undefined
+        ? {}
+        : { notPlaced: photos.notPlaced }),
+    };
+  }
 }

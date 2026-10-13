@@ -15,8 +15,11 @@ plan review #4).
   - `show(model, padding)` - replaces the markers and frames the tour
     (`fitBounds` with the rail's and top bar's padding, max zoom 19); a
     tour with no position shows a world view.
-  - `update(model)` - redraws the markers after an edit; the view and the
-    selection stay (M6 E2a).
+  - `update(model)` - updates the markers in place after an edit: a
+    marker whose item is still there stays (under the pointer, draggable
+    mid-Move) and moves only when its position changed, never under a
+    drag; the rest go or are added; the view and the selection stay (M6
+    E2a, E2a review #3, #4).
   - `drag(id, onDrop | null)` - makes the marker draggable (Leaflet's
     marker drag) and reports where it was dropped; null ends it.
   - `select(id | null)`, `hover(id, on)` - the `sel` / `hover` classes.

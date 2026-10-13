@@ -11,6 +11,7 @@
 
 import "./editor.css";
 import { downloadZip } from "gps-plus-slam-app-framework/storage";
+import { FINISH_LABELS } from "../qr-author-mode.js";
 import { createTourViewerStore } from "../tour-viewer-session.js";
 import { describeIntegrityError } from "../open-errors.js";
 import { scanEntryNames } from "../tour-read-set.js";
@@ -182,6 +183,8 @@ function showCard(): void {
 }
 
 function select(id: string | null, pan = false): void {
+  // Typing in the card's field is committed before it shows something else.
+  if (id !== selected) card.commit();
   if (moving !== null && moving.id !== id) cancelMove();
   selected = id;
   message = null;
@@ -202,8 +205,9 @@ function renderSaveState(): void {
     saveButton.disabled = true;
     return;
   }
-  saveButton.disabled =
-    editor === null || (count === 0 && undelivered === null);
+  // On whenever a tour is open: a click commits the card's typing first,
+  // so a disabled button would swallow the first edit (E2a review #3).
+  saveButton.disabled = editor === null;
   if (undelivered !== null && count === 0) {
     saveStatus.dataset["state"] = "error";
     saveStatus.textContent = "Not saved yet - tap Save again";
@@ -350,7 +354,13 @@ const card = createEditorCard(
           : outcome.kind === "edited"
             ? { id, text: "Changed - not saved yet." }
             : null;
-      refresh();
+      // In place: the click that blurred the field must still land on the
+      // button or row under the pointer (E2a review #3).
+      model = editor.model();
+      rail.update(model);
+      map.update(model);
+      card.note(message?.text ?? "");
+      renderSaveState();
     },
     onMove: startMove,
     onMoveDone: finishMove,
@@ -388,7 +398,12 @@ function showModal(on: boolean): void {
 
 /** Leaving would lose edits: changes not saved, or a save not delivered. */
 function unsavedWork(): boolean {
-  return saving || undelivered !== null || (editor?.changeCount() ?? 0) > 0;
+  return (
+    saving ||
+    undelivered !== null ||
+    card.dirty() ||
+    (editor?.changeCount() ?? 0) > 0
+  );
 }
 
 window.addEventListener("resize", placeCard);
@@ -509,28 +524,71 @@ async function deliver(save: EditorSave): Promise<boolean> {
   }
 }
 
+/** A save whose tour was closed meanwhile ends quietly; the open tour's
+ *  page shows its own state. */
+function abandon(): void {
+  saving = false;
+  renderSaveState();
+}
+
 async function runSave(): Promise<void> {
   if (editor === null || saving) return;
+  card.commit();
+  if (moving !== null) finishMove();
+  if (editor.changeCount() === 0 && undelivered === null) {
+    saveStatus.dataset["state"] = "clean";
+    saveStatus.textContent = "Nothing to save";
+    return;
+  }
+  // A save belongs to the tour it started on: one opened meanwhile must not
+  // receive it (E2a review #5).
+  const mine = editor;
   // The saved file will not carry a deleted object any more: its Undo ends.
   endUndo();
-  if (moving !== null) finishMove();
   saving = true;
   renderSaveState();
   try {
     const save =
-      undelivered !== null && editor.changeCount() === 0
+      undelivered !== null && mine.changeCount() === 0
         ? undelivered
-        : await editor.save({ keepScan: keepWalkInput.checked });
+        : await mine.save({ keepScan: keepWalkInput.checked });
+    if (editor !== mine) {
+      abandon();
+      return;
+    }
+    // A later save rebuilds from this one's bytes, so the walk switch can
+    // no longer change anything (the phone's rule, E2a review #1).
+    keepWalk.hidden = true;
     const arrived = await deliver(save);
+    if (editor !== mine) {
+      abandon();
+      return;
+    }
     undelivered = arrived ? null : save;
     if (arrived) {
-      moved.clear();
+      // A move made during the save is still pending: its line stays.
+      const pending = new Set(mine.pendingIds());
+      for (const id of [...moved]) if (!pending.has(id)) moved.delete(id);
+      message = null;
       saveStatus.dataset["saved"] = `Saved as ${save.filename}`;
+      // The Finish's own result sentences (E2a review #2).
       toast(
-        `Saved as ${save.filename}. Put it in place of the old file, under the same name, so the printed codes keep opening it.`,
+        [
+          `Saved as ${save.filename}. Put it in place of the old file, under the same name, so the printed codes keep opening it.`,
+          ...(save.scanLeftOut.length === 0
+            ? []
+            : [FINISH_LABELS.scanLeftOut(save.scanLeftOut.length)]),
+          ...(save.notPlaced === undefined
+            ? []
+            : [FINISH_LABELS.photosNotPlaced(save.notPlaced)]),
+        ].join(" "),
       );
     }
   } catch (err) {
+    if (editor !== mine) {
+      abandon();
+      return;
+    }
     saving = false;
     renderSaveState();
     saveStatus.dataset["state"] = "error";
