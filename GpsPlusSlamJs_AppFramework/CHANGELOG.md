@@ -1,8 +1,19 @@
 # Changelog
 
-## Unreleased
+## [1.27.0] - 2026-10-13
 
 ### Changed
+
+- **The print PDF packs a grid of codes** (Tour Viewer polish round): a
+  10 cm check bar, a request not to scale the page, and optional poster
+  text per code - a title, an explanation and a call to action, scaled to
+  the code and fitted to its width (`utils/qr-payload/qr-print-pdf`, with
+  the text metrics of `utils/qr-payload/pdf-text`). An empty caption draws
+  nothing.
+- **A failed `initAR` leaves nothing behind**, so AR can be retried, and
+  neither it nor the AR controller's rollback tells the app that a session
+  ended.
+- **A packed depth grid is at most 64 x 64**, the largest any app records.
 
 - **Recorded depth samples are written packed, and every action file is
   compact JSON** (scan pass S2). `writeAction` writes a
@@ -35,6 +46,27 @@
   review R2).
 
 ### Added
+
+- **`utils/drive-file-id`** (deep import): the one Google Drive file-id
+  parser (`driveFileId`), used by the launch URL's short form and the Tour
+  Viewer. The launch dispatcher reads the short form `?qr=D/<id>`; its
+  writer stays off (`allowDriveShortForm`).
+- **`visualization/occluder-sink` and
+  `visualization/occluder-mesh-worker-client`** (deep imports, moved here
+  from the RecorderApp): the persistent occluder's mesh, off-thread mesher
+  and teardown in one handle (`createOccluderSink(parent, options, {
+createWorker })`, `createOccluderMeshWorker(createWorker)` - the app
+  supplies its own worker). `occlude: false` keeps the mesh as a hidden
+  pick target; `handle.mesh()` exposes it for a raycast.
+- **The hit-test reticle can follow a surface:** `startHitTestReticle`
+  takes `surfacePick` (a point and normal, falling back to the hit-test
+  when it returns null or throws), and `updateReticleAtSurface` lays the
+  ring flat on a world point and normal. `SurfacePoint` is exported from
+  `ar`.
+- **`utils/copy-with-feedback`** (deep import): copy to the clipboard
+  from a button with a busy state and the real outcome, the write run
+  inside the promise chain so a missing clipboard fails instead of
+  sticking.
 
 - **`state/alignment-maturity`** (deep import, new; owner decisions D33,
   D34), and the GPS anchor's `startup: 'mature-alignment'`: the floor
