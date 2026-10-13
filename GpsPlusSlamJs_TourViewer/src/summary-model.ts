@@ -36,6 +36,7 @@ import {
   type CodeVerdict,
 } from "./code-verdict.js";
 import { rotationFromHeading } from "./content-placement.js";
+import { objectTitle } from "./object-describe.js";
 import { codeVisitPoses, type VisitLogEntry } from "./visit-log.js";
 
 /** A facing line is a quarter of the drawn area's diagonal: at the framed
@@ -327,13 +328,12 @@ function diagonalM(points: readonly MapPoint[]): number {
 function summaryObject(object: TourObject): SummaryObject | null {
   const point = { lat: object.geo.lat, lng: object.geo.lon };
   if (!readablePoint(point)) return null;
-  const label =
-    object.kind === "pin"
-      ? object.label
-      : object.label !== undefined && object.label.trim().length > 0
-        ? object.label
-        : "Photo";
-  return { id: object.id, kind: object.kind, label, ...point };
+  return {
+    id: object.id,
+    kind: object.kind,
+    label: objectTitle(object),
+    ...point,
+  };
 }
 
 /** The levels to show, the references first, then any level only the

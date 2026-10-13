@@ -114,6 +114,15 @@ describe("objectListModel on the page", () => {
     expect(none.rows[0]?.title).toBe("Photo");
   });
 
+  it("names a photo whose caption is only blanks 'Photo', as the summary map does (object-describe.ts)", () => {
+    // Why: the list showed a blank title where the map said "Photo" (M6 E1
+    // plan review #3); one rule names an object on every page.
+    const blank = objectListModel(
+      state({ entries: [entry({ ...photo("p"), label: "   " })] }),
+    );
+    expect(blank.rows[0]?.title).toBe("Photo");
+  });
+
   it("is hidden with nothing to list and nothing to say", () => {
     expect(objectListModel(state({})).hidden).toBe(true);
     // ...but a last outcome ("Deleted ...") still shows with an empty list.

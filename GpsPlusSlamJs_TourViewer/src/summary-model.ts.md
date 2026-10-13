@@ -25,7 +25,8 @@ map.
     (`codeVisitPoses`, the move boundary of authoring plan §3.6, M5b).
   - `SummaryModel`: `tracks` (per visit: `gps`, `fused`), `codes`
     (`SummaryCode`), `objects` (`SummaryObject`: id, kind, label, lat,
-    lng), `fitPoints` (everything drawn, for framing).
+    lng; the label is `object-describe.ts` `objectTitle`), `fitPoints`
+    (everything drawn, for framing).
   - `SummaryCode`: `levelId`, `label` ("The code", or "Code 1", "Code 2"...),
     `reference` (the stored pose as a `CodeMark` plus `ringM`, its own
     predicted error or null when unknown; null without a stored pose),

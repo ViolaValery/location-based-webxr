@@ -25,7 +25,7 @@ zip's and this device's - with **Edit text**, **Move to the reticle** and
   - `state.undo` - the last delete can still be undone (M4 review #5): the
     model's `undo` puts an **Undo** button on the note's line, on the page
     and in AR, and keeps the list shown though the delete emptied it.
-- `ObjectRowModel` - `title` (a pin's text, a photo's caption or "Photo"),
+- `ObjectRowModel` - `title` (`object-describe.ts` `objectTitle`: a pin's text, a photo's caption or "Photo"),
   `detail` ("Pin · in the zip · 4 m from the code"), `selected`, `busy`,
   `canEditText` (pins only), `canMove` (pins only, in AR only),
   `canDeselect` (the selected row in AR: Close), `enabled`.

@@ -22,7 +22,7 @@
 
 import type { QrGeoPose } from "gps-plus-slam-app-framework/ar/qr/qr-gps-vote";
 import type { TourObject } from "gps-plus-slam-app-framework/ar/tour-manifest";
-import { horizontalM } from "./move-with-code.js";
+import { codeDistanceLine, objectTitle } from "./object-describe.js";
 
 /** One object as the list sees it. */
 export interface ObjectListEntry {
@@ -106,19 +106,6 @@ export const SELECT_HINT = "Tap a pin or photo to select it.";
 const MOVE_HINT =
   "To move a pin, start the AR setup, select the pin and tap Move to the reticle.";
 
-/** "4 m from the code", or "" without a code. Rounded to whole metres:
- *  the objects' own GPS error is metres, so decimals would be noise. */
-function codeDistance(object: TourObject, codes: readonly QrGeoPose[]): string {
-  const distances = codes
-    .map((code) => horizontalM(code, object.geo))
-    .filter(Number.isFinite);
-  if (distances.length === 0) return "";
-  const nearest = Math.round(Math.min(...distances));
-  return codes.length === 1
-    ? `${String(nearest)} m from the code`
-    : `${String(nearest)} m from the nearest code`;
-}
-
 function standing(entry: ObjectListEntry): string {
   if (!entry.changed) return "in the zip";
   return entry.hosted
@@ -129,9 +116,8 @@ function standing(entry: ObjectListEntry): string {
 function rowOf(entry: ObjectListEntry, state: ObjectListState): ObjectRowModel {
   const { object } = entry;
   const busy = state.busy.get(object.id) ?? null;
-  const title =
-    object.kind === "pin" ? object.label : (object.label ?? "Photo");
-  const distance = codeDistance(object, state.codes);
+  const title = objectTitle(object);
+  const distance = codeDistanceLine(object, state.codes);
   return {
     id: object.id,
     kind: object.kind,
