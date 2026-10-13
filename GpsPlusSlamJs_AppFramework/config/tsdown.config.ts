@@ -417,6 +417,8 @@ const entryFiles = [
   // Main-thread driver for the occluder Web Worker offload — deep-imported by
   // the recorder's worker client, so it must be a dist entry.
   'src/visualization/occluder-mesh-driver.ts',
+  'src/visualization/occluder-mesh-worker-client.ts',
+  'src/visualization/occluder-sink.ts',
   'src/visualization/hit-test-reticle.ts',
   'src/visualization/leaflet-map-overlay.ts',
   'src/visualization/lerp-utils.ts',
