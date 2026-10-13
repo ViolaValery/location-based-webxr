@@ -38,6 +38,7 @@ import {
 } from "gps-plus-slam-app-framework/storage";
 import { Group, Matrix4, Object3D, Quaternion, Vector3 } from "three";
 
+import { writeSideM } from "./printed-side.js";
 import { wireCreatorSetup, type CreatorSetupDom } from "./creator-setup.js";
 import type { ObjectListHandlers, ObjectListModel } from "./object-list.js";
 import type { TourViewerSeams } from "./seams.js";
@@ -330,7 +331,6 @@ function authoring(
     (typeof DOM_KEYS)[number],
     ReturnType<typeof el>
   >;
-  dom.sizeInput.value = String(SIZE_M);
   const ctx = createTourViewerSession();
   const real = createTourViewerStore();
   const gps: {
@@ -462,7 +462,15 @@ function authoring(
     openDraftStore: () => Promise.resolve(options.store),
     ...(options.summary === undefined ? {} : { summary: options.summary }),
   });
+  // AFTER the wiring, which writes the page's default into the field (as
+  // fused-pose-wiring.test.ts does): the creator typed this size.
+  writeSideM(dom.sizeInput, SIZE_M);
   expect(setup.startAuthorPipeline()).toBe(true);
+  // The synthetic detections are corners of a SIZE_M code: the pipeline
+  // must solve them at that size, or every pose below carries a scale
+  // error while the suite stays green (PR #595 review: the field was
+  // written in metres, before the wiring overwrote it with 18 cm).
+  expect(ctx.activeSizeM).toBe(SIZE_M);
 
   /** Walk the code until its fused pose is stable. */
   function seeTheCode(origin?: Matrix4, text = TEXT, startMs = 0): void {

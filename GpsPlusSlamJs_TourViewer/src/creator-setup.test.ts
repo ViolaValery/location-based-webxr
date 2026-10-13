@@ -518,7 +518,7 @@ describe("the rejection is committed by the meta write", () => {
     await settle();
 
     // A later meta write, as re-opening the tour makes.
-    dom.sizeInput.value = "0.25";
+    dom.sizeInput.value = "25"; // cm, as the field reads (printed-side.ts)
     setup.presentDraftForTour(TOUR);
     await settle();
 
