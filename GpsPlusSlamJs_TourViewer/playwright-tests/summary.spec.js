@@ -158,6 +158,9 @@ test("Enlarge fills the screen with the map, and closing it shrinks it back", as
   await watchRequests(page);
   await openFixtureTour(page);
   await enterArAndMeasure(page);
+  // Something to write: Done on a visit that changed nothing just leaves
+  // (polish round M3 review #4), and the summary comes with a finish.
+  await placePin(page, "Gate");
   await finish(page);
   await expect(page.getByTestId("summary-map-status")).toHaveAttribute(
     "data-state",
@@ -194,6 +197,9 @@ test("a map that cannot load says so, and the verdict stays", async ({
   await page.route("**/src/summary-map-view.ts*", (route) => route.abort());
   await openFixtureTour(page);
   await enterArAndMeasure(page);
+  // Something to write: Done on a visit that changed nothing just leaves
+  // (polish round M3 review #4), and the summary comes with a finish.
+  await placePin(page, "Gate");
   await finish(page);
   await expect(page.getByTestId("summary-map-status")).toHaveText(
     /The map could not load/,

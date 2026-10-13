@@ -3075,6 +3075,11 @@ async function measureAndFinish(page, url) {
     timeout: 15000,
   });
   await measureTheCode(page);
+  // Something to write: Done on a visit that changed nothing just leaves
+  // (polish round M3 review #4).
+  await page.getByTestId("setup-pin").click();
+  await page.getByTestId("pin-label").fill("Drive pin");
+  await page.getByTestId("pin-save").click();
   await tapFinish(page);
   await expect(page.getByTestId("enter-ar")).toHaveText("Start creating", {
     timeout: 15000,
