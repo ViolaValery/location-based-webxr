@@ -1,0 +1,156 @@
+/**
+ * What the desktop editor shows of a tour (M6 E1), page-free: the rail's
+ * groups (codes, pins, photos) and the map's marks, built on the summary's
+ * model (`summary-model.ts` `buildSummaryModel`: positions, the codes'
+ * labels in the phone's numbering, readable coordinates only) and the one
+ * naming rule (`object-describe.ts`). Pure.
+ *
+ * @see editor-model.ts.md
+ */
+
+import type { QrLevel } from "gps-plus-slam-app-framework/ar/qr/qr-level";
+import type { QrGeoPose } from "gps-plus-slam-app-framework/ar/qr/qr-gps-vote";
+import type {
+  TourManifest,
+  TourObject,
+} from "gps-plus-slam-app-framework/ar/tour-manifest";
+import { codeDistanceLine, objectTitle } from "../object-describe.js";
+import { buildSummaryModel, type MapPoint } from "../summary-model.js";
+
+export type EditorItemKind = "code" | "pin" | "photo";
+
+/** One row in the rail and, with a position, one mark on the map. */
+export interface EditorItem {
+  readonly id: string;
+  readonly kind: EditorItemKind;
+  /** "Code 1" / a pin's text / a photo's caption or "Photo". Text, never
+   *  markup: it comes from a zip anyone can write. */
+  readonly title: string;
+  /** The row's second line. */
+  readonly meta: string;
+  /** Where it is drawn; null for a code without a stored position. */
+  readonly at: MapPoint | null;
+  /** A code's number (1-based) in the phone's numbering. */
+  readonly number?: number;
+  /** A photo's image entry: the content path of a placed photo, the
+   *  recording's frame of a recorded one. */
+  readonly image?: string;
+  /** A recorded photo (`captureSpots`), placed for visitors at the Finish
+   *  and not editable as a note. */
+  readonly recorded?: boolean;
+}
+
+export interface EditorModel {
+  /** The tour's title, else the file's name. */
+  readonly title: string;
+  readonly items: readonly EditorItem[];
+  readonly counts: Readonly<Record<EditorItemKind, number>>;
+  /** Everything with a position, for framing the map. */
+  readonly fitPoints: readonly MapPoint[];
+}
+
+/** A recorded photo's id: its frame's entry name, which is unique. */
+export const RECORDED_PREFIX = "recorded:";
+
+function readable(p: MapPoint): boolean {
+  return (
+    Number.isFinite(p.lat) &&
+    Number.isFinite(p.lng) &&
+    Math.abs(p.lat) <= 90 &&
+    Math.abs(p.lng) <= 180
+  );
+}
+
+function noteMeta(object: TourObject, codes: readonly QrGeoPose[]): string {
+  const distance = codeDistanceLine(object, codes);
+  const kind = object.kind === "pin" ? "Text note" : "Photo note";
+  return distance === "" ? kind : `${kind} · ${distance}`;
+}
+
+/**
+ * The editor's view of a tour. `levels` in the zip's order is the phone's
+ * numbering (`creator-codes.ts` `numbering`), so a code has one name on
+ * both pages.
+ */
+export function buildEditorModel(input: {
+  readonly manifest: TourManifest;
+  readonly levels: ReadonlyMap<string, QrLevel>;
+  readonly fileName: string;
+}): EditorModel {
+  const { manifest } = input;
+  const references = [...input.levels].map(([levelId, level]) => ({
+    levelId,
+    geo: level.qr.geo ?? null,
+  }));
+  const summary = buildSummaryModel({
+    visits: [],
+    references,
+    objects: manifest.objects,
+  });
+  const stored = references.flatMap((r) => (r.geo === null ? [] : [r.geo]));
+  const codes: EditorItem[] = summary.codes.map((code, index) => ({
+    id: code.levelId,
+    kind: "code",
+    title: code.label,
+    meta:
+      code.reference === null
+        ? "Printed code, no position stored yet"
+        : "Printed code, measured on site",
+    at:
+      code.reference === null
+        ? null
+        : { lat: code.reference.lat, lng: code.reference.lng },
+    number: index + 1,
+  }));
+  const byId = new Map(manifest.objects.map((o) => [o.id, o]));
+  const notes: EditorItem[] = summary.objects.flatMap((s) => {
+    const object = byId.get(s.id);
+    if (object === undefined) return [];
+    return [
+      {
+        id: s.id,
+        kind: s.kind,
+        title: objectTitle(object),
+        meta: noteMeta(object, stored),
+        at: { lat: s.lat, lng: s.lng },
+        ...(object.kind === "photo" ? { image: object.image } : {}),
+      },
+    ];
+  });
+  const recorded: EditorItem[] = (manifest.captureSpots?.captures ?? [])
+    .map((c) => ({ capture: c, at: { lat: c.geo.lat, lng: c.geo.lon } }))
+    .filter(({ at }) => readable(at))
+    .map(({ capture, at }) => ({
+      id: `${RECORDED_PREFIX}${capture.image}`,
+      kind: "photo",
+      title: "Recorded photo",
+      meta: "Photo · recorded on the walk",
+      at,
+      image: capture.image,
+      recorded: true,
+    }));
+  const items = [...codes, ...notes, ...recorded];
+  const count = (kind: EditorItemKind): number =>
+    items.filter((i) => i.kind === kind).length;
+  const title = manifest.title?.trim() ?? "";
+  return {
+    title: title === "" ? input.fileName : title,
+    items,
+    counts: { code: count("code"), pin: count("pin"), photo: count("photo") },
+    fitPoints: items.flatMap((i) => (i.at === null ? [] : [i.at])),
+  };
+}
+
+/** The rail's rows for a search: every item whose title or second line
+ *  contains `query` (case-insensitive, trimmed); all for an empty query. */
+export function filterItems(
+  items: readonly EditorItem[],
+  query: string,
+): EditorItem[] {
+  const q = query.trim().toLowerCase();
+  if (q === "") return [...items];
+  return items.filter(
+    (i) =>
+      i.title.toLowerCase().includes(q) || i.meta.toLowerCase().includes(q),
+  );
+}
