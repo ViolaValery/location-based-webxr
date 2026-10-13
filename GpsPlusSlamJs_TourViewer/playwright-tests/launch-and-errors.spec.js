@@ -104,9 +104,11 @@ test("the page boots without console errors", async ({ page }) => {
  * is the output, and only the output can catch a composite that fails to
  * follow.
  */
-/** The visitor's page: it follows the device's scheme. The creator's setup
- *  page wears the L5 paper look on every device since polish round M2b
- *  (D-P1), pinned by "keeps the paper look" in each half. */
+/** The visitor's start page. It followed the device's scheme until the
+ *  owner chose the paper V4 start page (polish round M4a, D-R12); since
+ *  then it wears the paper look on every device, as the creator's setup
+ *  page has since polish round M2b (D-P1). Both are pinned in each half;
+ *  the AR overlay still follows the device (the over-camera tests). */
 const VISITOR_PAGE = `/?nocache=1&qr=${encodeURIComponent(RANGES_URL)}`;
 
 /** The creator page's paper, resolved on the root (polish round M2b). */
@@ -120,7 +122,7 @@ async function creatorPaper(page) {
   );
 }
 
-test.describe("the visitor page follows the device's colour scheme", () => {
+test.describe("a light device", () => {
   test.use({ colorScheme: "light" });
 
   test("the creator's setup page keeps the paper look on a light device", async ({
@@ -129,55 +131,42 @@ test.describe("the visitor page follows the device's colour scheme", () => {
     expect(await creatorPaper(page)).toBe("#f4eedf");
   });
 
-  test("a light device gets the light ground", async ({ page }) => {
+  test("the visitor's start page wears the paper look on a light device (M4a, D-R12)", async ({
+    page,
+  }) => {
     await page.goto(VISITOR_PAGE);
     const body = page.locator("body.page");
     await expect(body).toHaveCount(1);
-    // The token, resolved on the element that declares it.
+    // The token, resolved on the root that declares it.
     await expect
       .poll(() =>
-        body.evaluate((el) =>
-          getComputedStyle(el).getPropertyValue("--paper").trim(),
+        page.evaluate(() =>
+          getComputedStyle(document.documentElement)
+            .getPropertyValue("--paper")
+            .trim()
+            .toLowerCase(),
         ),
       )
-      .toBe("#f2f1ed");
-    // And the UA is told, so form controls and scrollbars follow - the
-    // scrollbar only because the PAGE branches its own unlayered `:root`
-    // declaration; a body-level `color-scheme` reaches controls but never
-    // the viewport (PR #463 review).
-    await expect
-      .poll(() => body.evaluate((el) => getComputedStyle(el).colorScheme))
-      .toContain("light");
-    // The paint itself. `.step` fills from `--surface-gradient`, which is
-    // COMPOSED on :root from --surface-hi/--surface-lo - the one token that
-    // cannot follow an override placed on a descendant. `.step` and not
-    // `.plate`: the page's only plate is the AR stats HUD, which is
-    // `display: none` here, so asserting on it would prove the paint on a
-    // surface no viewer ever sees (PR #463 review).
+      .toBe("#f4eedf");
+    // The UA is told, so form controls and scrollbars are light too.
     await expect
       .poll(() =>
-        page
-          .locator(".step")
-          .first()
-          .evaluate((el) => getComputedStyle(el).backgroundImage),
+        page.evaluate(
+          () => getComputedStyle(document.documentElement).colorScheme,
+        ),
       )
-      .toContain("rgba(255, 255, 255, 0.78)");
-    // And the ACCENT as ink, asserted ON THE LINK rather than as a token.
-    // The bright accent measures 2.0:1 on this ground - a WCAG 1.4.3 AA
-    // failure on the page's only link, which the first light block
-    // shipped (PR #463 review).
-    //
-    // Reading `--accent-ink` back off the body was the first attempt and
-    // guarded NOTHING: the light block declares that token, so the
-    // assertion could only confirm the block matched. The defect was
-    // never the token's value - it was which token the link referenced,
-    // and pointing it back at `--accent` left every test here green with
-    // the 2.0:1 link restored (PR #466 review). This is the assertion
-    // that fails for that revert.
+      .toContain("light");
+    // The paint a visitor sees: the page's ground on the body, and the
+    // accent as INK on the page's visible link - the bright accent would
+    // measure 2.0:1 on paper (PR #463 review), so this is asserted on the
+    // link, not read back off a token.
+    await expect
+      .poll(() => body.evaluate((el) => getComputedStyle(el).backgroundColor))
+      .toBe("rgb(244, 238, 223)");
     await expect
       .poll(() =>
         page
-          .locator("#visitor-link")
+          .getByTestId("make-your-own")
           .evaluate((el) => getComputedStyle(el).color.trim()),
       )
       .toBe("rgb(138, 75, 0)");
@@ -228,7 +217,7 @@ test.describe("the visitor page follows the device's colour scheme", () => {
   });
 });
 
-test.describe("a dark device keeps the default ground", () => {
+test.describe("a dark device", () => {
   test.use({ colorScheme: "dark" });
 
   test("the creator's setup page keeps the paper look on a dark device", async ({
@@ -237,36 +226,45 @@ test.describe("a dark device keeps the default ground", () => {
     expect(await creatorPaper(page)).toBe("#f4eedf");
   });
 
-  test("nothing about the dark page moves", async ({ page }) => {
+  test("the visitor's start page wears the paper look on a dark device (M4a, D-R12)", async ({
+    page,
+  }) => {
     await page.goto(VISITOR_PAGE);
     const body = page.locator("body.page");
+    await expect(body).toHaveCount(1);
+    // The token, resolved on the root that declares it.
     await expect
       .poll(() =>
-        body.evaluate((el) =>
-          getComputedStyle(el).getPropertyValue("--paper").trim(),
+        page.evaluate(() =>
+          getComputedStyle(document.documentElement)
+            .getPropertyValue("--paper")
+            .trim()
+            .toLowerCase(),
         ),
       )
-      .toBe("#232838");
-    // The dark paint, for the same reason as the light one: this is the
-    // assertion that fails if a light block ever escapes its gate.
+      .toBe("#f4eedf");
+    // The UA is told, so form controls and scrollbars are light too.
     await expect
       .poll(() =>
-        page
-          .locator(".step")
-          .first()
-          .evaluate((el) => getComputedStyle(el).backgroundImage),
+        page.evaluate(
+          () => getComputedStyle(document.documentElement).colorScheme,
+        ),
       )
-      .toContain("rgba(52, 58, 80, 0.35)");
-    // The accent as ink on the dark ground, for the same reason the light
-    // half asserts it: without this, a light `--accent-ink` escaping its
-    // gate would dim the link to 3.2:1 here and nothing would notice.
+      .toContain("light");
+    // The paint a visitor sees: the page's ground on the body, and the
+    // accent as INK on the page's visible link - the bright accent would
+    // measure 2.0:1 on paper (PR #463 review), so this is asserted on the
+    // link, not read back off a token.
+    await expect
+      .poll(() => body.evaluate((el) => getComputedStyle(el).backgroundColor))
+      .toBe("rgb(244, 238, 223)");
     await expect
       .poll(() =>
         page
-          .locator("#visitor-link")
+          .getByTestId("make-your-own")
           .evaluate((el) => getComputedStyle(el).color.trim()),
       )
-      .toBe("rgb(242, 151, 31)");
+      .toBe("rgb(138, 75, 0)");
   });
 
   // The dark half of the over-camera pin above. This is the one that
