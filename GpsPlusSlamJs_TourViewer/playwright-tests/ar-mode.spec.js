@@ -825,7 +825,8 @@ test("a first measurement of a code the tour does not store is minted into the r
   );
   // Nothing stored, nothing kept: the measurement IS the code's position.
   await expect(page.getByTestId("setup-status")).toContainText(
-    /Position saved\. Place content/,
+    // In AR the next move names Done (polish round M3, Q-Done).
+    /Position saved\. Place pins and photos; Done saves the tour/,
   );
   await expect(page.getByTestId("setup-status")).not.toContainText(
     /kept|replaces/i,
