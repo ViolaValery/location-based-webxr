@@ -9,6 +9,7 @@
  * granted, the tap requests the position and the NEXT tap starts AR.
  */
 
+import { copyWithFeedback } from "gps-plus-slam-app-framework/utils/copy-with-feedback";
 import type { EnableGpsArState } from "gps-plus-slam-app-framework/ar";
 import {
   GPS_POINT_SOURCE_DEVICE,
@@ -508,31 +509,32 @@ export function wireArEntry(deps: {
   /** The visitor's Copy link tap (async-UI rule: busy, then the outcome;
    *  a failure on the error line, with the address bar as the way out). */
   function copyLink(): void {
-    const button = dom.enterArButton;
     copying = true;
-    button.disabled = true;
-    button.textContent = COPY_LINK_LABELS.busy;
-    // Inside the chain: without a clipboard (an http page, some in-app
-    // browsers) the seam throws before it returns a promise (M4 review #1).
-    Promise.resolve()
-      .then(() => seams.copyText(location.href))
-      .then(
-        () => {
-          button.textContent = COPY_LINK_LABELS.done;
+    // The framework's one copy sequence (F7, DEC-H3): the write inside the
+    // chain, so a page without a clipboard fails instead of sticking at
+    // "Copying…" (M4 review #1).
+    void copyWithFeedback(
+      dom.enterArButton,
+      location.href,
+      (text) => seams.copyText(text),
+      {
+        busy: COPY_LINK_LABELS.busy,
+        done: COPY_LINK_LABELS.done,
+        // The advice goes on the error line; the button offers the copy again.
+        failed: COPY_LINK_LABELS.idle,
+        onDone: () => {
           // An earlier failed copy's advice is out of date now.
           if (dom.errorBox.textContent === COPY_LINK_LABELS.failed) {
             dom.errorBox.textContent = "";
           }
         },
-        () => {
-          button.textContent = COPY_LINK_LABELS.idle;
+        onFailed: () => {
           dom.errorBox.textContent = COPY_LINK_LABELS.failed;
         },
-      )
-      .finally(() => {
-        copying = false;
-        button.disabled = false;
-      });
+      },
+    ).finally(() => {
+      copying = false;
+    });
   }
 
   async function enterAr(): Promise<void> {

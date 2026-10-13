@@ -339,6 +339,9 @@ const entryFiles = [
   'src/utils/qr-payload/qr-print-pdf.ts',
   // The one Drive file-id parser (DEC-H3), deep-imported by the Tour Viewer.
   'src/utils/drive-file-id.ts',
+  // The one copy-to-clipboard-with-feedback sequence (DEC-H3, Tour Viewer
+  // follow-up F7), deep-imported by the Tour Viewer.
+  'src/utils/copy-with-feedback.ts',
   // Its text encoding: the Tour Viewer previews the poster text as the PDF
   // prints it (M0c review).
   'src/utils/qr-payload/pdf-text.ts',

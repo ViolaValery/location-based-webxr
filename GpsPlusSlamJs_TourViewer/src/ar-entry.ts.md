@@ -73,8 +73,9 @@ since the flows plan M6.
     - on a VISITOR's phone without AR the click copies `location.href`
       through `seams.copyText` ("Copying…" disabled, then "Link copied"; a
       failure restores "Copy link" and puts the address-bar advice in
-      `errorBox`) - the owner's V4, polish round M4a. The copy runs inside
-      a promise chain (a missing clipboard throws synchronously), owns the
+      `errorBox`) - the owner's V4, polish round M4a. The copy is the
+      framework's `copyWithFeedback` (follow-up F7, DEC-H3), which runs it
+      inside a promise chain (a missing clipboard throws synchronously); it owns the
       button's label until it settles (a render meanwhile does not hand it
       back), and a working copy clears an earlier failure's advice (M4
       milestone review #1).

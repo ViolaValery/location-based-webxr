@@ -14,6 +14,7 @@ import {
   FINISH_LABELS,
   finishSaveStatus,
 } from "./qr-author-mode.js";
+import { copyWithFeedback } from "gps-plus-slam-app-framework/utils/copy-with-feedback";
 import { isDriveUrl } from "./open-errors.js";
 import { hostReplaceText, type TourHost } from "./tour-host.js";
 import type { TourViewerSeams } from "./seams.js";
@@ -170,25 +171,12 @@ export function wireCreatorHandoff(deps: {
   dom.replaceDriveCopy.addEventListener("click", () => {
     const address = driveAddress;
     if (address === null) return;
-    const button = dom.replaceDriveCopy;
-    button.disabled = true;
-    button.textContent = DRIVE_COPY_LABELS.busy;
-    Promise.resolve()
-      .then(() => {
-        if (seams.copyText === undefined) throw new Error("no clipboard");
-        return seams.copyText(address);
-      })
-      .then(
-        () => {
-          button.textContent = DRIVE_COPY_LABELS.done;
-        },
-        () => {
-          button.textContent = DRIVE_COPY_LABELS.failed(address);
-        },
-      )
-      .finally(() => {
-        button.disabled = false;
-      });
+    // The framework's one copy sequence (F7, DEC-H3).
+    void copyWithFeedback(dom.replaceDriveCopy, address, seams.copyText, {
+      busy: DRIVE_COPY_LABELS.busy,
+      done: DRIVE_COPY_LABELS.done,
+      failed: DRIVE_COPY_LABELS.failed(address),
+    });
   });
 
   return {

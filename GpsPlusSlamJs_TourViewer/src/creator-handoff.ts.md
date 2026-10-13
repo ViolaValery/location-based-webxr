@@ -18,7 +18,8 @@ the automatic save is in
   the button (`dom`: `downloadButton`, `finishStatus`, `replaceHelp`,
   `replaceHelpGeneric`, `replaceHelpDrive`, `replaceDriveCopy`);
   `seams.downloadZip` is the save; `seams.copyText` (optional) is the
-  Drive address button's copy - shown with the Drive steps when
+  Drive address button's copy, run through the framework's
+  `copyWithFeedback` (follow-up F7, DEC-H3) - shown with the Drive steps when
   `driveFileAddress` reads the open link, labelled by `DRIVE_COPY_LABELS`
   (busy, then "Copied" or, failed, the address to copy by hand; hidden again
   on `reset`);
