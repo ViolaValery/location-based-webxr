@@ -21,15 +21,25 @@ import {
   serializeSignedTourManifest,
   signedManifestFilesOf,
   successorManifest,
+  TourIntegrityError,
   type SignedTourManifest,
   type TourFileRecord,
 } from "gps-plus-slam-app-framework/ar/tour-signed-manifest";
-import { rebuildZipWithEntries } from "gps-plus-slam-app-framework/storage";
+import {
+  ArchiveLimitError,
+  rebuildZipWithEntries,
+} from "gps-plus-slam-app-framework/storage";
 import { sha256Hex } from "gps-plus-slam-app-framework/utils/sha256-hex";
 import {
   applyObjectChanges,
   contentEntriesToRemove,
+  objectContentKey,
 } from "./authoring-draft.js";
+import {
+  bakeCaptureSpots,
+  type CaptureBakeOptions,
+  type CaptureBakeSource,
+} from "./capture-bake.js";
 import type { LevelText } from "./code-book.js";
 import { finishEntries, type FinishEntry } from "./finish-entries.js";
 import { scanEntryNames } from "./tour-read-set.js";
@@ -252,4 +262,73 @@ export async function rebuildFinishedTour(
     ...(signedManifest === undefined ? {} : { signedManifest }),
     scanLeftOut,
   };
+}
+
+/**
+ * What is still to save after a write (M6 E0b): the placed objects whose
+ * content the written zip does not carry - by CONTENT, not id, so an
+ * object edited again while the zip was rebuilt waits for the next save
+ * (M2c review #6) - the ones that left (`finished`; the caller keeps a
+ * photo's bytes for its preview), and the deletions the write did not
+ * apply. The caller passes its lists as they are NOW, after the write.
+ */
+export function pendingAfterRebuild<P extends { readonly object: TourObject }>(
+  pending: {
+    readonly placed: readonly P[];
+    readonly deleted: readonly string[];
+  },
+  written: TourManifest,
+  appliedDeletions: readonly string[],
+): { placed: P[]; finished: P[]; deleted: string[] } {
+  const inZip = new Map(
+    written.objects.map((o) => [o.id, objectContentKey(o)]),
+  );
+  const placed: P[] = [];
+  const finished: P[] = [];
+  for (const p of pending.placed) {
+    if (inZip.get(p.object.id) === objectContentKey(p.object)) finished.push(p);
+    else placed.push(p);
+  }
+  // The deletions are applied: the manifest no longer carries them.
+  const deleted = pending.deleted.filter(
+    (id) => !appliedDeletions.includes(id),
+  );
+  return { placed, finished, deleted };
+}
+
+/** The tour as the photo-spot rule reads it. */
+type CaptureSpotTour = CaptureBakeSource & { readonly hasRecording: boolean };
+
+/**
+ * The recorded photos' spots for a save (scan-pass plan S1, S-D11; M6
+ * E0b): the tour's own when it carries them, else baked from its
+ * recording, else none - the tour then keeps the visitor's live join, and
+ * `notPlaced` says why. A recording that cannot be read or joined never
+ * fails the save; a cap's refusal and a failed integrity check do, as
+ * every read's does. A decline is the caller's to keep: re-baking it on
+ * every save would replay the whole recording each time (E2).
+ */
+export async function captureSpotsForRebuild(
+  tour: CaptureSpotTour,
+  manifest: TourManifest,
+  options: CaptureBakeOptions = {},
+): Promise<{ spots?: TourCaptureSpots; notPlaced?: string }> {
+  if (manifest.captureSpots !== undefined) {
+    return { spots: manifest.captureSpots };
+  }
+  if (!tour.hasRecording) return {};
+  try {
+    const bake = await bakeCaptureSpots(tour, options);
+    return bake.kind === "baked"
+      ? { spots: bake.spots }
+      : { notPlaced: bake.reason };
+  } catch (err) {
+    if (err instanceof ArchiveLimitError) throw err;
+    if (err instanceof TourIntegrityError) throw err;
+    return {
+      notPlaced: `reading the recording failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
 }

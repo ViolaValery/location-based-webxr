@@ -38,6 +38,20 @@ signature, a broken series list (M6 design §5, cold review #2). Design:
     the rebuild throw (`ArchiveLimitError`, `TourIntegrityError`); the
     caller shows it.
 
+- `pendingAfterRebuild({ placed, deleted }, written, appliedDeletions)`
+  (M6 E0b) - what is still to save after a write, from the page's lists
+  as they are AFTER it: `placed` (content the zip does not carry, by
+  `objectContentKey` - an object edited again during the save waits),
+  `finished` (the caller's own entries that left, so a photo's bytes
+  travel with them), `deleted` (the deletions not applied). Pure.
+- `captureSpotsForRebuild(tour, manifest, options?)` (M6 E0b) - the
+  photos' spots for a save: the manifest's own, else baked from the
+  recording (`capture-bake.ts`, `options` passes its `shouldContinue` and
+  `onChunk`), else none (`{}`); a bake that declines or a recording that
+  cannot be read is `{ notPlaced: reason }`; `ArchiveLimitError` and
+  `TourIntegrityError` are rethrown. A decline is the caller's to keep, so
+  a page that saves often does not replay the recording each time (E2).
+
 ## Invariants & assumptions
 
 - **Edits:** records replace theirs by id in place, new ones are appended,
@@ -95,7 +109,12 @@ signature dropped, the hosted zip under the budget (also with `previous`
 omitted) and a previous rebuild without it, and a chained rebuild of a
 listed tour staying at the open-time version + 1. Every check reads the
 zip's bytes (`tour.json`, the level), never only the returned
-`written`. `finish-rebuild.property.test.ts` sweeps mixes of edits,
+`written`. The same file pins `pendingAfterRebuild` (an edit made during the save
+waits, a placement waits, only applied deletions clear, the caller's
+objects come back) and `captureSpotsForRebuild` (own spots without a
+read, none without a recording, a read failure as the reason, a cap and
+an integrity failure rethrown, a decline as the reason).
+`finish-rebuild.property.test.ts` sweeps mixes of edits,
 additions and deletions: each id once, edits in place, a deleted
 photo's file gone, kept ones present, the zip opens again. The phone's
 wiring around it stays pinned by `creator-finish.test.ts` and

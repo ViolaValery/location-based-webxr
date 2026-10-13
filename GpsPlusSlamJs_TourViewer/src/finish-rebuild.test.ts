@@ -10,6 +10,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+  ArchiveLimitError,
   DecompressionBudget,
   packFilesAsZip,
 } from "gps-plus-slam-app-framework/storage";
@@ -25,7 +26,12 @@ import {
   type TourManifest,
   type TourObject,
 } from "gps-plus-slam-app-framework/ar/tour-manifest";
-import { rebuildFinishedTour } from "./finish-rebuild.js";
+import {
+  captureSpotsForRebuild,
+  pendingAfterRebuild,
+  rebuildFinishedTour,
+} from "./finish-rebuild.js";
+import { TourIntegrityError } from "gps-plus-slam-app-framework/ar/tour-signed-manifest";
 import { openTourFile, type TourSession } from "./tour-session.js";
 import {
   buildListedTourFixture,
@@ -400,5 +406,117 @@ describe("rebuildFinishedTour (M6 E0: the Finish's rules, shared)", () => {
     expect(await namesOf(second!.blob)).toContain(`${WRAP}content/p1.jpg`);
     await next.close();
     await tour.close();
+  });
+});
+
+describe("pendingAfterRebuild (M6 E0b: what is still to save after a write)", () => {
+  // Why: a page that keeps editing while a save runs (the phone's Finish
+  // during a rebuild, the desktop editor's continuous saving) must drop
+  // exactly what the written zip carries - by CONTENT, not id: an object
+  // edited again while the zip was rebuilt is in neither and waits for the
+  // next save (M2c review #6). The phone had this inline; E2 needs it too.
+  const written = manifestOf([pin("a", "saved text"), pin("b")]);
+
+  it("drops what the zip carries with the same content, keeps a later edit and a new placement", () => {
+    const savedA = { object: pin("a", "saved text") };
+    const editedAgain = { object: pin("b", "edited during the save") };
+    const placedDuring = { object: pin("c") };
+    const out = pendingAfterRebuild(
+      { placed: [savedA, editedAgain, placedDuring], deleted: [] },
+      written,
+      [],
+    );
+    expect(out.placed).toEqual([editedAgain, placedDuring]);
+    expect(out.finished).toEqual([savedA]);
+  });
+
+  it("clears only the deletions the write applied", () => {
+    const out = pendingAfterRebuild(
+      { placed: [], deleted: ["gone", "deleted-during-the-save"] },
+      written,
+      ["gone"],
+    );
+    expect(out.deleted).toEqual(["deleted-during-the-save"]);
+  });
+
+  it("keeps the caller's objects, so a photo's bytes travel with it", () => {
+    const shot = { object: photo("p"), blob: new Blob(["jpg"]) };
+    const out = pendingAfterRebuild(
+      { placed: [shot], deleted: [] },
+      manifestOf([photo("p")]),
+      [],
+    );
+    expect(out.finished[0]).toBe(shot);
+  });
+});
+
+describe("captureSpotsForRebuild (M6 E0b: the photos' spots for a save)", () => {
+  // Why: the tour's own spots, else baked from its recording, else none -
+  // and only a cap or a failed integrity check fails the save. The phone's
+  // Finish had this inline; a desktop save of an older tour with a
+  // recording must publish the same file the phone would (E0 review #5).
+  const OWN: TourCaptureSpots = SPOTS;
+  const noRecording = {
+    hasRecording: false,
+    entries: [],
+    loadSessionMeta: () => Promise.resolve(null),
+    loadRecordingActions: () => Promise.resolve(null),
+  };
+
+  it("takes the tour's own spots without reading the recording", async () => {
+    const read = vi.fn(() => Promise.resolve(null));
+    await expect(
+      captureSpotsForRebuild(
+        { ...noRecording, hasRecording: true, loadRecordingActions: read },
+        { ...manifestOf([]), captureSpots: OWN },
+      ),
+    ).resolves.toEqual({ spots: OWN });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("has none for a tour without a recording", async () => {
+    await expect(
+      captureSpotsForRebuild(noRecording, manifestOf([])),
+    ).resolves.toEqual({});
+  });
+
+  it("says why when the recording cannot be read, and does not fail the save", async () => {
+    const out = await captureSpotsForRebuild(
+      {
+        ...noRecording,
+        hasRecording: true,
+        loadRecordingActions: () => Promise.reject(new Error("bad entry")),
+      },
+      manifestOf([]),
+    );
+    expect(out).toEqual({
+      notPlaced: "reading the recording failed: bad entry",
+    });
+  });
+
+  it("fails the save on a cap or a failed integrity check", async () => {
+    for (const error of [
+      new ArchiveLimitError("archive-bytes", 1, 2),
+      new TourIntegrityError("bad-signature", "the signature does not match"),
+    ]) {
+      await expect(
+        captureSpotsForRebuild(
+          {
+            ...noRecording,
+            hasRecording: true,
+            loadRecordingActions: () => Promise.reject(error),
+          },
+          manifestOf([]),
+        ),
+      ).rejects.toBe(error);
+    }
+  });
+
+  it("passes on a bake that declines as the reason", async () => {
+    const out = await captureSpotsForRebuild(
+      { ...noRecording, hasRecording: true },
+      manifestOf([]),
+    );
+    expect(out).toEqual({ notPlaced: "no recording in this tour" });
   });
 });

@@ -13,7 +13,9 @@ M4 makes it write every code of the book, not only the one in hand.
 Since M6 E0 the page-free rules below - the manifest with the edits, the
 title, the files written and removed, the series successor, the newest
 bytes as input, the session's budget - run in `finish-rebuild.ts`
-(`rebuildFinishedTour`), shared with the desktop editor. This file keeps
+(`rebuildFinishedTour`), shared with the desktop editor; since E0b also
+the photo-spot rule (`captureSpotsForRebuild`, this file passes its
+progress line) and the bookkeeping after a write (`pendingAfterRebuild`). This file keeps
 the page: readiness, the settle, the capture-spot bake, progress, the
 re-checks of `ctx.session`, what the written zip changes on the page, and
 the hand-off. The rules are described here as the Finish's behaviour; the

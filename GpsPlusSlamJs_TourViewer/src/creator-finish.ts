@@ -15,10 +15,6 @@ import {
   type TourCaptureSpots,
   type TourManifest,
 } from "gps-plus-slam-app-framework/ar/tour-manifest";
-import { TourIntegrityError } from "gps-plus-slam-app-framework/ar/tour-signed-manifest";
-import { ArchiveLimitError } from "gps-plus-slam-app-framework/storage";
-import { objectContentKey } from "./authoring-draft.js";
-import { bakeCaptureSpots } from "./capture-bake.js";
 import {
   downloadSafeName,
   nameSurvivesDownload,
@@ -29,7 +25,11 @@ import type { CreatorHandoff } from "./creator-handoff.js";
 import type { CreatorMeasuring } from "./creator-measuring.js";
 import type { CreatorPreviews } from "./creator-previews.js";
 import type { CreatorSettle } from "./creator-settle.js";
-import { rebuildFinishedTour } from "./finish-rebuild.js";
+import {
+  captureSpotsForRebuild,
+  pendingAfterRebuild,
+  rebuildFinishedTour,
+} from "./finish-rebuild.js";
 import { FINISH_LABELS, finishReadiness } from "./qr-author-mode.js";
 import { authoringFinished } from "./tour-authoring-actions.js";
 import { scanEntryNames } from "./tour-read-set.js";
@@ -131,42 +131,20 @@ export function wireCreatorFinish(deps: {
       deps.sessionLive() || ctx.rebuiltZip !== null || scanMemo.count === 0;
   }
 
-  /**
-   * The recorded photos' spots for this Finish (scan-pass plan S1, S-D11):
-   * the tour's own when it carries them, else baked from its recording,
-   * else none - the tour then keeps the visitor's live join, as before S1,
-   * and `notPlaced` says why for the creator. A recording that cannot be
-   * read or joined never fails the Finish; a cap's refusal and a failed
-   * integrity check do, as every read's does.
-   */
-  async function captureSpotsForFinish(
+  /** The recorded photos' spots for this Finish: the shared rule
+   *  (`finish-rebuild.ts` `captureSpotsForRebuild`, M6 E0b) with this
+   *  page's progress line and its re-open check. */
+  function captureSpotsForFinish(
     current: TourSession,
     manifest: TourManifest,
   ): Promise<{ spots?: TourCaptureSpots; notPlaced?: string }> {
-    if (manifest.captureSpots !== undefined) {
-      return { spots: manifest.captureSpots };
-    }
-    if (!current.hasRecording) return {};
-    try {
-      const bake = await bakeCaptureSpots(current, {
-        shouldContinue: () => ctx.session === current,
-        onChunk: (done, total) => {
-          ctx.finishProgress = FINISH_LABELS.placingPhotos(done, total);
-          deps.render();
-        },
-      });
-      return bake.kind === "baked"
-        ? { spots: bake.spots }
-        : { notPlaced: bake.reason };
-    } catch (err) {
-      if (err instanceof ArchiveLimitError) throw err;
-      if (err instanceof TourIntegrityError) throw err;
-      return {
-        notPlaced: `reading the recording failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      };
-    }
+    return captureSpotsForRebuild(current, manifest, {
+      shouldContinue: () => ctx.session === current,
+      onChunk: (done, total) => {
+        ctx.finishProgress = FINISH_LABELS.placingPhotos(done, total);
+        deps.render();
+      },
+    });
   }
 
   function readiness(): ReturnType<typeof finishReadiness> {
@@ -323,24 +301,23 @@ export function wireCreatorFinish(deps: {
         // waits for the next Finish (M2c review #6). A photo that leaves
         // keeps its bytes here for its preview: the hosted zip does not
         // have them until the creator uploads this one.
-        const inZip = new Map(
-          written.objects.map((o) => [o.id, objectContentKey(o)]),
+        // The shared rule (`pendingAfterRebuild`, M6 E0b), on the lists
+        // as they are NOW: a placement that landed during the rebuild stays.
+        const pending = pendingAfterRebuild(
+          { placed: ctx.placedObjects, deleted: ctx.deletedObjectIds },
+          written,
+          deleted,
         );
-        const kept: typeof ctx.placedObjects = [];
-        for (const p of ctx.placedObjects) {
-          if (inZip.get(p.object.id) !== objectContentKey(p.object)) {
-            kept.push(p);
-          } else if (p.blob !== undefined) {
+        for (const p of pending.finished) {
+          if (p.blob !== undefined) {
             deps.previews.keepFinishedPhoto(p.object.id, p.blob);
           }
         }
-        ctx.placedObjects = kept;
+        ctx.placedObjects = pending.placed;
         // The deletions are applied: the manifest no longer carries them.
         // (Their tombstones stay in the draft until the hosted zip lacks
         // them too - the same proof the objects wait for.)
-        ctx.deletedObjectIds = ctx.deletedObjectIds.filter(
-          (id) => !deleted.includes(id),
-        );
+        ctx.deletedObjectIds = pending.deleted;
         deps.previews.sync();
         wroteZip = true;
         deps.codes.finished(levels);
