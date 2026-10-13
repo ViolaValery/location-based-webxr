@@ -33,6 +33,8 @@ the rail and the card in the chosen variant 1 layout, and edits it (E2a).
   Undo toast for 8 s (the phone's hold) that a Save ends sooner, since
   the saved file no longer carries the object. Codes, stations and the
   walk's recorded photos stay read-only.
+  A refused undo (the delete already written) says so in a toast
+  rather than doing nothing.
 - **Save** builds the tour (`keepScan` from the "Keep the walk recording"
   switch, shown only for a tour that carries a walk) and downloads it
   through the framework's `downloadZip` under `finishedFileName`; the

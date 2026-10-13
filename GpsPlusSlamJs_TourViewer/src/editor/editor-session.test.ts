@@ -217,6 +217,32 @@ describe("createEditorSession, the review's cases (E0c + E2a review #9, #10, #12
     await session.close();
   });
 
+  // Why (E2b plan review #2, DEC-A3): a save that was already running when
+  // the delete was made did not write it, so its end must not end the
+  // undo - it silently did, and the creator's Undo tap did nothing.
+  it("keeps the undo of a delete made while a save runs, until a save writes it", async () => {
+    const { session, manifest } = await opened([pin("a"), pin("b")]);
+    const editor = createEditorSession({
+      session,
+      manifest,
+      levels: new Map(),
+    });
+    editor.editText("b", "First");
+    const running = editor.save({ keepScan: false });
+    const undo = editor.remove("a");
+    await running;
+    expect(undo()).toBe(true);
+    expect(editor.model().items.map((i) => i.id)).toEqual(["a", "b"]);
+    const again = editor.remove("a");
+    const writes = editor.save({ keepScan: false });
+    await writes;
+    expect(again()).toBe(false);
+    expect(
+      (await carried((await writes).blob)).objects.map((o) => o.id),
+    ).toEqual(["b"]);
+    await session.close();
+  });
+
   it("keeps a deleted photo's file gone across two saves", async () => {
     // Why: the second save rebuilds from the first one's bytes; from the
     // opened zip again, the deleted photo's file would come back.

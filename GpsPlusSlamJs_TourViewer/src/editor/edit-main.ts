@@ -44,6 +44,12 @@ const SAMPLE_NAME = "marienplatz-tour.zip";
 const EDGE_PX = 12;
 /** Below this width the rail starts folded (the prototype's 760 px). */
 const NARROW_PX = 760;
+/** An undo tapped after a save already wrote the delete (E2b plan
+ *  review #2). The page ends an undo when a save starts, so this is the
+ *  defensive answer, not an expected path. */
+const UNDO_TOO_LATE =
+  "That delete is already in the saved file - it cannot be undone here.";
+
 /** How long a delete can be undone - the phone's hold (`object-editing.ts`
  *  `OUTCOME_HOLD_MS`). A Save ends it sooner: the saved file no longer
  *  carries the object. */
@@ -376,7 +382,8 @@ const card = createEditorCard(
         label: "Undo",
         run: () => {
           endUndo();
-          undo();
+          // Refused once a save wrote the delete: said, never a dead tap.
+          if (!undo()) toast(UNDO_TOO_LATE);
           refresh();
         },
       });

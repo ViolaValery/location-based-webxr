@@ -95,8 +95,11 @@ export function createEditorSession(input: {
   /** The name the page shows when the tour has no title. */
   const shownName = input.fileName ?? savedName;
 
-  /** Completed saves: an undo made before one is refused after it. */
-  let saves = 0;
+  /** Saves whose snapshot was taken, and the newest of them that ended:
+   *  a delete is written once a save that snapshotted AFTER it ended, and
+   *  only then is its undo refused (E2b plan review #2). */
+  let snapshots = 0;
+  let writtenUpTo = 0;
   /** The saves started and not yet ended, and the end of the last. */
   let inFlight = 0;
   let tail: Promise<unknown> = Promise.resolve();
@@ -154,9 +157,9 @@ export function createEditorSession(input: {
       const gone = deleteObject({ placed, deleted }, find(id));
       placed = gone.placed;
       deleted = gone.deleted;
-      const at = saves;
+      const at = snapshots;
       return () => {
-        if (saves !== at) return false;
+        if (writtenUpTo > at) return false;
         const back = undoDelete({ placed, deleted }, gone.record);
         placed = back.placed;
         deleted = back.deleted;
@@ -181,6 +184,8 @@ export function createEditorSession(input: {
   }): Promise<EditorSave> {
     // Snapshots before the first await: an edit made from here on waits
     // for the next save (`pendingAfterRebuild`).
+    snapshots += 1;
+    const snapshot = snapshots;
     const placedNow = [...placed];
     const deletedNow = [...deleted];
     const manifestNow = manifest;
@@ -211,7 +216,7 @@ export function createEditorSession(input: {
     );
     placed = pending.placed;
     deleted = pending.deleted;
-    saves += 1;
+    writtenUpTo = snapshot;
     return {
       blob: finished.blob,
       filename: savedName,
