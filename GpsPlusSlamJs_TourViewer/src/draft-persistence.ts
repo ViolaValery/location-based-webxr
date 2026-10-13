@@ -25,7 +25,7 @@ import {
 import { isWritableQrLevelId } from "gps-plus-slam-app-framework/ar/qr/qr-level-archive";
 import type { DraftFileStore } from "gps-plus-slam-app-framework/storage";
 
-import type { AuthoringDraft } from "./authoring-draft.js";
+import { objectContentKey, type AuthoringDraft } from "./authoring-draft.js";
 import {
   parseVisitLogEntry,
   serializeVisitLogEntry,
@@ -73,6 +73,14 @@ const OBJECT_PREFIX = "object:";
 const PHOTO_PREFIX = "photo:";
 const DELETED_PREFIX = "deleted:";
 const VISIT_PREFIX = "visit:";
+const BASE_PREFIX = "base:";
+
+/** An object's base (M6 E2p): the content key of the hosted version its
+ *  record started from or reached. Its own file, so a draft from before
+ *  E2p reads unchanged and a base is written once, not with every edit. */
+export function baseKey(id: string): string {
+  return `${BASE_PREFIX}${id}`;
+}
 
 /** A placed object's file key. */
 export function objectKey(id: string): string {
@@ -121,6 +129,50 @@ export async function removeDraftObject(
   await store.remove(photoKey(id));
   await store.remove(deletedKey(id));
   await store.remove(visitKey(id));
+  await store.remove(baseKey(id));
+}
+
+/**
+ * Record a placement or an edit, and - the first time an object the open
+ * tour carries is written - the hosted version it started from (M6 E2p):
+ * a newer edit elsewhere then wins over this record. A later write keeps
+ * the first base. `hosted` is the tour's own version, or undefined for an
+ * object the tour does not carry (a new placement).
+ */
+export async function writeDraftEdit(
+  store: DraftFileStore,
+  object: TourObject,
+  blob: Blob | undefined,
+  hosted: TourObject | undefined,
+): Promise<boolean> {
+  // Both at once: the edit's in-progress state lasts one write, not two.
+  const [wrote, based] = await Promise.all([
+    writeDraftObject(store, object, blob),
+    hosted === undefined
+      ? Promise.resolve(true)
+      : baseOnce(store, object.id, hosted),
+  ]);
+  return wrote && based;
+}
+
+/** Write the base unless the draft already has one: the first edit's
+ *  hosted version is kept. */
+async function baseOnce(
+  store: DraftFileStore,
+  id: string,
+  hosted: TourObject,
+): Promise<boolean> {
+  if ((await store.getText(baseKey(id))) !== undefined) return true;
+  return writeDraftBase(store, id, objectContentKey(hosted));
+}
+
+/** Record an object's base (M6 E2p). */
+export async function writeDraftBase(
+  store: DraftFileStore,
+  id: string,
+  base: string,
+): Promise<boolean> {
+  return store.put(baseKey(id), base);
 }
 
 /**
@@ -342,6 +394,7 @@ export async function readDraft(
           PHOTO_PREFIX,
           DELETED_PREFIX,
           VISIT_PREFIX,
+          BASE_PREFIX,
         ]) {
           if (key.startsWith(prefix)) return [key.slice(prefix.length)];
         }
@@ -391,6 +444,15 @@ export async function readDraft(
     (a, b) =>
       a.createdAtIso.localeCompare(b.createdAtIso) || a.id.localeCompare(b.id),
   );
+  // The bases (M6 E2p), unless rejected; none at all in an older draft.
+  const bases = new Map<string, string>();
+  for (const key of keys) {
+    if (!key.startsWith(BASE_PREFIX)) continue;
+    const id = key.slice(BASE_PREFIX.length);
+    if (rejected.has(id)) continue;
+    const text = await store.getText(key);
+    if (text !== undefined && text !== "") bases.set(id, text);
+  }
   const visits = await readVisits(store, keys, rejected);
   const onDisk = new Set(storedIds);
   return {
@@ -409,6 +471,7 @@ export async function readDraft(
           : [meta.level],
       objects,
       deleted: deleted.sort(),
+      ...(bases.size === 0 ? {} : { bases }),
     },
     photos,
     rejectedIds: [...rejected].filter((id) => onDisk.has(id)),

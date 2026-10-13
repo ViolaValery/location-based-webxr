@@ -20,6 +20,11 @@ M2 (`GpsPlusSlamJs_Docs/docs/2026-10-06-1601-tour-viewer-code-book-refactor-plan
     visit is recorded into it, and `notLive` keeps this page's visits out
     of any sweep.
 - `CreatorDraft`:
+  - On `present` (M6 E2p): records a newer edit elsewhere superseded are
+    not offered and one line says so (`ctx.placementNote`); records the
+    hosted zip carries unchanged get their base. Object writes
+    (`recordPlacement`) go through `writeDraftEdit` with the open tour's
+    own version.
   - `present(tourUrl)` - a tour opened and its manifest settled: open the
     namespace, then sweep a spent draft, offer what is not hosted yet, or
     start one. Every continuation re-checks `ctx.openGeneration`.

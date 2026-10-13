@@ -33,6 +33,9 @@ import {
   draftKeyForTour,
   draftLevels,
   draftObjectsNotYetHosted,
+  draftObjectsPublishedWithoutBase,
+  draftObjectsSuperseded,
+  objectContentKey,
   restoredText,
   restoreOfferText,
   type AuthoringDraft,
@@ -418,5 +421,85 @@ describe("a draft with several codes (code book plan M4c-1)", () => {
     expect(draftHasUnhostedLevel(one, "old")).toBe(true);
     expect(draftLevels(one)).toEqual([a]);
     expect(draftLevels(twoCodes)).toEqual([a, b]);
+  });
+});
+
+describe("a newer edit elsewhere wins over the phone's draft (M6 E2p)", () => {
+  // Why (E2 plan review #1): the desktop editor edits the hosted file. A
+  // phone draft that still held an older edit of the same object offered
+  // it back ("1 change. Add it back?"), and a yes reverted the desktop's
+  // edit; a pin the desktop deleted came back as "1 thing you placed".
+  const manifestOf = (objects: TourObject[]): TourManifest => ({
+    ...createEmptyTourManifest(),
+    objects,
+  });
+  const relabel = (o: TourObject, label: string): TourObject => ({
+    ...o,
+    label,
+  });
+
+  it("does not offer an edit whose hosted object was edited again elsewhere", () => {
+    const hostedThen = pin("a");
+    const phoneEdit = relabel(hostedThen, "phone");
+    const draft: AuthoringDraft = {
+      ...draftOf([phoneEdit]),
+      bases: new Map([["a", objectContentKey(hostedThen)]]),
+    };
+    const hostedNow = manifestOf([relabel(hostedThen, "desktop")]);
+    expect(draftObjectsNotYetHosted(draft, hostedNow)).toEqual([]);
+    expect(draftObjectsSuperseded(draft, hostedNow).map((o) => o.id)).toEqual([
+      "a",
+    ]);
+  });
+
+  it("does not revive an object deleted elsewhere after it was published", () => {
+    const placed = pin("p");
+    const draft: AuthoringDraft = {
+      ...draftOf([placed]),
+      bases: new Map([["p", objectContentKey(placed)]]),
+    };
+    expect(draftObjectsNotYetHosted(draft, manifestOf([]))).toEqual([]);
+    expect(draftObjectsSuperseded(draft, manifestOf([]))).toHaveLength(1);
+  });
+
+  it("still offers an edit made on top of the hosted version it started from", () => {
+    const hosted = pin("a");
+    const draft: AuthoringDraft = {
+      ...draftOf([relabel(hosted, "phone")]),
+      bases: new Map([["a", objectContentKey(hosted)]]),
+    };
+    expect(
+      draftObjectsNotYetHosted(draft, manifestOf([hosted])).map((o) => o.id),
+    ).toEqual(["a"]);
+  });
+
+  it("still offers a new placement, and treats a draft without bases as before", () => {
+    const draft = draftOf([pin("new"), relabel(pin("a"), "phone")]);
+    expect(
+      draftObjectsNotYetHosted(draft, manifestOf([pin("a")])).map((o) => o.id),
+    ).toEqual(["new", "a"]);
+    expect(draftObjectsSuperseded(draft, manifestOf([pin("a")]))).toEqual([]);
+  });
+
+  it("lets a draft whose only objects were superseded be spent", () => {
+    const hostedThen = pin("a");
+    const draft: AuthoringDraft = {
+      ...draftOf([relabel(hostedThen, "phone")]),
+      level: null,
+      bases: new Map([["a", objectContentKey(hostedThen)]]),
+    };
+    expect(
+      draftIsSpent(draft, manifestOf([relabel(hostedThen, "desktop")])),
+    ).toBe(true);
+  });
+
+  it("names the objects that reached the hosted zip without a base yet", () => {
+    const published = pin("p");
+    const draft = draftOf([published, pin("pending")]);
+    expect(
+      draftObjectsPublishedWithoutBase(draft, manifestOf([published])).map(
+        (o) => o.id,
+      ),
+    ).toEqual(["p"]);
   });
 });

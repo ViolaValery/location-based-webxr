@@ -15,6 +15,7 @@
  * is stood in.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { objectContentKey } from "./authoring-draft.js";
 import {
   buildObjectPoints,
   projectViewPoint,
@@ -2101,6 +2102,21 @@ describe(
       expect(a.ctx.placedObjects[0]?.object).toMatchObject({
         label: "The old mill",
       });
+    });
+
+    it("records the hosted version an edit started from, once (M6 E2p)", async () => {
+      // Why: the base is what lets a newer edit elsewhere (the desktop
+      // editor) win over this draft; a second edit must not move it.
+      const { store, files } = memoryDraftStore();
+      const hosted = hostedPin("h1", "Gate");
+      const a = await withHostedTour([hosted], store);
+      a.pick.fn = () => "h1";
+      a.setup.selectInView(null);
+      a.dom.objectList.listHandlers!.editText("h1", "First");
+      await flush();
+      a.dom.objectList.listHandlers!.editText("h1", "Second");
+      await flush();
+      expect(files.get("base:h1")).toBe(objectContentKey(hosted));
     });
 
     it("shows the edit as in progress until the draft write lands, then says whether it did", async () => {

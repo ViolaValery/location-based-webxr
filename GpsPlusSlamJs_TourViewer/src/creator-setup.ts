@@ -62,7 +62,7 @@ import type { SelectTargetRay } from "gps-plus-slam-app-framework/ar";
 import {
   removeDraftDeletion,
   writeDraftDeletion,
-  writeDraftObject,
+  writeDraftEdit,
 } from "./draft-persistence.js";
 
 import type { SummaryPanel } from "./summary-panel.js";
@@ -344,8 +344,16 @@ export function wireCreatorSetup(deps: {
       gpsAccuracyM: authorAlignmentInfo().gpsAccuracyM,
     }),
     codes: () => codes.storedPoses(),
+    // With its base, the first time a hosted object is written (M6 E2p).
     saveDraftObject: (object, blob) =>
-      draft.write(object.id, (store) => writeDraftObject(store, object, blob)),
+      draft.write(object.id, (store) =>
+        writeDraftEdit(
+          store,
+          object,
+          blob,
+          ctx.tourManifest?.objects.find((o) => o.id === object.id),
+        ),
+      ),
     saveDraftDeletion: (id) =>
       draft.write(id, (store) => writeDraftDeletion(store, id)),
     forgetDraftDeletion: (id) =>

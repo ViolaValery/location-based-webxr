@@ -30,11 +30,14 @@ import {
   photoKey,
   readDraft,
   removeDraftObject,
+  writeDraftBase,
+  writeDraftEdit,
   writeDraftDeletion,
   writeDraftMeta,
   writeDraftObject,
 } from "./draft-persistence.js";
 import type { VisitLogEntry } from "./visit-log.js";
+import { objectContentKey } from "./authoring-draft.js";
 
 /** An in-memory store with the same contract as the OPFS one. */
 function memoryStore(): DraftFileStore & { files: Map<string, Blob | string> } {
@@ -673,5 +676,55 @@ describe("a draft written before format version 2 (tour kit plan K1, §8 D7)", (
     );
     expect(finished).toMatchObject({ version: 1 });
     expect(parseTourManifest(finished).objects).toEqual(stored?.draft.objects);
+  });
+});
+
+describe("the bases of a draft's objects (M6 E2p)", () => {
+  // Why: a base says which hosted version the phone's record started from
+  // (or reached), so a newer edit elsewhere wins over it; it must survive
+  // a reload, go with its object, and be absent - not empty - in a draft
+  // from before E2p, which then behaves as before.
+  it("round-trips a base beside its object, and drops it with the object", async () => {
+    const store = memoryStore();
+    await writeDraftMeta(store, META);
+    await writeDraftObject(store, pin("a"));
+    expect(await writeDraftBase(store, "a", "the-hosted-key")).toBe(true);
+    const read = await readDraft(store);
+    expect(read?.draft.bases?.get("a")).toBe("the-hosted-key");
+    await removeDraftObject(store, "a");
+    expect([...store.files.keys()].some((k) => k.endsWith(":a"))).toBe(false);
+  });
+
+  it("has no bases at all in a draft from before E2p", async () => {
+    const store = memoryStore();
+    await writeDraftMeta(store, META);
+    await writeDraftObject(store, pin("a"));
+    expect((await readDraft(store))?.draft.bases).toBeUndefined();
+  });
+});
+
+describe("writeDraftEdit (M6 E2p)", () => {
+  // Why: the base is the hosted version the edit STARTED from. A second
+  // edit of the same object must not move it to a later version, or a
+  // newer edit elsewhere would no longer be recognised.
+  it("records the hosted version at the first write and keeps it after", async () => {
+    const store = memoryStore();
+    await writeDraftMeta(store, META);
+    const hosted = pin("a");
+    await writeDraftEdit(store, { ...hosted, label: "one" }, undefined, hosted);
+    await writeDraftEdit(store, { ...hosted, label: "two" }, undefined, {
+      ...hosted,
+      label: "a later version",
+    });
+    const read = await readDraft(store);
+    expect(read?.draft.bases?.get("a")).toBe(objectContentKey(hosted));
+    expect(read?.draft.objects[0]).toMatchObject({ label: "two" });
+  });
+
+  it("writes no base for an object the tour does not carry", async () => {
+    const store = memoryStore();
+    await writeDraftMeta(store, META);
+    await writeDraftEdit(store, pin("new"), undefined, undefined);
+    expect((await readDraft(store))?.draft.bases).toBeUndefined();
   });
 });

@@ -20,15 +20,20 @@ import {
   draftIsSpent,
   draftKeyForTour,
   draftObjectsNotYetHosted,
+  draftObjectsPublishedWithoutBase,
+  draftObjectsSuperseded,
+  objectContentKey,
   restoredText,
+  supersededLine,
   restoreOfferText,
 } from "./authoring-draft.js";
 import {
   readDraft,
   removeDraftObject,
+  writeDraftBase,
   writeDraftDeletion,
+  writeDraftEdit,
   writeDraftMeta,
-  writeDraftObject,
   writeDraftVisit,
 } from "./draft-persistence.js";
 import type { CreatorCodes } from "./creator-codes.js";
@@ -230,6 +235,12 @@ export function wireCreatorDraft(deps: {
    * already happened in memory, and the draft is a safety net - a storage
    * problem must never fail the tap that made it.
    */
+  /** The open tour's own version of an object, for its draft base (M6
+   *  E2p); undefined for an object the tour does not carry. */
+  function hostedVersion(id: string): TourObject | undefined {
+    return ctx.tourManifest?.objects.find((o) => o.id === id);
+  }
+
   function recordPlacement(object: TourObject, blob?: Blob): void {
     const store = draftStore;
     const tourUrl = draftTourUrl;
@@ -242,7 +253,7 @@ export function wireCreatorDraft(deps: {
       return;
     }
     void writeForObject(store, tourUrl, object.id, (s) =>
-      writeDraftObject(s, object, blob),
+      writeDraftEdit(s, object, blob, hostedVersion(object.id)),
     ).then((ok) => {
       if (!ok) noteNoPersistence();
     });
@@ -648,6 +659,14 @@ export function wireCreatorDraft(deps: {
         void recordMeta(tourUrl);
         return;
       }
+      // A newer edit elsewhere wins (M6 E2p, owner question Q-E2-2's
+      // default): those records are not offered back, and the page says
+      // so once.
+      const superseded = draftObjectsSuperseded(stored.draft, ctx.tourManifest);
+      if (superseded.length > 0) {
+        ctx.placementNote = supersededLine(superseded.length);
+        deps.render();
+      }
       const waiting = draftObjectsNotYetHosted(stored.draft, ctx.tourManifest);
       const waitingDeletions = draftDeletionsNotYetHosted(
         stored.draft,
@@ -710,6 +729,18 @@ export function wireCreatorDraft(deps: {
         if (stale()) return;
         for (const id of sweep) sweepRejected(store, tourUrl, id);
         return;
+      }
+      // The draft stays: records the hosted zip already carries get their
+      // base now (M6 E2p), so a later delete elsewhere is not undone. Not
+      // on the spent path above, which must leave the files alone when its
+      // commit is refused.
+      for (const o of draftObjectsPublishedWithoutBase(
+        stored.draft,
+        ctx.tourManifest,
+      )) {
+        void writeForObject(store, tourUrl, o.id, (s) =>
+          writeDraftBase(s, o.id, objectContentKey(o)),
+        );
       }
       const hasLevel = draftHasUnhostedLevel(stored.draft, hostedLevel);
       // New placements, and changes of objects the hosted zip carries.

@@ -13,6 +13,17 @@ asked. Pure - the OPFS mechanics are the framework's
   `deleted` holds the ids deleted on this device (tombstones, authoring
   plan 2026-09-28-0953 §3.4, M4).
 - `draftKeyForTour(tourUrl) -> string`.
+- **A newer edit elsewhere wins (M6 E2p, the E2 plan review #1).** A
+  draft may carry `bases` (per object id, the content key of the hosted
+  version its record started from or reached). With a base, a record
+  whose hosted object changed since, or is gone though it was hosted, is
+  SUPERSEDED: not offered, not keeping the draft alive
+  (`draftObjectsSuperseded`); the page says so (`supersededLine`, owner
+  question Q-E2-2's default). `draftObjectsPublishedWithoutBase` names the
+  records the hosted zip carries with the same content and no base yet -
+  the page gives them one, so a later delete elsewhere is not undone. A
+  draft without bases (every draft before E2p) behaves as before. Not
+  covered: a phone deletion against a newer edit elsewhere.
 - `draftObjectsNotYetHosted(draft, manifest) -> readonly TourObject[]` -
   the whole state machine in one function; see the invariants. Compares
   CONTENT (`objectContentKey`), not ids.

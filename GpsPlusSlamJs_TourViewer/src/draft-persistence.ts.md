@@ -18,6 +18,14 @@ are the framework's.
   optional, and `readDraft` returns the one `level` as the list for a meta
   written before it. Each entry is checked like `level`; one that does not
   read costs itself (`draft.levels`).
+- `writeDraftEdit(store, object, blob, hosted)` (M6 E2p) - a placement or
+  an edit, and, the first time an object the open tour carries is
+  written, its base (`base:<id>`, the hosted version's content key); a
+  later write keeps the first base. Both writes run at once. The page's
+  object writes go through it.
+- `writeDraftBase(store, id, base)`, `baseKey(id)` - one base. `readDraft`
+  reads them into `draft.bases` (absent when there are none);
+  `removeDraftObject` removes it with the object's other files.
 - `writeDraftObject(store, object, blob?)` - one placement. Returns false
   if either file failed, so a half-written photo is reported rather than
   believed.

@@ -59,6 +59,10 @@ export interface AuthoringDraft {
    *  2026-09-28-0953 §3.4): pending while the hosted zip still carries
    *  them. */
   deleted: readonly string[];
+  /** Per object id, the content key (`objectContentKey`) of the hosted
+   *  version this device's record started from, or reached (M6 E2p).
+   *  Absent in a draft from before E2p: such a draft behaves as before. */
+  bases?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -97,10 +101,69 @@ export function draftObjectsNotYetHosted(
   // #8): an edit or a move of a hosted object keeps its id, so "the zip has
   // this id" said the edit was already published - the restore dropped it
   // and the spent rule deleted the draft that held it.
-  const hosted = new Map(
+  const hosted = hostedKeys(manifest);
+  return draft.objects.filter(
+    (o) =>
+      hosted.get(o.id) !== objectContentKey(o) &&
+      !superseded(draft, hosted, o.id),
+  );
+}
+
+function hostedKeys(manifest: TourManifest | null): Map<string, string> {
+  return new Map(
     (manifest?.objects ?? []).map((o) => [o.id, objectContentKey(o)]),
   );
-  return draft.objects.filter((o) => hosted.get(o.id) !== objectContentKey(o));
+}
+
+/** A newer edit elsewhere won (M6 E2p): the hosted object changed since
+ *  the version this record started from, or it is gone though it was
+ *  hosted once. Never true without a base (a draft from before E2p, a
+ *  new placement not yet published). */
+function superseded(
+  draft: AuthoringDraft,
+  hosted: ReadonlyMap<string, string>,
+  id: string,
+): boolean {
+  const base = draft.bases?.get(id);
+  if (base === undefined) return false;
+  const now = hosted.get(id);
+  return now === undefined || now !== base;
+}
+
+/**
+ * The draft's objects a newer edit elsewhere replaced (M6 E2p, the E2
+ * plan review #1): edited or deleted in the hosted file since this device
+ * changed them. They are not offered back - the hosted file wins (owner
+ * question Q-E2-2's default) - and the page says so.
+ */
+export function draftObjectsSuperseded(
+  draft: AuthoringDraft,
+  manifest: TourManifest | null,
+): readonly TourObject[] {
+  const hosted = hostedKeys(manifest);
+  return draft.objects.filter(
+    (o) =>
+      hosted.get(o.id) !== objectContentKey(o) &&
+      superseded(draft, hosted, o.id),
+  );
+}
+
+/**
+ * The draft's objects the hosted zip carries with the same content and
+ * that have no base yet (M6 E2p): they reached the file the world sees,
+ * so their base is set to that content - a later delete elsewhere is then
+ * not undone by this draft.
+ */
+export function draftObjectsPublishedWithoutBase(
+  draft: AuthoringDraft,
+  manifest: TourManifest | null,
+): readonly TourObject[] {
+  const hosted = hostedKeys(manifest);
+  return draft.objects.filter(
+    (o) =>
+      draft.bases?.has(o.id) !== true &&
+      hosted.get(o.id) === objectContentKey(o),
+  );
 }
 
 /** The draft's deletions the hosted zip still carries: not yet published. */
@@ -341,4 +404,12 @@ export function restoredText(
   const alsoVisits =
     visits > 0 ? ` ${visitWords} came back for the summary too.` : "";
   return `${listed(parts)} restored - ${total === 1 ? "it goes" : "they go"} into the zip on the next Finish.${alsoVisits}${measured}`;
+}
+
+/** Said when the phone's draft gave way to newer edits in the tour file
+ *  (M6 E2p; owner question Q-E2-2's default: the file wins, said once). */
+export function supersededLine(count: number): string {
+  return count === 1
+    ? "1 change on this phone was replaced by a newer one in the tour file."
+    : `${String(count)} changes on this phone were replaced by newer ones in the tour file.`;
 }

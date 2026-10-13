@@ -42,6 +42,10 @@ input, and the hooks, which fan out to each module's `endVisit` / `reset`.
 
 ## Crash-safe authoring and the Finish's file
 
+The object list's draft writes (`saveDraftObject`) go through
+`writeDraftEdit` with the open tour's own version, so an edit of a hosted
+object records the version it started from (M6 E2p).
+
 The on-device draft (second testing session, F13) is `creator-draft.ts`
 since the code book plan's M2 split; its sidecar holds the rules that
 were here. What stays is the Finish's side:
