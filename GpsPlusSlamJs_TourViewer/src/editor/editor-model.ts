@@ -15,7 +15,11 @@ import type {
   TourObject,
 } from "gps-plus-slam-app-framework/ar/tour-manifest";
 import { codeDistanceLine, objectTitle } from "../object-describe.js";
-import { buildSummaryModel, type MapPoint } from "../summary-model.js";
+import {
+  buildSummaryModel,
+  readablePoint,
+  type MapPoint,
+} from "../summary-model.js";
 
 export type EditorItemKind = "code" | "pin" | "photo" | "station";
 
@@ -55,15 +59,6 @@ export const RECORDED_PREFIX = "recorded:";
 /** A station's id in the editor: stations and objects have separate id
  *  spaces in the manifest. */
 export const STATION_PREFIX = "station:";
-
-function readable(p: MapPoint): boolean {
-  return (
-    Number.isFinite(p.lat) &&
-    Number.isFinite(p.lng) &&
-    Math.abs(p.lat) <= 90 &&
-    Math.abs(p.lng) <= 180
-  );
-}
 
 function noteMeta(object: TourObject, codes: readonly QrGeoPose[]): string {
   const distance = codeDistanceLine(object, codes);
@@ -106,24 +101,27 @@ export function buildEditorModel(input: {
         : { lat: code.reference.lat, lng: code.reference.lng },
     number: index + 1,
   }));
-  const byId = new Map(manifest.objects.map((o) => [o.id, o]));
-  const notes: EditorItem[] = summary.objects.flatMap((s) => {
-    const object = byId.get(s.id);
-    if (object === undefined) return [];
-    return [
-      {
-        id: s.id,
-        kind: s.kind,
-        title: objectTitle(object),
-        meta: noteMeta(object, stored),
-        at: { lat: s.lat, lng: s.lng },
-        ...(object.kind === "photo" ? { image: object.image } : {}),
-      },
-    ];
+  // Every note is listed; one whose position cannot be drawn stays in the
+  // list without a mark, so it can still be found (E1 review #9). The
+  // summary keeps only the drawable ones.
+  const drawable = new Map(summary.objects.map((s) => [s.id, s]));
+  const notes: EditorItem[] = manifest.objects.map((object) => {
+    const mark = drawable.get(object.id);
+    return {
+      id: object.id,
+      kind: object.kind,
+      title: objectTitle(object),
+      meta:
+        mark === undefined
+          ? `${object.kind === "pin" ? "Text note" : "Photo note"} · no position`
+          : noteMeta(object, stored),
+      at: mark === undefined ? null : { lat: mark.lat, lng: mark.lng },
+      ...(object.kind === "photo" ? { image: object.image } : {}),
+    };
   });
   const recorded: EditorItem[] = (manifest.captureSpots?.captures ?? [])
     .map((c) => ({ capture: c, at: { lat: c.geo.lat, lng: c.geo.lon } }))
-    .filter(({ at }) => readable(at))
+    .filter(({ at }) => readablePoint(at))
     .map(({ capture, at }) => ({
       id: `${RECORDED_PREFIX}${capture.image}`,
       kind: "photo",
@@ -147,7 +145,7 @@ export function buildEditorModel(input: {
         station.anchor.geo === undefined
           ? null
           : { lat: station.anchor.geo.lat, lng: station.anchor.geo.lon };
-      const at = own !== null && readable(own) ? own : (code?.at ?? null);
+      const at = own !== null && readablePoint(own) ? own : (code?.at ?? null);
       const title = station.title?.trim() ?? "";
       return [
         {
@@ -193,4 +191,18 @@ export function filterItems(
     (i) =>
       i.title.toLowerCase().includes(q) || i.meta.toLowerCase().includes(q),
   );
+}
+
+/** Where a photo item's bytes are (E1 review #1): a placed photo's image
+ *  is a content path inside the tour's folder (`TourSession
+ *  .loadContentEntry`), a recorded one's the archive's own entry name
+ *  (`loadEntry`, as the viewer reads it); null without a photo. */
+export function photoSource(
+  item: EditorItem,
+): { kind: "content" | "entry"; path: string } | null {
+  if (item.kind !== "photo" || item.image === undefined) return null;
+  return {
+    kind: item.recorded === true ? "entry" : "content",
+    path: item.image,
+  };
 }

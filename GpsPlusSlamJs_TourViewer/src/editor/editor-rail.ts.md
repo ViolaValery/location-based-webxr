@@ -10,7 +10,7 @@ both ways with the map, and a folded form with one count per group.
 
 - `createEditorRail(dom, { onSelect, onHover, onResize }): EditorRail`
   - `render(model)` - shows the rail, clears the search, draws the groups
-    (Codes, Pins, Photos; a group with no match is left out while
+    (Codes, Pins, Photos, Stations; a group with no match is left out while
     searching; "Nothing matches that text." when nothing does) and the
     folded counts.
   - `select(id | null)` - the `sel` class and `aria-pressed`, scrolled into

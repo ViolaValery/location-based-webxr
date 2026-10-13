@@ -13,16 +13,20 @@ import { describeIntegrityError } from "../open-errors.js";
 import type { TourSession } from "../tour-session.js";
 import { createEditorCard } from "./editor-card.js";
 import { createEditorMap } from "./editor-map.js";
-import { buildEditorModel, type EditorModel } from "./editor-model.js";
+import {
+  buildEditorModel,
+  photoSource,
+  type EditorModel,
+} from "./editor-model.js";
 import { openTourForEditing } from "./editor-open.js";
 import { createEditorRail } from "./editor-rail.js";
+import { revealPadding, type Box } from "./popover-place.js";
 
 /** The committed sample tour (`public/samples/`), beside this page. */
 const SAMPLE_URL = "samples/marienplatz-tour.zip";
 const SAMPLE_NAME = "marienplatz-tour.zip";
 
-/** The top bar's height plus its margins: the free map starts below. */
-const TOP_FREE_PX = 56 + 12 + 12;
+/** The gap between the panels and the window's edges (`--gap`). */
 const EDGE_PX = 12;
 /** Below this width the rail starts folded (the prototype's 760 px). */
 const NARROW_PX = 760;
@@ -42,6 +46,7 @@ const zipInput = element<HTMLInputElement>("zip-input");
 const openStatus = element("open-status");
 const openError = element("open-error");
 const sampleButton = element<HTMLButtonElement>("sample-btn");
+const cancelButton = element<HTMLButtonElement>("open-cancel");
 const topbar = element("topbar");
 const toasts = element("toasts");
 
@@ -72,18 +77,27 @@ function toast(text: string): void {
   }, 4000);
 }
 
-function freeArea(): {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-} {
+/** The free part of the window: right of the rail, under the top bar
+ *  (read from the bar itself, so the CSS stays the one source). */
+function freeArea(): Box {
+  const bar = topbar.hidden ? 0 : topbar.getBoundingClientRect().bottom;
   return {
     left: rail.right() + EDGE_PX,
-    top: TOP_FREE_PX,
+    top: bar + EDGE_PX,
     right: window.innerWidth - EDGE_PX,
     bottom: window.innerHeight - EDGE_PX,
   };
+}
+
+function reveal(id: string): void {
+  const free = freeArea();
+  map.reveal(
+    id,
+    revealPadding(
+      { width: window.innerWidth, height: window.innerHeight },
+      free,
+    ),
+  );
 }
 
 function placeCard(): void {
@@ -91,7 +105,7 @@ function placeCard(): void {
   card.place(map.anchorOf(selected), freeArea());
 }
 
-function select(id: string | null, reveal = false): void {
+function select(id: string | null, pan = false): void {
   selected = id;
   map.select(id);
   rail.select(id);
@@ -101,9 +115,7 @@ function select(id: string | null, reveal = false): void {
     return;
   }
   card.show(item);
-  if (reveal) {
-    map.reveal(item.id, { left: rail.right(), top: TOP_FREE_PX });
-  }
+  if (pan) reveal(item.id);
   placeCard();
 }
 
@@ -140,10 +152,7 @@ const rail = createEditorRail(
       map.hover(id, on);
       rail.hover(id, on);
     },
-    onResize: () => {
-      // After the width transition.
-      setTimeout(placeCard, 200);
-    },
+    onResize: placeCard,
   },
 );
 
@@ -160,56 +169,69 @@ const card = createEditorCard(
   {
     loadImage: (item) => {
       const open = session;
-      if (open === null || item.image === undefined) {
+      const source = photoSource(item);
+      if (open === null || source === null) {
         return Promise.reject(new Error("no tour is open"));
       }
-      return open.loadEntry(`${open.manifestWrap}${item.image}`);
+      return source.kind === "content"
+        ? open.loadContentEntry(source.path)
+        : open.loadEntry(source.path);
     },
     onClose: () => {
       select(null);
     },
     onReveal: () => {
-      if (selected !== null) {
-        map.reveal(selected, { left: rail.right(), top: TOP_FREE_PX });
-      }
+      if (selected !== null) reveal(selected);
     },
   },
 );
 
+function showModal(on: boolean): void {
+  modal.hidden = !on;
+  // Cancel returns to the open tour; with none there is nothing to return to.
+  cancelButton.hidden = session === null;
+  if (on) openError.hidden = true;
+}
+
 window.addEventListener("resize", placeCard);
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") select(null);
+  if (event.key !== "Escape") return;
+  if (!modal.hidden && session !== null && !busy) showModal(false);
+  else select(null);
 });
 
 function setBusy(on: boolean, text: string): void {
   busy = on;
   sampleButton.disabled = on;
   zipInput.disabled = on;
+  cancelButton.disabled = on;
   openStatus.textContent = text;
 }
 
-async function closeTour(): Promise<void> {
+/** The tour is gone (a late integrity failure): nothing of it stays on
+ *  screen, and the dialog says why. */
+function dropTour(reason: string): void {
   select(null);
   const open = session;
   session = null;
   model = null;
-  await open?.close().catch(() => undefined);
+  void open?.close().catch(() => undefined);
+  topbar.hidden = true;
+  element("rail").hidden = true;
+  showModal(true);
+  openError.textContent = reason;
+  openError.hidden = false;
 }
 
 async function openFile(file: File): Promise<void> {
   if (busy) return;
   openError.hidden = true;
   setBusy(true, `Opening ${file.name}…`);
-  await closeTour();
+  // The open tour stays until the new one has opened: a refused file must
+  // not cost the creator the tour they had (E1 review #4).
   const outcome = await openTourForEditing(file, {
     onIntegrityFailure: (err, failed) => {
-      if (failed !== session) return;
-      void closeTour();
-      topbar.hidden = true;
-      element("rail").hidden = true;
-      modal.hidden = false;
-      openError.textContent = describeIntegrityError(err);
-      openError.hidden = false;
+      if (failed === session) dropTour(describeIntegrityError(err));
     },
   });
   setBusy(false, "");
@@ -218,7 +240,19 @@ async function openFile(file: File): Promise<void> {
     openError.hidden = false;
     return;
   }
+  // A failure the background check latched before the tour was ours
+  // (E1 review #6).
+  const latched = outcome.session.integrityFailure();
+  if (latched !== null) {
+    await outcome.session.close().catch(() => undefined);
+    openError.textContent = describeIntegrityError(latched);
+    openError.hidden = false;
+    return;
+  }
+  select(null);
+  const previous = session;
   session = outcome.session;
+  void previous?.close().catch(() => undefined);
   model = buildEditorModel({
     manifest: outcome.manifest,
     levels: outcome.levels,
@@ -227,11 +261,12 @@ async function openFile(file: File): Promise<void> {
   element("tour-name").textContent = model.title;
   element("tour-file").textContent = outcome.fileName;
   topbar.hidden = false;
-  modal.hidden = true;
+  showModal(false);
   rail.render(model);
   // A narrow window starts with the rail folded, as the prototype does.
   if (window.innerWidth < NARROW_PX) rail.collapse(true);
-  map.show(model, { left: rail.right(), top: TOP_FREE_PX });
+  const free = freeArea();
+  map.show(model, { left: free.left, top: free.top });
   toast(`Opened ${outcome.fileName}: ${openedSummary(model)}`);
 }
 
@@ -276,6 +311,9 @@ sampleButton.addEventListener("click", () => {
       openError.hidden = false;
     });
 });
+cancelButton.addEventListener("click", () => {
+  showModal(false);
+});
 element<HTMLButtonElement>("open-another").addEventListener("click", () => {
-  modal.hidden = false;
+  showModal(true);
 });

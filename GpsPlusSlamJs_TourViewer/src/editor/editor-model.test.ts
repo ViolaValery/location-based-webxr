@@ -13,7 +13,7 @@ import {
   type TourObject,
 } from "gps-plus-slam-app-framework/ar/tour-manifest";
 import type { QrLevel } from "gps-plus-slam-app-framework/ar/qr/qr-level";
-import { buildEditorModel, filterItems } from "./editor-model.js";
+import { buildEditorModel, filterItems, photoSource } from "./editor-model.js";
 import { createTourViewerStore } from "../tour-viewer-session.js";
 
 // The distance lines use the licensed library's geo maths.
@@ -185,13 +185,21 @@ describe("buildEditorModel", () => {
     expect(m.counts.station).toBe(2);
   });
 
-  it("keeps a note whose position cannot be drawn off the map", () => {
+  it("keeps a note whose position cannot be drawn in the list, off the map (E1 review #9)", () => {
+    // Why: dropped from the list too, it could never be found - nor, from
+    // E2 on, deleted.
     const m = buildEditorModel({
       manifest: manifest({ objects: [pin("bad", "Nowhere", 123)] }),
       levels: new Map(),
       fileName: "tour.zip",
     });
-    expect(m.items).toEqual([]);
+    expect(m.items).toEqual([
+      expect.objectContaining({
+        id: "bad",
+        at: null,
+        meta: "Text note · no position",
+      }),
+    ]);
     expect(m.fitPoints).toEqual([]);
   });
 
@@ -232,5 +240,49 @@ describe("filterItems", () => {
 
   it("shows everything for an empty search", () => {
     expect(filterItems(model().items, "")).toHaveLength(2);
+  });
+});
+
+describe("photoSource (E1 review #1)", () => {
+  // Why: a placed photo's image is a content path inside the tour's
+  // folder; a recorded photo's is already the archive's entry name. Joining
+  // the folder to both read every recorded photo from the wrong path in a
+  // zip made by compressing a folder.
+  it("reads a placed photo as content and a recorded one by its entry name", () => {
+    const m = buildEditorModel({
+      manifest: manifest({
+        objects: [photo("f")],
+        captureSpots: {
+          fixes: 3,
+          gpsAccuracyMedianM: 4,
+          captures: [
+            {
+              image: "mytour/images/frame-000002.jpg",
+              geo: { ...AT, rotation: [0, 0, 0, 1] },
+            },
+          ],
+        },
+      }),
+      levels: new Map(),
+      fileName: "tour.zip",
+    });
+    const [placed, recorded] = m.items;
+    expect(photoSource(placed!)).toEqual({
+      kind: "content",
+      path: "content/f.jpg",
+    });
+    expect(photoSource(recorded!)).toEqual({
+      kind: "entry",
+      path: "mytour/images/frame-000002.jpg",
+    });
+  });
+
+  it("is null for an item without a photo", () => {
+    const m = buildEditorModel({
+      manifest: manifest({ objects: [pin("p", "x")] }),
+      levels: new Map(),
+      fileName: "tour.zip",
+    });
+    expect(photoSource(m.items[0]!)).toBeNull();
   });
 });

@@ -15,6 +15,9 @@ import { pictureProblem } from "../image-cap.js";
 import type { EditorItem } from "./editor-model.js";
 import { placePopover, type Box } from "./popover-place.js";
 
+/** The card's width where the window has room (the prototype's). */
+const CARD_WIDTH_PX = 320;
+
 /** R7's precision, both figures (M6 E1 plan review #10). */
 export const PRECISION_LINE =
   "Placed from GPS alignment: about 0.1-0.7 m near a code, 1-3 m further away.";
@@ -182,25 +185,36 @@ export function createEditorCard(
     },
     place(anchor, free) {
       if (current === null) return;
+      // Never wider than the free area: on a phone a 320 px card covered
+      // the folded rail (E1 review #7).
+      dom.card.style.width = `${String(
+        Math.max(200, Math.min(CARD_WIDTH_PX, free.right - free.left)),
+      )}px`;
       // Measured while shown: a hidden card has no size.
       dom.card.hidden = false;
-      const placement =
-        anchor === null
-          ? ({ visible: false } as const)
-          : placePopover({
-              anchor,
-              // A note's bubble centre sits 24 px above its tip (the
-              // marker's 41 px anchor, `editor-map.ts`); a code is centred.
-              lift:
-                current.kind === "code" || current.kind === "station" ? 0 : 24,
-              gap:
-                current.kind === "code" || current.kind === "station" ? 26 : 30,
-              size: {
-                width: dom.card.offsetWidth,
-                height: dom.card.offsetHeight,
-              },
-              free,
-            });
+      if (anchor === null) {
+        // Nothing on the map to point at (a code without a stored
+        // position): the card stands at the free area's corner, its text
+        // says why, and no "off the map view" chip offers a pan that
+        // cannot happen (E1 review #3).
+        dom.chip.hidden = true;
+        dom.card.style.left = `${String(free.left)}px`;
+        dom.card.style.top = `${String(free.top)}px`;
+        dom.card.dataset["side"] = "none";
+        return;
+      }
+      const placement = placePopover({
+        anchor,
+        // A note's bubble centre sits 24 px above its tip (the
+        // marker's 41 px anchor, `editor-map.ts`); a code is centred.
+        lift: current.kind === "code" || current.kind === "station" ? 0 : 24,
+        gap: current.kind === "code" || current.kind === "station" ? 26 : 30,
+        size: {
+          width: dom.card.offsetWidth,
+          height: dom.card.offsetHeight,
+        },
+        free,
+      });
       if (!placement.visible) {
         dom.card.hidden = true;
         const title = current.title;

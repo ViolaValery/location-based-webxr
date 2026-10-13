@@ -19,6 +19,11 @@ as numbers: the chosen prototype's (`public/prototypes/editor-1-left-rail/`)
     `{ visible: true, x, y, side, arrow }`: to the right of the marker,
     else to its left, else below it; `arrow` is the arrow's offset along
     the card's edge, pointing at the marker.
+- `revealPadding(viewport, free)` - the padding a marker is panned inside
+  (Leaflet `panInside`): 40 px clear of the rail and the top bar, 380 px
+  on the right and 60 px at the bottom where the window has room, shrunk
+  so the box stays at least 60 px wide and tall (a fixed 380 px turned it
+  inside out below about 490 px, E1 review #2).
 - `Box`, `PopoverPlacement`.
 
 ## Invariants & assumptions
@@ -47,4 +52,5 @@ const p = placePopover({
 ## Tests
 
 `popover-place.test.ts`: right, left, below, hidden in each direction, and
-the inside-the-free-area property.
+the inside-the-free-area property; `revealPadding` on a desktop and a
+phone, and the never-inside-out property.

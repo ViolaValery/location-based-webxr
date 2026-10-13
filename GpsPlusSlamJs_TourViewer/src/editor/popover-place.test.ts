@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { placePopover } from "./popover-place.js";
+import { placePopover, revealPadding } from "./popover-place.js";
 
 const FREE = { left: 330, top: 80, right: 1268, bottom: 788 };
 const SIZE = { width: 320, height: 240 };
@@ -87,6 +87,47 @@ describe("placePopover", () => {
           expect(p.x + width).toBeLessThanOrEqual(FREE.right + 1);
           expect(p.y).toBeGreaterThanOrEqual(FREE.top);
           expect(p.y + height).toBeLessThanOrEqual(FREE.bottom + 1);
+        },
+      ),
+    );
+  });
+});
+
+describe("revealPadding (E1 review #2)", () => {
+  // Why: Leaflet pans a marker inside the window minus this padding. A
+  // fixed 380 px on the right turned that box inside out on a phone (it
+  // landed over the rail), so "Show it" and a row click left the marker
+  // hidden. The box must stay right of the rail and keep some size.
+  it("keeps room for the card on the right of a desktop window", () => {
+    expect(
+      revealPadding({ width: 1280, height: 800 }, { left: 316, top: 80 }),
+    ).toEqual({ topLeft: [356, 120], bottomRight: [380, 60] });
+  });
+
+  it("shrinks the right padding on a phone so the box stays clear of the rail", () => {
+    const p = revealPadding({ width: 390, height: 844 }, { left: 82, top: 80 });
+    const boxLeft = p.topLeft[0];
+    const boxRight = 390 - p.bottomRight[0];
+    expect(boxLeft).toBeGreaterThanOrEqual(82);
+    expect(boxRight - boxLeft).toBeGreaterThanOrEqual(60);
+  });
+
+  it("never turns the box inside out (property)", () => {
+    fc.assert(
+      fc.property(
+        // Wide enough for a 60 px box right of a rail up to 400 px.
+        fc.integer({ min: 520, max: 2560 }),
+        fc.integer({ min: 320, max: 1600 }),
+        fc.integer({ min: 0, max: 400 }),
+        (width, height, left) => {
+          const p = revealPadding({ width, height }, { left, top: 80 });
+          expect(p.bottomRight[0]).toBeGreaterThanOrEqual(0);
+          expect(p.bottomRight[1]).toBeGreaterThanOrEqual(0);
+          // The windows swept always leave room for one: the box is at
+          // least 60 px wide.
+          expect(
+            width - p.bottomRight[0] - p.topLeft[0],
+          ).toBeGreaterThanOrEqual(60);
         },
       ),
     );

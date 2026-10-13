@@ -13,9 +13,12 @@ view" chip.
     "Recorded photo"), a note's text, a photo (see below), the precision
     line, the item's meta, "Esc close".
   - `place(anchor | null, free)` - positions the card with
-    `placePopover` (a note's lift 24 px, gap 30; a code's 0 and 26), or
-    hides it and shows the chip ("<title> is off the map view", "Show it"
-    calls `onReveal`).
+    `placePopover` (a note's lift 24 px, gap 30; a code's or station's 0
+    and 26), or, for a marker out of view, hides it and shows the chip
+    ("<title> is off the map view", "Show it" calls `onReveal`). An item
+    with no position (`anchor` null) gets the card at the free area's
+    corner, without arrow or chip (E1 review #3). The card is as wide as
+    the free area, up to 320 px (E1 review #7).
   - `hide()`, `shown()`.
 - `PRECISION_LINE` - R7's two figures: "about 0.1-0.7 m near a code, 1-3 m
   further away" (M6 E1 plan review #10).

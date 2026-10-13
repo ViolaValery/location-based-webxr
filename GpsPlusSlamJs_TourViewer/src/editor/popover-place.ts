@@ -84,3 +84,31 @@ export function placePopover(input: {
     arrow: Math.round(arrow),
   };
 }
+
+/** The smallest box, px, a marker is panned into: below it Leaflet's
+ *  `panInside` box turns inside out and lands over the rail. */
+const MIN_REVEAL_BOX_PX = 60;
+
+/**
+ * The padding a marker is panned inside (Leaflet `panInside`): clear of
+ * the rail and the top bar, with room on the right for the card where the
+ * window has it. On a narrow window the right and bottom padding shrink so
+ * the box stays at least 60 px wide and tall; a fixed 380 px turned the box
+ * inside out below about 490 px and "Show it" did nothing (E1 review #2).
+ */
+export function revealPadding(
+  viewport: { readonly width: number; readonly height: number },
+  free: { readonly left: number; readonly top: number },
+): { topLeft: [number, number]; bottomRight: [number, number] } {
+  const left = free.left + 40;
+  const top = free.top + 40;
+  const room = (span: number, start: number, wanted: number): number =>
+    Math.max(0, Math.min(wanted, span - start - MIN_REVEAL_BOX_PX));
+  return {
+    topLeft: [left, top],
+    bottomRight: [
+      room(viewport.width, left, 380),
+      room(viewport.height, top, 60),
+    ],
+  };
+}

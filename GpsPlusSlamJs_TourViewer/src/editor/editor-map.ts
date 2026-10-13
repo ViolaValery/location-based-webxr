@@ -38,8 +38,11 @@ export interface EditorMap {
   hover(id: string, on: boolean): void;
   /** The marker's ground point in window pixels, or null without one. */
   anchorOf(id: string): { x: number; y: number } | null;
-  /** Bring a marker into the free part of the view. */
-  reveal(id: string, padding: { left: number; top: number }): void;
+  /** Bring a marker into the view minus `padding` (`revealPadding`). */
+  reveal(
+    id: string,
+    padding: { topLeft: [number, number]; bottomRight: [number, number] },
+  ): void;
   destroy(): void;
 }
 
@@ -166,8 +169,8 @@ export function createEditorMap(
       const entry = markers.get(id);
       if (entry === undefined) return;
       map.panInside(entry.marker.getLatLng(), {
-        paddingTopLeft: [padding.left + 40, padding.top + 40],
-        paddingBottomRight: [380, 60],
+        paddingTopLeft: padding.topLeft,
+        paddingBottomRight: padding.bottomRight,
       });
     },
     destroy() {

@@ -17,7 +17,9 @@ plan review #4).
     tour with no position shows a world view.
   - `select(id | null)`, `hover(id, on)` - the `sel` / `hover` classes.
   - `anchorOf(id)` - the marker's ground point in window pixels, or null.
-  - `reveal(id, padding)` - pans the marker into the free area.
+  - `reveal(id, padding)` - pans the marker inside the window minus
+    `padding` (`popover-place.ts` `revealPadding`, which keeps the box
+    from turning inside out on a narrow window).
   - `destroy()`.
 
 ## Invariants & assumptions

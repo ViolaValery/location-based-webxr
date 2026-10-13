@@ -160,7 +160,8 @@ const RAD = Math.PI / 180;
 
 const finite = (...values: number[]): boolean => values.every(Number.isFinite);
 
-function readablePoint(p: { lat: number; lng: number }): boolean {
+/** A point a map can draw: finite, on the globe. */
+export function readablePoint(p: { lat: number; lng: number }): boolean {
   return (
     finite(p.lat, p.lng) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180
   );

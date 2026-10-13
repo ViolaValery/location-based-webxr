@@ -612,6 +612,10 @@ button:disabled {
   border-left: none;
 }
 
+#card[data-side="none"] .arrow {
+  display: none;
+}
+
 #card[data-side="below"] .arrow {
   top: -8px;
   border-bottom: none;
