@@ -13,8 +13,12 @@ wired into its logic: every interaction is faked.
 - `scan-1-centre-card/`, `scan-2-viewfinder/`, `scan-3-coach-mark/` - the
   visitor's scan overlay. The app takes S1.
 - `visitor-1-poster/` ... `visitor-4-one-tap/` - the visitor's start page
-  (after scanning a poster), four directions; made 2026-10-12, verdict
-  pending.
+  (after scanning a poster), four directions; made 2026-10-12. The app
+  took V4.
+- `editor-1-left-rail/`, `editor-2-right-inspector/`,
+  `editor-3-bottom-strip/` - the desktop editor (M6, before E1), all "full
+  map, floating panels", differing in where the list and the editing card
+  sit; made 2026-10-13, verdict pending.
 
 **Kept, the chosen and the unchosen** (owner, 2026-10-11 evening): another
 developer may prefer a variant the owner did not choose and ask their own

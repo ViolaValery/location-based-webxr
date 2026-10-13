@@ -1,0 +1,2371 @@
+<!doctype html>
+<!-- Throwaway prototype, editor variant 2 (right inspector). Not wired to the app. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tour editor - variant 2</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #2a2824;
+        --ink-dim: #57534a;
+        --ink-3: #8c8577;
+        --paper: #f4eedf;
+        --paper-3: #ddd2b6;
+        --card: #fbf8ef;
+        --line: #c9bea3;
+        --line-soft: #e6dcc5;
+        --route: #cf4428;
+        --route-soft: #f5d9cd;
+        --accent-ink: #8a4b00;
+        --ok: #3d6b3a;
+        --warn: #9a6a00;
+        --warn-soft: #f6e7c1;
+        --danger: #a3321f;
+        --danger-soft: #f7dcd4;
+        --serif:
+          "Iowan Old Style", "Palatino Linotype", palatino, "Book Antiqua",
+          georgia, serif;
+        --sans: system-ui, -apple-system, "Segoe UI", roboto, sans-serif;
+        --radius: 16px;
+        --shadow: 0 1px 2px rgb(42 40 36 / 8%), 0 10px 32px rgb(42 40 36 / 16%);
+        --insp-w: 360px;
+        --gap: 14px;
+      }
+      @media (max-width: 1100px) {
+        :root {
+          --insp-w: 330px;
+        }
+      }
+      @media (max-width: 900px) {
+        :root {
+          --insp-w: 296px;
+          --gap: 10px;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--sans);
+        font-size: 14px;
+        overflow: hidden;
+      }
+      button,
+      input,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+      #map {
+        position: fixed;
+        inset: 0;
+        background: var(--paper-3);
+      }
+      .leaflet-tile-pane {
+        filter: sepia(0.3) saturate(0.45) brightness(1.06) contrast(0.88);
+        opacity: 0.62;
+      }
+      .leaflet-container {
+        font-family: var(--sans);
+      }
+      .leaflet-bottom.leaflet-right {
+        right: calc(var(--insp-w) + var(--gap) * 2);
+      }
+      .leaflet-control-attribution {
+        background: rgb(251 248 239 / 85%) !important;
+        border-radius: 8px 8px 0 0;
+        color: var(--ink-dim);
+      }
+      .leaflet-bar a {
+        background: var(--card);
+        color: var(--ink);
+      }
+      .leaflet-touch .leaflet-bar {
+        border: 0;
+        box-shadow: var(--shadow);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .leaflet-tooltip {
+        background: var(--card);
+        color: var(--ink);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: 0 4px 14px rgb(42 40 36 / 14%);
+        font-size: 12.5px;
+        width: max-content;
+        max-width: 240px;
+        white-space: normal;
+      }
+      .leaflet-tooltip-top::before {
+        border-top-color: var(--line);
+      }
+
+      .panel {
+        position: fixed;
+        z-index: 500;
+        background: var(--card);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+      .kicker {
+        font-weight: 700;
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--ink-dim);
+        margin: 0;
+      }
+      .btn {
+        border: 1.5px solid var(--ink);
+        background: transparent;
+        border-radius: 999px;
+        padding: 7px 14px;
+        cursor: pointer;
+        font-weight: 600;
+        line-height: 1.2;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+      }
+      .btn:hover {
+        background: rgb(42 40 36 / 6%);
+      }
+      .btn.primary {
+        background: var(--ink);
+        color: var(--card);
+      }
+      .btn.primary:hover {
+        background: #3d3a34;
+      }
+      .btn.danger {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+      .btn.danger:hover {
+        background: var(--danger-soft);
+      }
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        background: transparent;
+      }
+      .btn.primary:disabled {
+        background: var(--ink-3);
+        border-color: var(--ink-3);
+      }
+      .btn.small {
+        padding: 4px 10px;
+        font-size: 12.5px;
+      }
+      .link {
+        border: 0;
+        background: none;
+        padding: 0;
+        color: var(--accent-ink);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+      }
+      :focus-visible {
+        outline: 2px solid var(--accent-ink);
+        outline-offset: 2px;
+      }
+
+      /* ---------- Inspector (right) ---------- */
+      #inspector {
+        top: var(--gap);
+        right: var(--gap);
+        bottom: var(--gap);
+        width: var(--insp-w);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .insp-head {
+        padding: 16px 20px 14px;
+        border-bottom: 1px solid var(--line-soft);
+        display: grid;
+        gap: 8px;
+      }
+      .tour-name {
+        font-family: var(--serif);
+        font-size: 24px;
+        font-weight: 600;
+        line-height: 1.1;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
+        padding: 2px 6px;
+        margin: 0 -6px;
+        width: calc(100% + 12px);
+      }
+      .tour-name:hover {
+        border-color: var(--line-soft);
+      }
+      .tour-name:focus {
+        border-color: var(--line);
+        background: #fff;
+        outline: none;
+      }
+      .file-meta {
+        color: var(--ink-dim);
+        font-size: 12.5px;
+        line-height: 1.45;
+      }
+      .save {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 2px 10px;
+        align-items: center;
+        background: rgb(255 255 255 / 55%);
+        border: 1px solid var(--line-soft);
+        border-radius: 12px;
+        padding: 9px 12px;
+      }
+      .save .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--ok);
+        grid-row: 1;
+      }
+      .save[data-state="editing"] .dot,
+      .save[data-state="nowrite"] .dot {
+        background: var(--warn);
+      }
+      .save[data-state="error"] {
+        background: var(--danger-soft);
+        border-color: #e8b6a8;
+      }
+      .save[data-state="error"] .dot {
+        background: var(--danger);
+      }
+      .save[data-state="saving"] .dot {
+        background: transparent;
+        border: 2px solid var(--ink-3);
+        border-top-color: var(--ink);
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .save .label {
+        font-weight: 700;
+      }
+      .save .sub {
+        grid-column: 2;
+        color: var(--ink-dim);
+        font-size: 12.5px;
+        line-height: 1.4;
+      }
+      .save[data-state="error"] .sub {
+        color: #6e2617;
+      }
+      .save .actions {
+        grid-column: 2;
+        margin-top: 6px;
+        display: flex;
+        gap: 8px;
+      }
+      .publish-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .pub-hint {
+        color: var(--ink-dim);
+        font-size: 12.5px;
+      }
+
+      .insp-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 18px 20px;
+      }
+      .empty {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        gap: 10px;
+        color: var(--ink-dim);
+        padding: 10px 6px 30px;
+      }
+      .empty h2 {
+        font-family: var(--serif);
+        font-weight: 600;
+        font-size: 21px;
+        color: var(--ink);
+        margin: 4px 0 0;
+      }
+      .empty p {
+        margin: 0;
+        line-height: 1.5;
+        max-width: 24em;
+      }
+      .empty .stats {
+        margin-top: 14px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        width: 100%;
+      }
+      .stat {
+        border: 1px solid var(--line-soft);
+        border-radius: 12px;
+        padding: 10px 6px;
+        background: rgb(255 255 255 / 50%);
+      }
+      .stat b {
+        display: block;
+        font-family: var(--serif);
+        font-size: 22px;
+        color: var(--ink);
+      }
+      .stat span {
+        font-size: 12px;
+      }
+      .walk-line {
+        font-size: 12.5px;
+        margin-top: 4px;
+      }
+
+      .sel-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .sel-head h2 {
+        font-family: var(--serif);
+        font-weight: 600;
+        font-size: 21px;
+        margin: 0;
+        line-height: 1.15;
+      }
+      .sel-head .kicker {
+        margin-bottom: 2px;
+      }
+      .sel-close {
+        margin-left: auto;
+        border: 0;
+        background: none;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        color: var(--ink-dim);
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        flex: none;
+      }
+      .sel-close:hover {
+        background: rgb(42 40 36 / 7%);
+      }
+      .photo-big {
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid var(--line-soft);
+        aspect-ratio: 16 / 10;
+        margin-bottom: 14px;
+        background: var(--paper-3);
+      }
+      .photo-big svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .field {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 16px;
+      }
+      .field label {
+        font-weight: 700;
+        font-size: 12.5px;
+        color: var(--ink-dim);
+      }
+      .field textarea {
+        width: 100%;
+        min-height: 92px;
+        resize: vertical;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        padding: 9px 11px;
+        line-height: 1.45;
+      }
+      .field textarea:focus {
+        outline: 2px solid var(--accent-ink);
+        outline-offset: 0;
+        border-color: transparent;
+      }
+      .field .hint {
+        font-size: 12px;
+        color: var(--ink-3);
+      }
+      .section {
+        border-top: 1px solid var(--line-soft);
+        padding-top: 14px;
+        margin-top: 4px;
+        margin-bottom: 14px;
+      }
+      .section h3 {
+        font-size: 12.5px;
+        color: var(--ink-dim);
+        margin: 0 0 8px;
+      }
+      .coords {
+        font-variant-numeric: tabular-nums;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .note {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        font-size: 12.5px;
+        line-height: 1.45;
+        padding: 8px 10px;
+        border-radius: 10px;
+        margin-top: 8px;
+        background: rgb(42 40 36 / 4%);
+        color: var(--ink-dim);
+      }
+      .note.warn {
+        background: var(--warn-soft);
+        color: #5c4100;
+      }
+      .note .ico {
+        flex: none;
+        font-weight: 700;
+      }
+      .sel-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 4px 0 20px;
+      }
+      .moving-box {
+        margin-bottom: 12px !important;
+        border: 1.5px dashed var(--accent-ink);
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin-top: 10px;
+        background: #fff8ea;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .moving-box b {
+        font-variant-numeric: tabular-nums;
+      }
+      .placed {
+        color: var(--ink-3);
+        font-size: 12px;
+        margin-top: 16px;
+      }
+
+      .insp-foot {
+        border-top: 1px solid var(--line-soft);
+        padding: 10px 20px 12px;
+        font-size: 12px;
+        color: var(--ink-dim);
+        display: grid;
+        gap: 6px;
+        background: rgb(42 40 36 / 2.5%);
+      }
+      .keys {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      kbd {
+        font-family: var(--sans);
+        font-size: 11px;
+        border: 1px solid var(--line);
+        border-bottom-width: 2px;
+        border-radius: 5px;
+        padding: 0 5px;
+        background: #fff;
+        color: var(--ink);
+      }
+      .proto {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .proto label {
+        display: inline-flex;
+        gap: 5px;
+        align-items: center;
+        cursor: pointer;
+      }
+      .proto .tag {
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 10px;
+        color: var(--ink-3);
+      }
+
+      /* ---------- Object list (bottom-left) ---------- */
+      #list {
+        left: var(--gap);
+        bottom: var(--gap);
+        width: 310px;
+        max-width: calc(100vw - var(--insp-w) - var(--gap) * 4);
+        max-height: min(52vh, 460px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      @media (max-width: 900px) {
+        #list {
+          width: 260px;
+        }
+      }
+      #list[hidden],
+      #listChip[hidden] {
+        display: none;
+      }
+      .list-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 12px 8px 16px;
+      }
+      .list-head h2 {
+        font-family: var(--serif);
+        font-weight: 600;
+        font-size: 17px;
+        margin: 0;
+      }
+      .list-head .count {
+        color: var(--ink-3);
+        font-size: 12.5px;
+      }
+      .icon-btn {
+        margin-left: auto;
+        border: 0;
+        background: none;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        cursor: pointer;
+        color: var(--ink-dim);
+        font-size: 16px;
+        line-height: 1;
+      }
+      .icon-btn:hover {
+        background: rgb(42 40 36 / 7%);
+      }
+      .list-tools {
+        padding: 0 12px 8px;
+        display: grid;
+        gap: 8px;
+      }
+      .search {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 12px;
+        background: #fff;
+      }
+      .search:focus {
+        outline: 2px solid var(--accent-ink);
+        outline-offset: 0;
+        border-color: transparent;
+      }
+      .chips {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        background: transparent;
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+      .chip[aria-pressed="true"] {
+        background: var(--ink);
+        color: var(--card);
+        border-color: var(--ink);
+      }
+      .rows {
+        list-style: none;
+        margin: 0;
+        padding: 4px 6px 8px;
+        overflow-y: auto;
+        border-top: 1px solid var(--line-soft);
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .row:hover {
+        background: rgb(42 40 36 / 5%);
+      }
+      .row.is-selected {
+        background: var(--route-soft);
+        box-shadow: inset 3px 0 0 var(--route);
+      }
+      .row .txt {
+        min-width: 0;
+        flex: 1;
+      }
+      .row .t {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 13px;
+      }
+      .row .m {
+        font-size: 11.5px;
+        color: var(--ink-3);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .rows .none {
+        padding: 12px 10px;
+        color: var(--ink-3);
+        font-size: 12.5px;
+      }
+      #listChip {
+        left: var(--gap);
+        bottom: var(--gap);
+        border-radius: 999px;
+        padding: 8px 14px 8px 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      #listChip .badge {
+        background: var(--ink);
+        color: var(--card);
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: 12px;
+      }
+
+      /* ---------- Markers ---------- */
+      .mk-root {
+        background: none;
+        border: 0;
+      }
+      .mk {
+        transition: transform 0.15s ease;
+        transform-origin: 50% 50%;
+      }
+      .mk-code {
+        width: 28px;
+        height: 28px;
+        background: var(--ink);
+        color: var(--card);
+        border: 2px solid var(--card);
+        border-radius: 5px;
+        display: grid;
+        place-items: center;
+        font-weight: 800;
+        font-size: 13px;
+        box-shadow: 0 2px 6px rgb(42 40 36 / 35%);
+      }
+      .mk-pin {
+        width: 24px;
+        height: 24px;
+        transform-origin: 50% 100%;
+      }
+      .mk-pin i {
+        display: block;
+        width: 22px;
+        height: 22px;
+        margin: 1px;
+        background: var(--route);
+        border: 2px solid var(--card);
+        border-radius: 50% 50% 50% 0;
+        transform: rotate(-45deg);
+        box-shadow: -1px 2px 5px rgb(42 40 36 / 35%);
+      }
+      .mk-pin i::after {
+        content: "";
+        position: absolute;
+        left: 6px;
+        top: 6px;
+        width: 6px;
+        height: 6px;
+        background: var(--card);
+        border-radius: 50%;
+      }
+      .mk-photo {
+        width: 36px;
+        height: 28px;
+        border-radius: 7px;
+        overflow: hidden;
+        border: 2px solid var(--card);
+        box-shadow: 0 2px 6px rgb(42 40 36 / 35%);
+        background: var(--paper-3);
+      }
+      .mk-photo svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .is-hover .mk {
+        transform: scale(1.12);
+      }
+      .is-selected .mk {
+        transform: scale(1.3);
+      }
+      .is-selected .mk-code,
+      .is-selected .mk-photo {
+        box-shadow:
+          0 0 0 3px var(--card),
+          0 0 0 6px var(--ink),
+          0 4px 10px rgb(42 40 36 / 40%);
+      }
+      .is-selected .mk-pin i {
+        background: #a8301a;
+        box-shadow:
+          0 0 0 3px var(--card),
+          0 0 0 6px var(--ink);
+      }
+      .is-moving .mk {
+        animation: bob 1s ease-in-out infinite;
+        cursor: grab;
+      }
+      @keyframes bob {
+        50% {
+          transform: scale(1.3) translateY(-3px);
+        }
+      }
+      .mini {
+        flex: none;
+        width: 28px;
+        display: grid;
+        place-items: center;
+      }
+      .mini .mk-code {
+        width: 22px;
+        height: 22px;
+        font-size: 11px;
+        box-shadow: none;
+        border-width: 0;
+      }
+      .mini .mk-pin {
+        width: 18px;
+        height: 18px;
+      }
+      .mini .mk-pin i {
+        width: 16px;
+        height: 16px;
+        box-shadow: none;
+        border-width: 0;
+      }
+      .mini .mk-pin i::after {
+        left: 5px;
+        top: 5px;
+      }
+      .mini .mk-photo {
+        width: 28px;
+        height: 21px;
+        border-width: 0;
+        box-shadow: none;
+        border-radius: 5px;
+      }
+
+      /* ---------- Banner, toast, dialogs ---------- */
+      #moveBanner {
+        top: var(--gap);
+        left: calc((100vw - var(--insp-w) - var(--gap)) / 2);
+        transform: translateX(-50%);
+        padding: 9px 16px;
+        border-radius: 999px;
+        font-size: 13px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        background: var(--ink);
+        color: var(--card);
+        border: 0;
+      }
+      #moveBanner[hidden],
+      #toast[hidden] {
+        display: none;
+      }
+      #toast {
+        bottom: calc(var(--gap) + 6px);
+        left: calc((100vw - var(--insp-w) - var(--gap)) / 2 + 150px);
+        transform: translateX(-50%);
+        padding: 10px 12px 10px 16px;
+        border-radius: 12px;
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        background: var(--ink);
+        color: var(--card);
+        border: 0;
+        max-width: 420px;
+        z-index: 700;
+      }
+      #toast .btn {
+        border-color: var(--card);
+        color: var(--card);
+      }
+      #toast .btn:hover {
+        background: rgb(255 255 255 / 12%);
+      }
+      .backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 900;
+        background: rgb(244 238 223 / 62%);
+        backdrop-filter: blur(3px);
+        display: grid;
+        place-items: center;
+        padding: 16px;
+      }
+      .backdrop[hidden] {
+        display: none;
+      }
+      .dialog {
+        background: var(--card);
+        border: 1px solid var(--line-soft);
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgb(42 40 36 / 25%);
+        width: min(520px, 100%);
+        max-height: calc(100vh - 32px);
+        overflow-y: auto;
+        padding: 26px 28px 22px;
+      }
+      .dialog h1 {
+        font-family: var(--serif);
+        font-weight: 600;
+        font-size: 30px;
+        line-height: 1.05;
+        margin: 6px 0 8px;
+      }
+      .dialog h1 em {
+        color: var(--route);
+      }
+      .dialog .lede {
+        color: var(--ink-dim);
+        line-height: 1.5;
+        margin: 0 0 18px;
+      }
+      .pick {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 2px 14px;
+        align-items: center;
+        border: 1.5px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        background: rgb(255 255 255 / 55%);
+        text-align: left;
+        width: 100%;
+      }
+      .pick:hover {
+        border-color: var(--ink);
+      }
+      .pick.main {
+        border-color: var(--ink);
+        border-width: 2px;
+      }
+      .pick .glyph {
+        grid-row: span 2;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+      }
+      .pick b {
+        font-size: 15px;
+      }
+      .pick span {
+        color: var(--ink-dim);
+        font-size: 12.5px;
+      }
+      .pick .chosen {
+        color: var(--ok);
+        font-weight: 600;
+      }
+      .or {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--ink-3);
+        font-size: 12px;
+        margin: 6px 0 12px;
+      }
+      .or::before,
+      .or::after {
+        content: "";
+        flex: 1;
+        border-top: 1px solid var(--line-soft);
+      }
+      .dialog-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: 18px;
+      }
+      .fineprint {
+        color: var(--ink-3);
+        font-size: 12px;
+        line-height: 1.45;
+        margin: 16px 0 0;
+      }
+      .fineprint.flag {
+        color: #5c4100;
+        background: var(--warn-soft);
+        padding: 8px 10px;
+        border-radius: 10px;
+      }
+      .changes {
+        margin: 0 0 6px;
+        padding-left: 18px;
+        color: var(--ink-dim);
+        line-height: 1.55;
+      }
+
+      /* ---------- Narrow windows ---------- */
+      @media (max-width: 640px) {
+        :root {
+          --insp-w: 0px;
+        }
+        #inspector {
+          top: auto;
+          left: 8px;
+          right: 8px;
+          bottom: 8px;
+          width: auto;
+          max-height: 56vh;
+        }
+        #list,
+        #listChip {
+          top: 8px;
+          bottom: auto;
+          left: 8px;
+          max-width: calc(100vw - 16px);
+          max-height: 38vh;
+        }
+        .leaflet-top.leaflet-left {
+          top: auto;
+          bottom: calc(56vh + 16px);
+        }
+        .leaflet-bottom.leaflet-right {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map" aria-label="Map of the tour"></div>
+
+    <!-- Object list, bottom-left -->
+    <section id="list" class="panel" aria-label="Objects in this tour" hidden>
+      <div class="list-head">
+        <h2>Objects</h2>
+        <span class="count" id="listCount"></span>
+        <button
+          class="icon-btn"
+          id="collapseList"
+          title="Collapse the list"
+          aria-label="Collapse the list"
+        >
+          &#8722;
+        </button>
+      </div>
+      <div class="list-tools">
+        <input
+          class="search"
+          id="search"
+          type="search"
+          placeholder="Search texts"
+          aria-label="Search texts"
+        />
+        <div class="chips" role="group" aria-label="Show">
+          <button class="chip" data-filter="all" aria-pressed="true">
+            All
+          </button>
+          <button class="chip" data-filter="code" aria-pressed="false">
+            Codes
+          </button>
+          <button class="chip" data-filter="pin" aria-pressed="false">
+            Pins
+          </button>
+          <button class="chip" data-filter="photo" aria-pressed="false">
+            Photos
+          </button>
+        </div>
+      </div>
+      <ul class="rows" id="rows"></ul>
+    </section>
+    <button id="listChip" class="panel" hidden title="Show the list">
+      <span class="badge" id="chipCount">0</span>
+      <span>objects - show list</span>
+    </button>
+
+    <!-- Inspector, right edge -->
+    <aside id="inspector" class="panel" aria-label="Inspector" hidden>
+      <div class="insp-head">
+        <p class="kicker">Tour editor</p>
+        <input
+          class="tour-name"
+          id="tourName"
+          aria-label="Tour name"
+          value=""
+        />
+        <div class="file-meta" id="fileMeta"></div>
+        <div
+          class="save"
+          id="save"
+          data-state="idle"
+          role="status"
+          aria-live="polite"
+        ></div>
+        <div class="publish-row">
+          <button class="btn primary" id="publishBtn">Publish version</button>
+          <span class="pub-hint" id="pubHint"></span>
+        </div>
+      </div>
+      <div class="insp-body" id="inspBody"></div>
+      <div class="insp-foot">
+        <div class="keys">
+          <span><kbd>Esc</kbd> clear selection</span>
+          <span><kbd>Delete</kbd> delete</span>
+          <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo delete</span>
+        </div>
+        <div class="proto">
+          <span class="tag">Prototype</span>
+          <label
+            ><input type="checkbox" id="failNext" /> fail next save</label
+          >
+          <label
+            ><input type="checkbox" id="noWrite" /> no write access (Firefox,
+            Safari)</label
+          >
+        </div>
+      </div>
+    </aside>
+
+    <div id="moveBanner" class="panel" hidden>
+      <span>Drag the marker, or click the map where it belongs.</span>
+      <span style="opacity: 0.7"><kbd>Esc</kbd> cancels</span>
+    </div>
+    <div id="toast" class="panel" role="status" aria-live="polite" hidden></div>
+
+    <!-- Open modal -->
+    <div class="backdrop" id="openDlg">
+      <div
+        class="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="openTitle"
+      >
+        <p class="kicker">Tour editor</p>
+        <h1 id="openTitle">Open a <em>tour</em></h1>
+        <p class="lede">
+          Edit on the computer what you created on the phone: fix a text, move a
+          pin to where it belongs, remove what does not.
+        </p>
+        <button class="pick main" id="pickZip">
+          <span class="glyph" aria-hidden="true">&#128230;</span>
+          <b>Choose the tour file (.zip)</b>
+          <span id="zipState"
+            >The file the phone saved when you finished the tour.</span
+          >
+        </button>
+        <button class="pick" id="pickScans">
+          <span class="glyph" aria-hidden="true">&#128225;</span>
+          <b>Add scan files <span style="font-weight: 400">(optional)</span></b>
+          <span id="scanState"
+            >The walk's scan, saved next to the tour. Used later for 3D
+            placing.</span
+          >
+        </button>
+        <div class="or">or</div>
+        <button class="pick" id="pickFolder">
+          <span class="glyph" aria-hidden="true">&#128193;</span>
+          <b>Open a folder</b>
+          <span id="folderState"
+            >One permission covers the tour and its scans in that folder.</span
+          >
+        </button>
+        <input type="file" id="zipInput" accept=".zip,application/zip" hidden />
+        <input
+          type="file"
+          id="scanInput"
+          accept=".zip,application/zip"
+          multiple
+          hidden
+        />
+        <input type="file" id="folderInput" webkitdirectory hidden />
+        <div class="dialog-actions">
+          <button class="btn" id="useSample">Use the sample tour</button>
+          <button class="btn primary" id="openBtn" disabled>Open</button>
+        </div>
+        <p class="fineprint" id="browserNote">
+          In Chrome and Edge your edits are saved into the file as you go.
+          Firefox and Safari cannot write to a file you opened: there you get an
+          explicit Save that downloads a new file, and your edits are kept on
+          this computer in between.
+        </p>
+        <p class="fineprint" style="margin-top: 6px">
+          Prototype: any file you pick opens the sample tour under its name.
+          Nothing is read or written.
+        </p>
+      </div>
+    </div>
+
+    <!-- Publish dialog -->
+    <div class="backdrop" id="pubDlg" hidden>
+      <div
+        class="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pubTitle"
+      >
+        <p class="kicker">Listed tour</p>
+        <h1 id="pubTitle">Publish a new version</h1>
+        <p class="lede">
+          This tour is listed, so visitors open its signed versions. Publishing
+          adds
+          <b>one</b> new signed version for this whole editing session. Your
+          saves along the way are not versions of their own. If you close the
+          editor without publishing, the version is made when you close.
+        </p>
+        <p class="kicker" style="margin-bottom: 6px">In this session</p>
+        <ul class="changes" id="changeList"></ul>
+        <div class="dialog-actions">
+          <button class="btn" id="pubCancel">Keep editing</button>
+          <button class="btn primary" id="pubGo">Publish version</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      "use strict";
+
+      /* ---------------- Fake data around Marktplatz, Tuebingen ---------------- */
+      const WALK = [
+        [48.5208, 9.0566],
+        [48.52072, 9.0562],
+        [48.52058, 9.0558],
+        [48.52046, 9.05522],
+        [48.52037, 9.05452],
+        [48.52031, 9.05392],
+        [48.52021, 9.05352],
+        [48.52006, 9.0533],
+        [48.51991, 9.05296],
+        [48.51977, 9.05256],
+        [48.51966, 9.05212],
+        [48.51956, 9.05162],
+      ];
+
+      const PHOTO_LOOKS = [
+        {
+          sky: ["#bcd3e0", "#e9eef0"],
+          sun: "#f3d27a",
+          hill: "#9fae86",
+          b: ["#e7d3b0", "#c98b6b", "#efe3cc"],
+          roof: "#9b4a35",
+        },
+        {
+          sky: ["#f2c79a", "#f7e6cf"],
+          sun: "#f6a85b",
+          hill: "#8b9a7a",
+          b: ["#d8c2a0", "#b7c4c9", "#e6c9a8"],
+          roof: "#6f4a3b",
+        },
+        {
+          sky: ["#a9c0d6", "#dde6ec"],
+          sun: "#ffffff",
+          hill: "#7d8f74",
+          b: ["#cfd6c8", "#e2cfa9", "#b98f74"],
+          roof: "#874232",
+        },
+        {
+          sky: ["#c4d8cf", "#eef1e6"],
+          sun: "#f0dc9a",
+          hill: "#a3b38e",
+          b: ["#efe0c4", "#d7b48f", "#c6cdd0"],
+          roof: "#a5563d",
+        },
+      ];
+
+      const SEED = [
+        {
+          id: "c1",
+          kind: "code",
+          n: 1,
+          lat: 48.52077,
+          lng: 9.05641,
+          alt: 338.4,
+          text: "By the church steps, Holzmarkt",
+        },
+        {
+          id: "c2",
+          kind: "code",
+          n: 2,
+          lat: 48.52029,
+          lng: 9.05374,
+          alt: 341.1,
+          text: "Marktplatz, on the fountain railing",
+        },
+        {
+          id: "c3",
+          kind: "code",
+          n: 3,
+          lat: 48.51969,
+          lng: 9.05224,
+          alt: 352.7,
+          text: "Burgsteige, lamp post at the bend",
+        },
+        {
+          id: "p1",
+          kind: "pin",
+          lat: 48.52088,
+          lng: 9.0562,
+          alt: 339.0,
+          text: "Stiftskirche. Step inside: the choir holds the tombs of the dukes.",
+        },
+        {
+          id: "p2",
+          kind: "pin",
+          lat: 48.52066,
+          lng: 9.05663,
+          alt: 337.2,
+          text: "The steps are the town's favourite place to sit in the sun.",
+        },
+        {
+          id: "p3",
+          kind: "pin",
+          lat: 48.52037,
+          lng: 9.05352,
+          alt: 341.9,
+          text: "Rathaus. Look up at the painted facade and the clock.",
+        },
+        {
+          id: "p4",
+          kind: "pin",
+          lat: 48.52021,
+          lng: 9.0539,
+          alt: 340.6,
+          text: "Neptune fountain. Ask a local why he looks so tired.",
+        },
+        {
+          id: "p5",
+          kind: "pin",
+          lat: 48.52012,
+          lng: 9.05414,
+          alt: 340.2,
+          text: "Market mornings: stalls fill the square.",
+        },
+        {
+          id: "p6",
+          kind: "pin",
+          lat: 48.51959,
+          lng: 9.05196,
+          alt: 354.3,
+          text: "Turn around here: the best view over the roofs.",
+        },
+        {
+          id: "f1",
+          kind: "photo",
+          look: 0,
+          lat: 48.52083,
+          lng: 9.05655,
+          alt: 338.1,
+          text: "The church tower from the steps",
+        },
+        {
+          id: "f2",
+          kind: "photo",
+          look: 1,
+          lat: 48.52034,
+          lng: 9.05365,
+          alt: 341.4,
+          text: "The clock face, close up",
+        },
+        {
+          id: "f3",
+          kind: "photo",
+          look: 2,
+          lat: 48.52,
+          lng: 9.05318,
+          alt: 344.8,
+          text: "The lane up towards the castle",
+        },
+        {
+          id: "f4",
+          kind: "photo",
+          look: 3,
+          lat: 48.51962,
+          lng: 9.05236,
+          alt: 353.5,
+          text: "Roofs at dusk, from the bend",
+        },
+      ];
+      const PLACED_ON = "Placed on the phone, 12 Oct 2026";
+
+      /* ---------------- State ---------------- */
+      const state = {
+        objects: [],
+        selectedId: null,
+        hoverId: null,
+        moving: null, // { id, orig: { lat, lng } }
+        filter: "all",
+        query: "",
+        listCollapsed: false,
+        sessionEdits: [], // { id, what }
+        version: 3,
+        fileName: "altstadt-tuebingen.zip",
+        scans: 0,
+        save: "idle", // idle | editing | saving | saved | error | nowrite | downloaded
+        savedAt: null,
+        saving: false,
+        pendingSave: false,
+        draftEdits: 0,
+        loaded: false,
+      };
+      const markers = new Map();
+      const $ = (id) => document.getElementById(id);
+      const byId = (id) => state.objects.find((o) => o.id === id);
+      const KIND_LABEL = { code: "Code", pin: "Pin", photo: "Photo note" };
+
+      /* ---------------- Helpers ---------------- */
+      function metres(a, b) {
+        const R = 6371000;
+        const toRad = Math.PI / 180;
+        const x =
+          (b.lng - a.lng) * toRad * Math.cos(((a.lat + b.lat) / 2) * toRad);
+        const y = (b.lat - a.lat) * toRad;
+        return Math.sqrt(x * x + y * y) * R;
+      }
+      function walkLength() {
+        let d = 0;
+        for (let i = 1; i < WALK.length; i++) {
+          d += metres(
+            { lat: WALK[i - 1][0], lng: WALK[i - 1][1] },
+            { lat: WALK[i][0], lng: WALK[i][1] },
+          );
+        }
+        return d;
+      }
+      function nearestCode(o) {
+        let best = null;
+        let bestD = Infinity;
+        for (const c of state.objects) {
+          if (c.kind !== "code" || c.id === o.id) continue;
+          const d = metres(o, c);
+          if (d < bestD) {
+            bestD = d;
+            best = c;
+          }
+        }
+        return best ? { code: best, d: bestD } : null;
+      }
+      function titleOf(o) {
+        if (o.kind === "code") return "Code " + o.n;
+        const t = (o.text || "").trim();
+        return t || (o.kind === "photo" ? "Untitled photo" : "Empty pin");
+      }
+      function shortTitle(o) {
+        const t = titleOf(o);
+        return t.length > 34 ? t.slice(0, 32) + "..." : t;
+      }
+      function metaOf(o) {
+        if (o.kind === "code") {
+          const near = state.objects.filter(
+            (x) => x.kind !== "code" && nearestCode(x)?.code.id === o.id,
+          ).length;
+          return (o.text || "Printed code") + " - " + near + " notes nearby";
+        }
+        const nc = nearestCode(o);
+        const where = nc
+          ? Math.round(nc.d) + " m from code " + nc.code.n
+          : "no code nearby";
+        return (o.kind === "photo" ? "Photo note" : "Pin") + " - " + where;
+      }
+      function photoSvg(look) {
+        const p = PHOTO_LOOKS[look % PHOTO_LOOKS.length];
+        const gid = "g" + look + Math.random().toString(36).slice(2, 6);
+        const houses = [
+          [8, 46, 30, 54],
+          [36, 36, 28, 64],
+          [62, 50, 34, 50],
+          [94, 30, 26, 70],
+          [118, 44, 36, 56],
+        ]
+          .map(([x, y, w, h], i) => {
+            const c = p.b[(i + look) % p.b.length];
+            const win = [0, 1, 2]
+              .map(
+                (k) =>
+                  `<rect x="${x + 5 + k * ((w - 10) / 3)}" y="${y + 14}" width="${(w - 16) / 3}" height="7" fill="#5e5547" opacity=".45"/>`,
+              )
+              .join("");
+            return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${c}"/><polygon points="${x - 2},${y} ${x + w / 2},${y - 14} ${x + w + 2},${y}" fill="${p.roof}"/>${win}`;
+          })
+          .join("");
+        return `<svg viewBox="0 0 160 100" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${p.sky[0]}"/><stop offset="1" stop-color="${p.sky[1]}"/></linearGradient></defs>
+          <rect width="160" height="100" fill="url(#${gid})"/>
+          <circle cx="${120 - look * 22}" cy="22" r="11" fill="${p.sun}" opacity=".9"/>
+          <path d="M0 62 Q40 40 80 56 T160 50 V100 H0Z" fill="${p.hill}" opacity=".7"/>
+          ${houses}
+          <rect y="92" width="160" height="8" fill="#8f8574" opacity=".55"/>
+        </svg>`;
+      }
+      function markerHtml(o) {
+        if (o.kind === "code")
+          return `<div class="mk mk-code"><span>${o.n}</span></div>`;
+        if (o.kind === "pin")
+          return `<div class="mk mk-pin"><i style="position:relative"></i></div>`;
+        return `<div class="mk mk-photo">${photoSvg(o.look)}</div>`;
+      }
+      function iconFor(o) {
+        if (o.kind === "code")
+          return L.divIcon({
+            className: "mk-root",
+            html: markerHtml(o),
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+          });
+        if (o.kind === "pin")
+          return L.divIcon({
+            className: "mk-root",
+            html: markerHtml(o),
+            iconSize: [24, 24],
+            iconAnchor: [12, 28],
+          });
+        return L.divIcon({
+          className: "mk-root",
+          html: markerHtml(o),
+          iconSize: [36, 28],
+          iconAnchor: [18, 14],
+        });
+      }
+      function fmtAgo(t) {
+        const s = Math.round((Date.now() - t) / 1000);
+        if (s < 8) return "just now";
+        if (s < 60) return s + " s ago";
+        return Math.round(s / 60) + " min ago";
+      }
+
+      /* ---------------- Map ---------------- */
+      const map = L.map("map", {
+        zoomControl: true,
+        attributionControl: true,
+      }).setView([48.5203, 9.0536], 17);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(map);
+      map.attributionControl.setPrefix(false);
+
+      let walkLayer = null;
+      function drawWalk() {
+        const halo = L.polyline(WALK, {
+          color: "#fbf8ef",
+          weight: 9,
+          opacity: 0.75,
+          lineCap: "round",
+          lineJoin: "round",
+          interactive: false,
+        });
+        const line = L.polyline(WALK, {
+          color: "#cf4428",
+          weight: 4,
+          opacity: 0.75,
+          lineCap: "round",
+          lineJoin: "round",
+          dashArray: "1 8",
+        });
+        line.bindTooltip(
+          "Your walk, 12 Oct 2026 - " + Math.round(walkLength()) + " m",
+          { sticky: true },
+        );
+        const start = L.circleMarker(WALK[0], {
+          radius: 5,
+          color: "#fbf8ef",
+          weight: 2,
+          fillColor: "#2a2824",
+          fillOpacity: 1,
+        }).bindTooltip("Walk start");
+        walkLayer = L.layerGroup([halo, line, start]).addTo(map);
+      }
+
+      function addMarker(o) {
+        const m = L.marker([o.lat, o.lng], {
+          icon: iconFor(o),
+          draggable: false,
+          keyboard: false,
+          riseOnHover: true,
+        });
+        m.bindTooltip(shortTitle(o), {
+          direction: "top",
+          offset: [0, o.kind === "pin" ? -26 : -14],
+        });
+        m.on("click", (e) => {
+          L.DomEvent.stopPropagation(e);
+          if (state.moving && state.moving.id === o.id) return;
+          select(o.id);
+        });
+        m.on("mouseover", () => setHover(o.id));
+        m.on("mouseout", () => setHover(null));
+        m.on("drag", () => updateMoveDistance());
+        m.addTo(map);
+        markers.set(o.id, m);
+      }
+      function removeMarker(id) {
+        const m = markers.get(id);
+        if (m) map.removeLayer(m);
+        markers.delete(id);
+      }
+      function paintMarkers() {
+        for (const [id, m] of markers) {
+          const el = m.getElement();
+          if (!el) continue;
+          el.classList.toggle("is-selected", id === state.selectedId);
+          el.classList.toggle(
+            "is-hover",
+            id === state.hoverId && id !== state.selectedId,
+          );
+          el.classList.toggle(
+            "is-moving",
+            !!state.moving && state.moving.id === id,
+          );
+          m.setZIndexOffset(id === state.selectedId ? 1000 : 0);
+        }
+      }
+      map.on("click", (e) => {
+        if (state.moving) {
+          markers.get(state.moving.id).setLatLng(e.latlng);
+          updateMoveDistance();
+          return;
+        }
+        if (state.selectedId) select(null);
+      });
+      function fitAll() {
+        const pts = WALK.slice();
+        for (const o of state.objects) pts.push([o.lat, o.lng]);
+        const narrow = window.innerWidth <= 640;
+        const inspW = narrow ? 0 : $("inspector").offsetWidth;
+        map.fitBounds(pts, {
+          paddingTopLeft: narrow
+            ? [30, 30]
+            : [state.listCollapsed ? 60 : $("list").offsetWidth + 40, 50],
+          paddingBottomRight: narrow
+            ? [30, window.innerHeight * 0.58]
+            : [inspW + 60, 50],
+          maxZoom: 18,
+        });
+      }
+      function bringIntoView(o) {
+        const narrow = window.innerWidth <= 640;
+        const inspW = narrow ? 0 : $("inspector").offsetWidth;
+        map.panInside([o.lat, o.lng], {
+          paddingTopLeft: [80, 80],
+          paddingBottomRight: narrow
+            ? [40, window.innerHeight * 0.6]
+            : [inspW + 70, 80],
+        });
+      }
+
+      /* ---------------- Selection ---------------- */
+      function select(id, fromList) {
+        if (state.moving && state.moving.id !== id) finishMove(true);
+        flushText();
+        state.selectedId = id;
+        paintMarkers();
+        renderList();
+        renderInspector();
+        if (id && fromList) bringIntoView(byId(id));
+      }
+      function setHover(id) {
+        state.hoverId = id;
+        paintMarkers();
+        document
+          .querySelectorAll(".row")
+          .forEach((r) => r.classList.toggle("is-hover", r.dataset.id === id));
+      }
+
+      /* ---------------- List ---------------- */
+      function renderList() {
+        const all = state.objects;
+        const counts = { code: 0, pin: 0, photo: 0 };
+        all.forEach((o) => counts[o.kind]++);
+        $("listCount").textContent = all.length + " in this tour";
+        $("chipCount").textContent = all.length;
+        document.querySelectorAll(".chip").forEach((c) => {
+          const f = c.dataset.filter;
+          const base = {
+            all: "All",
+            code: "Codes",
+            pin: "Pins",
+            photo: "Photos",
+          }[f];
+          c.textContent = f === "all" ? base : base + " " + counts[f];
+          c.setAttribute("aria-pressed", String(state.filter === f));
+        });
+        const q = state.query.trim().toLowerCase();
+        const shown = all.filter(
+          (o) =>
+            (state.filter === "all" || o.kind === state.filter) &&
+            (!q ||
+              titleOf(o).toLowerCase().includes(q) ||
+              (o.text || "").toLowerCase().includes(q)),
+        );
+        const ul = $("rows");
+        ul.textContent = "";
+        if (!shown.length) {
+          const li = document.createElement("li");
+          li.className = "none";
+          li.textContent = q
+            ? 'Nothing matches "' + state.query + '".'
+            : "Nothing of this kind in the tour.";
+          ul.appendChild(li);
+          return;
+        }
+        for (const o of shown) {
+          const li = document.createElement("li");
+          li.className =
+            "row" + (o.id === state.selectedId ? " is-selected" : "");
+          li.dataset.id = o.id;
+          li.tabIndex = 0;
+          li.setAttribute("role", "button");
+          li.setAttribute("aria-pressed", String(o.id === state.selectedId));
+          const mini = document.createElement("span");
+          mini.className = "mini";
+          mini.innerHTML = markerHtml(o);
+          const txt = document.createElement("span");
+          txt.className = "txt";
+          const t = document.createElement("div");
+          t.className = "t";
+          t.textContent = titleOf(o);
+          const m = document.createElement("div");
+          m.className = "m";
+          m.textContent = metaOf(o);
+          txt.append(t, m);
+          li.append(mini, txt);
+          li.addEventListener("click", () => select(o.id, true));
+          li.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              select(o.id, true);
+            }
+          });
+          li.addEventListener("mouseenter", () => setHover(o.id));
+          li.addEventListener("mouseleave", () => setHover(null));
+          ul.appendChild(li);
+        }
+        const sel = ul.querySelector(".is-selected");
+        if (sel) sel.scrollIntoView({ block: "nearest" });
+      }
+      function setListCollapsed(c) {
+        state.listCollapsed = c;
+        $("list").hidden = c;
+        $("listChip").hidden = !c;
+      }
+      $("collapseList").addEventListener("click", () => setListCollapsed(true));
+      $("listChip").addEventListener("click", () => {
+        setListCollapsed(false);
+        $("search").focus();
+      });
+      $("search").addEventListener("input", (e) => {
+        state.query = e.target.value;
+        renderList();
+      });
+      document.querySelectorAll(".chip").forEach((c) =>
+        c.addEventListener("click", () => {
+          state.filter = c.dataset.filter;
+          renderList();
+        }),
+      );
+
+      /* ---------------- Inspector ---------------- */
+      function renderHead() {
+        const listedLine =
+          "Listed tour - version " + state.version + " is live";
+        const scans = state.scans
+          ? " - " +
+            state.scans +
+            " scan file" +
+            (state.scans > 1 ? "s" : "") +
+            " joined"
+          : "";
+        $("fileMeta").innerHTML = "";
+        const span = document.createElement("span");
+        span.textContent = state.fileName + scans + ". " + listedLine + ". ";
+        const again = document.createElement("button");
+        again.className = "link";
+        again.textContent = "Open another";
+        again.addEventListener("click", () => showOpen(true));
+        $("fileMeta").append(span, again);
+        const n = uniqueChanges().length;
+        $("publishBtn").disabled = n === 0;
+        $("pubHint").textContent =
+          n === 0
+            ? "No changes in this session yet"
+            : n + (n === 1 ? " change" : " changes") + " in this session";
+      }
+
+      function renderInspector() {
+        renderHead();
+        const body = $("inspBody");
+        body.textContent = "";
+        const o = byId(state.selectedId);
+        if (!o) {
+          const counts = { code: 0, pin: 0, photo: 0 };
+          state.objects.forEach((x) => counts[x.kind]++);
+          body.innerHTML = `
+            <div class="empty">
+              <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
+                <circle cx="32" cy="32" r="30" fill="#f4eedf" stroke="#c9bea3"/>
+                <path d="M24 18 L24 44 L31 38 L36 49 L41 47 L36 36 L45 35 Z" fill="#2a2824"/>
+              </svg>
+              <h2>Select something on the map</h2>
+              <p>Or pick it from the list. You can change its text, move it, or delete it.</p>
+              <div class="stats">
+                <div class="stat"><b>${counts.code}</b><span>codes</span></div>
+                <div class="stat"><b>${counts.pin}</b><span>pins</span></div>
+                <div class="stat"><b>${counts.photo}</b><span>photo notes</span></div>
+              </div>
+              <p class="walk-line">One walk, ${Math.round(walkLength())} m. Everything saves by itself as you edit.</p>
+            </div>`;
+          return;
+        }
+        const isMoving = state.moving && state.moving.id === o.id;
+        const head = document.createElement("div");
+        head.className = "sel-head";
+        const mini = document.createElement("span");
+        mini.className = "mini";
+        mini.innerHTML = markerHtml(o);
+        const hwrap = document.createElement("div");
+        const kick = document.createElement("p");
+        kick.className = "kicker";
+        const nc = o.kind === "code" ? null : nearestCode(o);
+        kick.textContent =
+          o.kind === "code"
+            ? "Printed code"
+            : KIND_LABEL[o.kind] + (nc ? " - near code " + nc.code.n : "");
+        hwrap.appendChild(kick);
+        const h2 = document.createElement("h2");
+        h2.id = "selTitle";
+        h2.textContent = o.kind === "code" ? "Code " + o.n : shortTitle(o);
+        hwrap.appendChild(h2);
+        const close = document.createElement("button");
+        close.className = "sel-close";
+        close.innerHTML = "&times;";
+        close.title = "Clear selection (Esc)";
+        close.setAttribute("aria-label", "Clear selection");
+        close.addEventListener("click", () => select(null));
+        head.append(mini, hwrap, close);
+        body.appendChild(head);
+
+        if (o.kind === "photo") {
+          const ph = document.createElement("div");
+          ph.className = "photo-big";
+          ph.innerHTML = photoSvg(o.look);
+          body.appendChild(ph);
+        }
+
+        const field = document.createElement("div");
+        field.className = "field";
+        const lab = document.createElement("label");
+        lab.htmlFor = "objText";
+        lab.textContent =
+          o.kind === "code"
+            ? "Where the code hangs (for you, not shown to visitors)"
+            : o.kind === "photo"
+              ? "Caption"
+              : "Text";
+        const ta = document.createElement("textarea");
+        ta.id = "objText";
+        ta.value = o.text || "";
+        ta.addEventListener("input", () => onTextInput(o, ta.value));
+        ta.addEventListener("blur", flushText);
+        const hint = document.createElement("div");
+        hint.className = "hint";
+        hint.textContent =
+          o.kind === "code"
+            ? "The code's number and print stay as they are."
+            : "Visitors see this when they reach the spot.";
+        field.append(lab, ta, hint);
+        body.appendChild(field);
+
+        const sec = document.createElement("div");
+        sec.className = "section";
+        sec.innerHTML = `<h3>Position</h3>
+          <div class="coords">${o.lat.toFixed(6)}, ${o.lng.toFixed(6)}<br/>Height ${o.alt.toFixed(1)} m${o.moved ? " (kept from the phone)" : " (from the phone)"}</div>
+          <div class="note"><span class="ico">i</span><span>Placed from GPS alignment: about 1-3 m. The map can be off by as much, so place by what you see, not to the centimetre.</span></div>`;
+        if (o.moved && o.kind !== "code") {
+          sec.insertAdjacentHTML(
+            "beforeend",
+            `<div class="note warn"><span class="ico">!</span><span>Height kept from the phone; on sloped ground it may be off.</span></div>`,
+          );
+        }
+        if (o.moved && o.kind === "code") {
+          sec.insertAdjacentHTML(
+            "beforeend",
+            `<div class="note warn"><span class="ico">!</span><span>Moved by hand. The phone measures the code again on your next visit; the printed sign must be where you put it.</span></div>`,
+          );
+        }
+        if (isMoving) {
+          body.insertAdjacentHTML(
+            "beforeend",
+            `<div class="moving-box">Moving. Drag the marker, or click the map where it belongs.<br/>Moved so far: <b id="moveDist">0.0 m</b><br/><span style="color:var(--ink-dim)">Placed from GPS alignment: about 1-3 m.</span></div>`,
+          );
+        }
+        const actions = document.createElement("div");
+        actions.className = "sel-actions";
+        if (isMoving) {
+          const done = document.createElement("button");
+          done.className = "btn primary";
+          done.textContent = "Done moving";
+          done.addEventListener("click", () => finishMove(true));
+          const cancel = document.createElement("button");
+          cancel.className = "btn";
+          cancel.textContent = "Cancel";
+          cancel.addEventListener("click", () => finishMove(false));
+          actions.append(done, cancel);
+        } else {
+          const mv = document.createElement("button");
+          mv.className = "btn";
+          mv.innerHTML = "&#10021; Move";
+          mv.addEventListener("click", startMove);
+          const del = document.createElement("button");
+          del.className = "btn danger";
+          del.textContent = "Delete";
+          del.title = "Delete (Delete key). You can undo.";
+          del.addEventListener("click", deleteSelected);
+          actions.append(mv, del);
+        }
+        body.appendChild(actions);
+        body.appendChild(sec);
+
+        const placed = document.createElement("div");
+        placed.className = "placed";
+        placed.textContent =
+          PLACED_ON + (o.edited ? ". Edited here today." : ".");
+        body.appendChild(placed);
+        if (isMoving) updateMoveDistance();
+      }
+
+      /* ---------------- Editing ---------------- */
+      let textTimer = null;
+      let textPending = null; // object whose text changed
+      function onTextInput(o, value) {
+        o.text = value;
+        o.edited = true;
+        textPending = o;
+        const m = markers.get(o.id);
+        if (m) m.setTooltipContent(shortTitle(o));
+        refreshRow(o);
+        if (!state.saving && state.save !== "error" && !noWrite())
+          setSave("editing");
+        clearTimeout(textTimer);
+        textTimer = setTimeout(flushText, 900);
+      }
+      function flushText() {
+        clearTimeout(textTimer);
+        if (!textPending) return;
+        const o = textPending;
+        textPending = null;
+        noteEdit(
+          o.id,
+          "New text for " + (o.kind === "code" ? "code " + o.n : KIND_LABEL[o.kind].toLowerCase()) + ': "' + shortTitle(o) + '"',
+        );
+      }
+      function refreshRow(o) {
+        const row = document.querySelector('.row[data-id="' + o.id + '"]');
+        if (row) {
+          row.querySelector(".t").textContent = titleOf(o);
+          row.querySelector(".m").textContent = metaOf(o);
+        }
+      }
+
+      function startMove() {
+        const o = byId(state.selectedId);
+        if (!o) return;
+        flushText();
+        const m = markers.get(o.id);
+        state.moving = { id: o.id, orig: { lat: o.lat, lng: o.lng } };
+        m.dragging.enable();
+        $("moveBanner").hidden = false;
+        paintMarkers();
+        renderInspector();
+      }
+      function updateMoveDistance() {
+        if (!state.moving) return;
+        const ll = markers.get(state.moving.id).getLatLng();
+        const el = $("moveDist");
+        if (el)
+          el.textContent =
+            metres(state.moving.orig, { lat: ll.lat, lng: ll.lng }).toFixed(1) +
+            " m";
+      }
+      function finishMove(commit) {
+        if (!state.moving) return;
+        const { id, orig } = state.moving;
+        const o = byId(id);
+        const m = markers.get(id);
+        m.dragging.disable();
+        state.moving = null;
+        $("moveBanner").hidden = true;
+        if (o) {
+          const ll = m.getLatLng();
+          const d = metres(orig, { lat: ll.lat, lng: ll.lng });
+          if (commit && d > 0.05) {
+            o.lat = ll.lat;
+            o.lng = ll.lng;
+            o.moved = true;
+            o.edited = true;
+            noteEdit(
+              id,
+              "Moved " + (o.kind === "code" ? "code " + o.n : '"' + shortTitle(o) + '"') + " by " + d.toFixed(1) + " m",
+            );
+          } else {
+            m.setLatLng([orig.lat, orig.lng]);
+          }
+        }
+        paintMarkers();
+        renderList();
+        renderInspector();
+      }
+
+      let lastDeleted = null;
+      function deleteSelected() {
+        const o = byId(state.selectedId);
+        if (!o) return;
+        if (state.moving) finishMove(false);
+        flushText();
+        const idx = state.objects.indexOf(o);
+        state.objects.splice(idx, 1);
+        removeMarker(o.id);
+        state.selectedId = null;
+        const label =
+          o.kind === "code"
+            ? "Code " + o.n
+            : KIND_LABEL[o.kind] + ' "' + shortTitle(o) + '"';
+        const editEntry = { id: o.id, what: "Deleted " + label };
+        lastDeleted = { o, idx, editEntry };
+        noteEdit(o.id, editEntry.what, editEntry);
+        renderList();
+        renderInspector();
+        paintMarkers();
+        toast(label + " deleted.", "Undo", undoDelete);
+      }
+      function undoDelete() {
+        if (!lastDeleted) return;
+        const { o, idx, editEntry } = lastDeleted;
+        lastDeleted = null;
+        state.objects.splice(Math.min(idx, state.objects.length), 0, o);
+        addMarker(o);
+        state.sessionEdits = state.sessionEdits.filter((e) => e !== editEntry);
+        requestSave();
+        select(o.id, true);
+        toast("Restored.", null, null, 1800);
+      }
+
+      /* ---------------- Saving (faked) ---------------- */
+      function noWrite() {
+        return $("noWrite").checked;
+      }
+      function uniqueChanges() {
+        const seen = new Map();
+        for (const e of state.sessionEdits)
+          seen.set(e.id + "|" + e.what.split(" ")[0], e);
+        return [...seen.values()];
+      }
+      function noteEdit(id, what, entry) {
+        state.sessionEdits.push(entry || { id, what });
+        requestSave();
+        renderHead();
+      }
+      function requestSave() {
+        if (noWrite()) {
+          state.draftEdits++;
+          setSave("nowrite");
+          return;
+        }
+        if (state.saving) {
+          state.pendingSave = true;
+          return;
+        }
+        doSave();
+      }
+      function doSave() {
+        state.saving = true;
+        setSave("saving");
+        const fail = $("failNext").checked;
+        setTimeout(
+          () => {
+            state.saving = false;
+            if (fail) {
+              $("failNext").checked = false;
+              state.pendingSave = false;
+              setSave("error");
+              return;
+            }
+            state.savedAt = Date.now();
+            setSave("saved");
+            if (state.pendingSave) {
+              state.pendingSave = false;
+              doSave();
+            }
+          },
+          600 + Math.random() * 300,
+        );
+      }
+      function setSave(s) {
+        state.save = s;
+        const el = $("save");
+        el.dataset.state = s;
+        el.textContent = "";
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        const label = document.createElement("span");
+        label.className = "label";
+        const sub = document.createElement("span");
+        sub.className = "sub";
+        el.append(dot, label, sub);
+        const file = state.fileName;
+        if (s === "idle") {
+          label.textContent = "All changes saved";
+          sub.textContent = "Saves into " + file + " by itself.";
+        } else if (s === "editing") {
+          label.textContent = "Editing…";
+          sub.textContent = "Saves when you pause typing.";
+        } else if (s === "saving") {
+          label.textContent = "Saving…";
+          sub.textContent = "Writing to " + file + ".";
+        } else if (s === "saved") {
+          label.textContent = "Saved";
+          sub.textContent = fmtAgo(state.savedAt) + ", in " + file + ".";
+        } else if (s === "error") {
+          label.textContent = "Not saved";
+          sub.textContent =
+            "Could not write to " +
+            file +
+            ". Your edit is kept on this computer.";
+          const act = document.createElement("div");
+          act.className = "actions";
+          const retry = document.createElement("button");
+          retry.className = "btn small";
+          retry.textContent = "Try again";
+          retry.addEventListener("click", doSave);
+          act.appendChild(retry);
+          el.appendChild(act);
+        } else if (s === "nowrite" || s === "downloaded") {
+          if (s === "downloaded") {
+            label.textContent = "Downloaded";
+            sub.textContent =
+              "Saved as a new file. This browser cannot save in place, so use Save after your next edits.";
+          } else {
+            label.textContent = state.draftEdits
+              ? "Not in a file yet"
+              : "Nothing to save";
+            sub.textContent = state.draftEdits
+              ? state.draftEdits +
+                (state.draftEdits === 1 ? " edit is" : " edits are") +
+                " kept on this computer. This browser cannot save in place."
+              : "This browser cannot save in place: Save downloads a new file.";
+          }
+          const act = document.createElement("div");
+          act.className = "actions";
+          const dl = document.createElement("button");
+          dl.className = "btn small primary";
+          dl.textContent = "Save (download)";
+          dl.disabled = !state.draftEdits;
+          dl.addEventListener("click", () => {
+            const name =
+              state.fileName.replace(/\.zip$/i, "") + " (edited).zip";
+            state.draftEdits = 0;
+            setSave("downloaded");
+            toast("Prototype: would download " + name + ".", null, null, 2600);
+          });
+          act.appendChild(dl);
+          el.appendChild(act);
+        }
+      }
+      setInterval(() => {
+        if (state.save === "saved") setSave("saved");
+      }, 10000);
+      $("noWrite").addEventListener("change", () => {
+        if (noWrite()) setSave("nowrite");
+        else if (state.draftEdits) {
+          state.draftEdits = 0;
+          doSave();
+        } else setSave("idle");
+      });
+
+      /* ---------------- Publish ---------------- */
+      $("publishBtn").addEventListener("click", () => {
+        flushText();
+        const list = $("changeList");
+        list.textContent = "";
+        const ch = uniqueChanges();
+        ch.slice(0, 7).forEach((e) => {
+          const li = document.createElement("li");
+          li.textContent = e.what;
+          list.appendChild(li);
+        });
+        if (ch.length > 7) {
+          const li = document.createElement("li");
+          li.textContent = "and " + (ch.length - 7) + " more";
+          list.appendChild(li);
+        }
+        $("pubGo").textContent = "Publish version " + (state.version + 1);
+        $("pubDlg").hidden = false;
+        $("pubGo").focus();
+      });
+      $("pubCancel").addEventListener(
+        "click",
+        () => ($("pubDlg").hidden = true),
+      );
+      $("pubGo").addEventListener("click", () => {
+        const btn = $("pubGo");
+        btn.disabled = true;
+        btn.textContent = "Signing…";
+        setTimeout(() => {
+          btn.disabled = false;
+          state.version++;
+          state.sessionEdits = [];
+          $("pubDlg").hidden = true;
+          renderHead();
+          toast(
+            "Version " +
+              state.version +
+              " signed and ready to host. Later edits go into the next version.",
+            null,
+            null,
+            4200,
+          );
+        }, 1100);
+      });
+
+      /* ---------------- Toast ---------------- */
+      let toastTimer = null;
+      let toastAction = null;
+      function toast(msg, actionLabel, action, ms) {
+        const t = $("toast");
+        t.textContent = "";
+        const span = document.createElement("span");
+        span.textContent = msg;
+        t.appendChild(span);
+        toastAction = action || null;
+        if (actionLabel && action) {
+          const b = document.createElement("button");
+          b.className = "btn small";
+          b.textContent = actionLabel;
+          b.addEventListener("click", () => {
+            hideToast();
+            action();
+          });
+          t.appendChild(b);
+        }
+        t.hidden = false;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(hideToast, ms || 7000);
+      }
+      function hideToast() {
+        $("toast").hidden = true;
+        toastAction = null;
+      }
+
+      /* ---------------- Keyboard ---------------- */
+      document.addEventListener("keydown", (e) => {
+        if (!$("openDlg").hidden) {
+          if (e.key === "Escape" && state.loaded) showOpen(false);
+          return;
+        }
+        if (!$("pubDlg").hidden) {
+          if (e.key === "Escape") $("pubDlg").hidden = true;
+          return;
+        }
+        const inField = e.target.closest && e.target.closest("input, textarea");
+        if (e.key === "Escape") {
+          if (state.moving) {
+            finishMove(false);
+            return;
+          }
+          if (inField) e.target.blur();
+          if (state.selectedId) select(null);
+          return;
+        }
+        if (
+          (e.key === "Delete" || (e.key === "Backspace" && !inField)) &&
+          !inField &&
+          state.selectedId &&
+          !state.moving
+        ) {
+          e.preventDefault();
+          deleteSelected();
+          return;
+        }
+        if (
+          (e.ctrlKey || e.metaKey) &&
+          e.key.toLowerCase() === "z" &&
+          !inField &&
+          toastAction
+        ) {
+          e.preventDefault();
+          const a = toastAction;
+          hideToast();
+          a();
+        }
+      });
+
+      /* ---------------- Open modal ---------------- */
+      const hasWriteApi = "showOpenFilePicker" in window;
+      if (!hasWriteApi) {
+        $("browserNote").classList.add("flag");
+        $("browserNote").textContent =
+          "This browser cannot write to a file you opened. You will get an explicit Save that downloads a new file, and your edits are kept on this computer in between. Chrome and Edge save in place as you go.";
+      }
+      let chosenName = null;
+      $("pickZip").addEventListener("click", () => $("zipInput").click());
+      $("pickScans").addEventListener("click", () => $("scanInput").click());
+      $("zipInput").addEventListener("change", (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        chosenName = f.name;
+        $("zipState").innerHTML = "";
+        const s = document.createElement("span");
+        s.className = "chosen";
+        s.textContent = "Chosen: " + f.name;
+        $("zipState").appendChild(s);
+        $("openBtn").disabled = false;
+      });
+      $("scanInput").addEventListener("change", (e) => {
+        const n = e.target.files.length;
+        state.scans = n;
+        $("scanState").innerHTML = "";
+        const s = document.createElement("span");
+        s.className = "chosen";
+        s.textContent = n
+          ? n + " scan file" + (n > 1 ? "s" : "") + " added"
+          : "None added";
+        $("scanState").appendChild(s);
+      });
+      $("pickFolder").addEventListener("click", async () => {
+        if ("showDirectoryPicker" in window) {
+          try {
+            const dir = await window.showDirectoryPicker({ mode: "readwrite" });
+            loadTour(dir.name + ".zip", 1);
+          } catch (err) {
+            if (err && err.name !== "AbortError")
+              toast(
+                "Could not open that folder: " + err.message,
+                null,
+                null,
+                4000,
+              );
+          }
+        } else {
+          $("folderInput").click();
+        }
+      });
+      $("folderInput").addEventListener("change", (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        const folder = (f.webkitRelativePath || "tour").split("/")[0];
+        loadTour(folder + ".zip", 1);
+      });
+      $("openBtn").addEventListener("click", () =>
+        loadTour(chosenName || "altstadt-tuebingen.zip", state.scans),
+      );
+      $("useSample").addEventListener("click", () =>
+        loadTour("altstadt-tuebingen.zip", 1),
+      );
+
+      function showOpen(show) {
+        $("openDlg").hidden = !show;
+        if (show) $("useSample").focus();
+      }
+
+      function loadTour(fileName, scans) {
+        for (const id of [...markers.keys()]) removeMarker(id);
+        if (walkLayer) map.removeLayer(walkLayer);
+        state.objects = SEED.map((o) => ({ ...o }));
+        state.selectedId = null;
+        state.moving = null;
+        state.sessionEdits = [];
+        state.version = 3;
+        state.fileName = fileName;
+        state.scans = scans || 0;
+        state.draftEdits = 0;
+        state.loaded = true;
+        $("tourName").value = "Altstadt Tübingen";
+        $("noWrite").checked = !hasWriteApi;
+        showOpen(false);
+        $("inspector").hidden = false;
+        setListCollapsed(window.innerWidth <= 900);
+        drawWalk();
+        state.objects.forEach(addMarker);
+        renderList();
+        renderInspector();
+        setSave(noWrite() ? "nowrite" : "idle");
+        requestAnimationFrame(() => {
+          fitAll();
+          paintMarkers();
+        });
+      }
+
+      let nameTimer = null;
+      $("tourName").addEventListener("input", () => {
+        if (!noWrite()) setSave("editing");
+        clearTimeout(nameTimer);
+        nameTimer = setTimeout(
+          () => noteEdit("tour", "Tour renamed to \"" + $("tourName").value + "\""),
+          900,
+        );
+      });
+
+      /* Pre-load the sample through the URL (?sample) for screenshots. */
+      if (new URLSearchParams(location.search).has("sample"))
+        loadTour("altstadt-tuebingen.zip", 1);
+    </script>
+  </body>
+</html>
