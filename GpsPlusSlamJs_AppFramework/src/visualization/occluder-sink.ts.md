@@ -82,7 +82,9 @@ The Tour Viewer's mesh cursor passes `occlude: false` and casts against `handle.
 - `occluder-sink.test.ts` - construction knobs (mode/debug style/parent, `occlude: false`
   hides the mesh), unbounded vs windowed snapshot selection, non-finite-pose degradation,
   geometry application + clear, and the dispose contract (idempotent; post-dispose
-  refresh/clear/late-response no-ops).
+  refresh/clear/late-response no-ops). A worker result requested before a
+  `clear()` is dropped when it arrives (a tracking restart must not put the
+  old mesh back, PR #609 review); one requested after is applied.
 - The RecorderApp's live/replay integration stays covered by its
   `main.occupancy-cubes-wiring.test.ts`, which mocks only the app's worker client
   (`./visualization/occluder-mesh-worker-client`); the framework mesh and this factory run

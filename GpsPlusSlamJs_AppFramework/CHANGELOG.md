@@ -11,6 +11,11 @@
 
 ### Fixed
 
+- **An occluder mesh result from before `clear()` is dropped**
+  (`visualization/occluder-sink`): a worker result requested before a clear
+  (a tracking restart) arrived after it and put the old mesh back, so a
+  raycast against the mesh could pick a surface from before the restart
+  (Tour Viewer PR #609 review).
 - **`downloadBlob` and `syncToExternalZip` abort a failed write**
   (`storage/zip-export`): both wrote through the save picker or the external
   handle without `abort()`, so a failed write left the writable open, holding

@@ -74,6 +74,37 @@ describe('createOccluderSink', () => {
     expect(d.createWorker).toHaveBeenCalledTimes(1);
   });
 
+  // Why (PR #609 review): a worker result requested before a clear (a
+  // tracking restart) arrived after it and put the old frame's mesh back,
+  // so a raycast picked a surface from before the restart.
+  it('drops a mesh result requested before a clear, and applies one requested after', () => {
+    const d = makeDeps();
+    const grid = makeGrid();
+    const { sink } = createOccluderSink(
+      PARENT as never,
+      makeOccupancy({ radiusM: 0 }),
+      {
+        createMesh: d.createMesh as never,
+        createWorker: d.createWorker,
+      }
+    );
+    sink.refresh(grid as never);
+    const before = d.driver.request.mock.calls[0]?.[4] as (
+      p: Float32Array,
+      i: Uint32Array
+    ) => void;
+    sink.clear();
+    before(new Float32Array(3), new Uint32Array(3));
+    expect(d.mesh.applyMeshData).not.toHaveBeenCalled();
+    sink.refresh(grid as never);
+    const after = d.driver.request.mock.calls[1]?.[4] as (
+      p: Float32Array,
+      i: Uint32Array
+    ) => void;
+    after(new Float32Array(3), new Uint32Array(3));
+    expect(d.mesh.applyMeshData).toHaveBeenCalledTimes(1);
+  });
+
   it('refresh uses the UNBOUNDED flat snapshot when the radius is 0', () => {
     const d = makeDeps();
     const grid = makeGrid();
