@@ -25,7 +25,11 @@ import {
 import { isWritableQrLevelId } from "gps-plus-slam-app-framework/ar/qr/qr-level-archive";
 import type { DraftFileStore } from "gps-plus-slam-app-framework/storage";
 
-import type { AuthoringDraft } from "./authoring-draft.js";
+import {
+  withBaseKey,
+  type AuthoringDraft,
+  type DraftBase,
+} from "./authoring-draft.js";
 import {
   parseVisitLogEntry,
   serializeVisitLogEntry,
@@ -75,9 +79,8 @@ const DELETED_PREFIX = "deleted:";
 const VISIT_PREFIX = "visit:";
 const BASE_PREFIX = "base:";
 
-/** An object's base (M6 E2p): the content key of the hosted version its
- *  record started from or reached. Its own file, so a draft from before
- *  E2p reads unchanged and a base is written once, not with every edit. */
+/** An object's base (M6 E2p): its known versions (`DraftBase`) as JSON.
+ *  Its own file, so a draft from before E2p reads unchanged. */
 export function baseKey(id: string): string {
   return `${BASE_PREFIX}${id}`;
 }
@@ -133,36 +136,59 @@ export async function removeDraftObject(
 }
 
 /**
- * Record a placement or an edit, and its base (M6 E2p): `base` is the
- * content key to record, `null` to remove a base (the opened tour does not
- * carry the object), `undefined` to leave it. The caller decides, once per
- * object per page load, from the tour AS OPENED (`creator-draft.ts`). The
- * result is the record's write: a base that did not land only falls back
- * to the behaviour before E2p (review #6). Both writes run at once.
+ * Record a placement or an edit, and - when `seen` is given - that this
+ * device saw that version of the object hosted (M6 E2p): the tour as the
+ * page opened it. The result is the record's write: a base that did not
+ * land only falls back to the behaviour before E2p (review #6). Both writes
+ * run at once; callers queue an id's writes, so the base's read and write
+ * are not raced.
  */
 export async function writeDraftEdit(
   store: DraftFileStore,
   object: TourObject,
   blob: Blob | undefined,
-  base: string | null | undefined,
+  seen: string | undefined,
 ): Promise<boolean> {
   const [wrote] = await Promise.all([
     writeDraftObject(store, object, blob),
-    base === undefined
-      ? Promise.resolve()
-      : base === null
-        ? store.remove(baseKey(object.id))
-        : writeDraftBase(store, object.id, base),
+    seen === undefined
+      ? Promise.resolve(true)
+      : addDraftBaseKey(store, object.id, "seen", seen),
   ]);
   return wrote;
 }
-/** Record an object's base (M6 E2p). */
-export async function writeDraftBase(
+
+/** Parse a stored base; `undefined` for anything else, which then
+ *  behaves as no base (never superseded - the safe direction). */
+export function parseDraftBase(
+  text: string | undefined,
+): DraftBase | undefined {
+  if (text === undefined || text === "") return undefined;
+  try {
+    const value: unknown = JSON.parse(text);
+    if (value === null || typeof value !== "object") return undefined;
+    const { seen, written } = value as Record<string, unknown>;
+    const strings = (v: unknown): v is string[] =>
+      Array.isArray(v) && v.every((k) => typeof k === "string");
+    if (!strings(seen) || !strings(written)) return undefined;
+    return seen.length + written.length === 0 ? undefined : { seen, written };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Add one key to an object's base (M6 E2p), read and written in place;
+ *  a key already there writes nothing. */
+export async function addDraftBaseKey(
   store: DraftFileStore,
   id: string,
-  base: string,
+  list: keyof DraftBase,
+  key: string,
 ): Promise<boolean> {
-  return store.put(baseKey(id), base);
+  const before = parseDraftBase(await store.getText(baseKey(id)));
+  const after = withBaseKey(before, list, key);
+  if (after === before) return true;
+  return store.put(baseKey(id), JSON.stringify(after));
 }
 
 /**
@@ -435,13 +461,13 @@ export async function readDraft(
       a.createdAtIso.localeCompare(b.createdAtIso) || a.id.localeCompare(b.id),
   );
   // The bases (M6 E2p), unless rejected; none at all in an older draft.
-  const bases = new Map<string, string>();
+  const bases = new Map<string, DraftBase>();
   for (const key of keys) {
     if (!key.startsWith(BASE_PREFIX)) continue;
     const id = key.slice(BASE_PREFIX.length);
     if (rejected.has(id)) continue;
-    const text = await store.getText(key);
-    if (text !== undefined && text !== "") bases.set(id, text);
+    const base = parseDraftBase(await store.getText(key));
+    if (base !== undefined) bases.set(id, base);
   }
   const visits = await readVisits(store, keys, rejected);
   const onDisk = new Set(storedIds);

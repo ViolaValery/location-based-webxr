@@ -20,27 +20,30 @@ M2 (`GpsPlusSlamJs_Docs/docs/2026-10-06-1601-tour-viewer-code-book-refactor-plan
     visit is recorded into it, and `notLive` keeps this page's visits out
     of any sweep.
 - `CreatorDraft`:
-  - The base (M6 E2p, and its review #1, #2, #4): `present` snapshots the
-    tour AS OPENED (`ctx.tourManifest` then; a Finish later advances it to
-    what this page wrote, which is not hosted until the creator uploads
-    it). The first draft write of an object in each page load records the
-    opened tour's version as its base, or removes the base for an object
-    it does not carry; later writes in the load leave it. Records the
-    hosted zip carries unchanged get their base refreshed on open
-    (`draftObjectsPublished`), also over an older base. Superseded
+  - The base (M6 E2p, its review and re-review): `present` snapshots the
+    tour AS OPENED (`opened`; a Finish later advances `ctx.tourManifest`
+    to what this page wrote, which is not hosted until the creator uploads
+    it), and every hosted comparison of `present` uses that snapshot. Every
+    draft write of an object adds the opened tour's version of it as seen,
+    read when the write runs (so a write queued before the namespace
+    opened still names the tour edited); `finished(ids, written)` adds a
+    Finish's versions as written; records the hosted zip carries unchanged
+    are added as seen on open (`draftObjectsPublished`). Superseded
     records are not offered, one line says so (combined with the AR note
     when in AR, never overwritten by it), and their files are removed -
     unless this page changed them again first (`notLive`).
   - `writeObject(object, blob?)` - the object list's awaited record write,
-    with its base decided the same way (`creator-setup.ts`'s
-    `saveDraftObject`).
+    with its seen version (`creator-setup.ts`'s `saveDraftObject`).
+  - `finished(ids, written)` - `creator-finish.ts` after a Finish wrote
+    these objects: their versions in `written` are this device's own work.
   - **Not covered (E2p review #3, #7).** A desktop delete is honoured only
-    once the draft has the base the hosted record reached: the usual walk
-    (place, upload, delete on the desktop, with no phone open in between)
-    still offers the pin back - nothing tells the phone an upload
-    happened (`rebuiltZip.delivered` is not proof of one). And a record
-    superseded by a desktop edit is dropped whole: a code move the phone
-    made to it since is not merged.
+    once a version of the record was SEEN hosted: the usual walk (place,
+    upload, delete on the desktop, with no phone open in between) still
+    offers the pin back - nothing tells the phone an upload happened
+    (`rebuiltZip.delivered` is not proof of one), and a written version
+    alone cannot tell "deleted" from "not uploaded" (follow-up F19). And a
+    record superseded by a desktop edit is dropped whole: a code move the
+    phone made to it since is not merged.
   - `present(tourUrl)` - a tour opened and its manifest settled: open the
     namespace, then sweep a spent draft, offer what is not hosted yet, or
     start one. Every continuation re-checks `ctx.openGeneration`.

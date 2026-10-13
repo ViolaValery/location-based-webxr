@@ -81,7 +81,7 @@ export function wireCreatorFinish(deps: {
   >;
   handoff: Pick<CreatorHandoff, "save" | "offer">;
   previews: Pick<CreatorPreviews, "keepFinishedPhoto" | "sync">;
-  draft: Pick<CreatorDraft, "saveMeta">;
+  draft: Pick<CreatorDraft, "saveMeta" | "finished">;
   sessionLive: () => boolean;
   /** The tour's name as typed in step 3; a non-empty one becomes the
    *  manifest's `title` (polish round M4a). */
@@ -304,6 +304,13 @@ export function wireCreatorFinish(deps: {
           }
         }
         ctx.placedObjects = pending.placed;
+        // Their versions in this file are this device's own (M6 E2p): a
+        // creator who uploads it from this tab must not see a later edit
+        // called "replaced by a newer one".
+        deps.draft.finished(
+          pending.finished.map((p) => p.object.id),
+          written,
+        );
         // The deletions are applied: the manifest no longer carries them.
         // (Their tombstones stay in the draft until the hosted zip lacks
         // them too - the same proof the objects wait for.)

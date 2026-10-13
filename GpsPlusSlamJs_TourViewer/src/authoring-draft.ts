@@ -59,10 +59,45 @@ export interface AuthoringDraft {
    *  2026-09-28-0953 §3.4): pending while the hosted zip still carries
    *  them. */
   deleted: readonly string[];
-  /** Per object id, the content key (`objectContentKey`) of the hosted
-   *  version this device's record started from, or reached (M6 E2p).
-   *  Absent in a draft from before E2p: such a draft behaves as before. */
-  bases?: ReadonlyMap<string, string>;
+  /** Per object id, the versions this device knows as its own line (M6
+   *  E2p): absent in a draft from before E2p, which behaves as before. */
+  bases?: ReadonlyMap<string, DraftBase>;
+}
+
+/**
+ * An object's known versions, as content keys (`objectContentKey`), M6
+ * E2p and its re-review #1. Only facts, so they only accumulate:
+ *
+ * - `seen` - versions this device saw in the hosted file (the tour as a
+ *   page opened it, or a record found published there);
+ * - `written` - versions this device's own Finishes wrote. A Finish's file
+ *   may be uploaded from the same tab, so the hosted version can be one
+ *   the device never saw hosted and still be its own work.
+ *
+ * A hosted version in neither list was made elsewhere.
+ */
+export interface DraftBase {
+  readonly seen: readonly string[];
+  readonly written: readonly string[];
+}
+
+/** The most keys a base list keeps (the newest): one is added per page
+ *  load and per Finish at most, so this is never reached in practice. */
+export const DRAFT_BASE_MAX_KEYS = 32;
+
+/** `base` with `key` added to one of its lists, the newest last; the same
+ *  object when the key is already there. */
+export function withBaseKey(
+  base: DraftBase | undefined,
+  list: keyof DraftBase,
+  key: string,
+): DraftBase {
+  const now = base ?? { seen: [], written: [] };
+  if (now[list].includes(key)) return now;
+  return {
+    ...now,
+    [list]: [...now[list], key].slice(-DRAFT_BASE_MAX_KEYS),
+  };
 }
 
 /**
@@ -115,10 +150,11 @@ function hostedKeys(manifest: TourManifest | null): Map<string, string> {
   );
 }
 
-/** A newer edit elsewhere won (M6 E2p): the hosted object changed since
- *  the version this record started from, or it is gone though it was
- *  hosted once. Never true without a base (a draft from before E2p, a
- *  new placement not yet published). */
+/** A newer edit elsewhere won (M6 E2p): the hosted version is one this
+ *  device neither saw hosted nor wrote, or the object is gone though this
+ *  device saw it hosted. Never true without a base (a draft from before
+ *  E2p) - and a new placement never seen hosted is never "deleted
+ *  elsewhere": its Finish may simply not be uploaded yet. */
 function superseded(
   draft: AuthoringDraft,
   hosted: ReadonlyMap<string, string>,
@@ -127,7 +163,8 @@ function superseded(
   const base = draft.bases?.get(id);
   if (base === undefined) return false;
   const now = hosted.get(id);
-  return now === undefined || now !== base;
+  if (now === undefined) return base.seen.length > 0;
+  return !base.seen.includes(now) && !base.written.includes(now);
 }
 
 /**
@@ -149,12 +186,10 @@ export function draftObjectsSuperseded(
 }
 
 /**
- * The draft's objects the hosted zip carries with the same content whose
- * base is not that content yet (absent, or an older version): they reached
- * the file the world sees, so their base is set to it - a later delete
- * elsewhere is then not undone by this draft, and a later edit of this
- * device's own published version is not mistaken for one made elsewhere
- * (M6 E2p review #1).
+ * The draft's objects the hosted zip carries with the same content, not
+ * yet in their base's `seen` list: they reached the file the world sees,
+ * so the page records that - a later delete elsewhere is then not undone
+ * by this draft (M6 E2p).
  */
 export function draftObjectsPublished(
   draft: AuthoringDraft,
@@ -163,7 +198,10 @@ export function draftObjectsPublished(
   const hosted = hostedKeys(manifest);
   return draft.objects.filter((o) => {
     const key = objectContentKey(o);
-    return hosted.get(o.id) === key && draft.bases?.get(o.id) !== key;
+    return (
+      hosted.get(o.id) === key &&
+      !(draft.bases?.get(o.id)?.seen.includes(key) ?? false)
+    );
   });
 }
 

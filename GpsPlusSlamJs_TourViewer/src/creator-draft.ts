@@ -33,7 +33,7 @@ import {
 import {
   readDraft,
   removeDraftObject,
-  writeDraftBase,
+  addDraftBaseKey,
   writeDraftDeletion,
   writeDraftEdit,
   writeDraftMeta,
@@ -74,6 +74,10 @@ export interface CreatorDraft {
   /** One awaited write of an object's record, with its base (M6 E2p):
    *  the object list's edits, moves and undos. */
   writeObject(object: TourObject, blob?: Blob): Promise<boolean>;
+  /** A Finish wrote these objects into `written` (M6 E2p re-review #1):
+   *  their versions there are this device's own work, whether or not the
+   *  creator uploads the file. */
+  finished(ids: readonly string[], written: TourManifest): void;
   /** One awaited write for object `id` (the object list's actions). */
   write(
     id: string,
@@ -243,23 +247,19 @@ export function wireCreatorDraft(deps: {
    */
   /** The tour as it was OPENED (M6 E2p review #2): a Finish advances
    *  `ctx.tourManifest` to what this page wrote, which is not what is
-   *  hosted until the creator uploads it. */
+   *  hosted until the creator uploads it. Every hosted comparison of
+   *  `present` uses it (re-review #3). */
   let opened: TourManifest | null = null;
-  /** The objects whose base this page load already decided. */
-  const basedThisLoad = new Set<string>();
   /** The line saying the draft gave way to newer edits, for the open. */
   let supersededNote: string | null = null;
 
-  /** An object's base for its next draft write (M6 E2p): decided at its
-   *  first write in this page load - the opened tour's version, or none
-   *  for an object it does not carry - and left alone after (review #1:
-   *  a base kept across loads mistook the phone's own published edit for
-   *  one made elsewhere). */
-  function baseFor(id: string): string | null | undefined {
-    if (basedThisLoad.has(id)) return undefined;
-    basedThisLoad.add(id);
+  /** The opened tour's version of an object, recorded as seen with each
+   *  draft write of it (M6 E2p); none for an object it does not carry.
+   *  Read when the write RUNS, so a write queued before the draft opened
+   *  still names the tour the creator edited (re-review #2). */
+  function seenKey(id: string): string | undefined {
     const hosted = opened?.objects.find((o) => o.id === id);
-    return hosted === undefined ? null : objectContentKey(hosted);
+    return hosted === undefined ? undefined : objectContentKey(hosted);
   }
 
   function recordPlacement(object: TourObject, blob?: Blob): void {
@@ -273,9 +273,8 @@ export function wireCreatorDraft(deps: {
       if (draftTourUrl !== null) noteNoPersistence();
       return;
     }
-    const base = baseFor(object.id);
     void writeForObject(store, tourUrl, object.id, (s) =>
-      writeDraftEdit(s, object, blob, base),
+      writeDraftEdit(s, object, blob, seenKey(object.id)),
     ).then((ok) => {
       if (!ok) noteNoPersistence();
     });
@@ -624,10 +623,10 @@ export function wireCreatorDraft(deps: {
     // open path already guards every other continuation this way.
     const generation = ctx.openGeneration;
     const stale = (): boolean => generation !== ctx.openGeneration;
-    // The tour as opened, and a fresh decision per object (M6 E2p): taken
-    // here, before any write of this load, never after a Finish.
+    // The tour as opened (M6 E2p): taken here, before any write of this
+    // load, and every hosted comparison below uses it, never a manifest a
+    // Finish advanced meanwhile.
     opened = ctx.tourManifest;
-    basedThisLoad.clear();
     supersededNote = null;
     void (async () => {
       const store = await deps.openDraftStore(draftKeyForTour(tourUrl));
@@ -689,7 +688,7 @@ export function wireCreatorDraft(deps: {
       // A newer edit elsewhere wins (M6 E2p, owner question Q-E2-2's
       // default): those records are not offered back, and the page says
       // so once.
-      const superseded = draftObjectsSuperseded(stored.draft, ctx.tourManifest);
+      const superseded = draftObjectsSuperseded(stored.draft, opened);
       supersededNote =
         superseded.length === 0 ? null : supersededLine(superseded.length);
       if (supersededNote !== null) {
@@ -703,11 +702,8 @@ export function wireCreatorDraft(deps: {
           );
         }
       }
-      const waiting = draftObjectsNotYetHosted(stored.draft, ctx.tourManifest);
-      const waitingDeletions = draftDeletionsNotYetHosted(
-        stored.draft,
-        ctx.tourManifest,
-      );
+      const waiting = draftObjectsNotYetHosted(stored.draft, opened);
+      const waitingDeletions = draftDeletionsNotYetHosted(stored.draft, opened);
       // What the hosted zip stores for each of the draft's codes (M4c-1):
       // the content, read one by one like the one level was.
       const hostedTexts = new Map<string, string | null>();
@@ -718,12 +714,7 @@ export function wireCreatorDraft(deps: {
         hostedTexts.get(id) ?? null;
       if (stale()) return;
       if (
-        draftIsSpent(
-          stored.draft,
-          ctx.tourManifest,
-          hostedLevel,
-          stored.visits.length,
-        )
+        draftIsSpent(stored.draft, opened, hostedLevel, stored.visits.length)
       ) {
         // SPENT: the hosted zip carries every object AND the measurement,
         // and the draft holds no AR visit (the zip never carries those,
@@ -770,16 +761,14 @@ export function wireCreatorDraft(deps: {
       // base now (M6 E2p), so a later delete elsewhere is not undone. Not
       // on the spent path above, which must leave the files alone when its
       // commit is refused.
-      for (const o of draftObjectsPublished(stored.draft, ctx.tourManifest)) {
+      for (const o of draftObjectsPublished(stored.draft, opened)) {
         void writeForObject(store, tourUrl, o.id, (s) =>
-          writeDraftBase(s, o.id, objectContentKey(o)),
+          addDraftBaseKey(s, o.id, "seen", objectContentKey(o)),
         );
       }
       const hasLevel = draftHasUnhostedLevel(stored.draft, hostedLevel);
       // New placements, and changes of objects the hosted zip carries.
-      const hostedIds = new Set(
-        (ctx.tourManifest?.objects ?? []).map((o) => o.id),
-      );
+      const hostedIds = new Set((opened?.objects ?? []).map((o) => o.id));
       const changed = waiting.filter((o) => hostedIds.has(o.id)).length;
       const counts = { placed: waiting.length - changed, changed };
       // A level measured before this open is newer than the offered
@@ -837,7 +826,6 @@ export function wireCreatorDraft(deps: {
     present,
     reset: () => {
       opened = null;
-      basedThisLoad.clear();
       supersededNote = null;
       dom.draftOffer.hidden = true;
       offered = null;
@@ -850,11 +838,22 @@ export function wireCreatorDraft(deps: {
     recordPlacement,
     recordVisit,
     write: draftWrite,
-    writeObject: (object, blob) => {
-      const base = baseFor(object.id);
-      return draftWrite(object.id, (s) =>
-        writeDraftEdit(s, object, blob, base),
-      );
+    writeObject: (object, blob) =>
+      draftWrite(object.id, (s) =>
+        writeDraftEdit(s, object, blob, seenKey(object.id)),
+      ),
+    finished: (ids, written) => {
+      const store = draftStore;
+      const tourUrl = draftTourUrl;
+      if (store === undefined || tourUrl === null) return;
+      for (const id of ids) {
+        const object = written.objects.find((o) => o.id === id);
+        if (object === undefined) continue;
+        const key = objectContentKey(object);
+        void writeForObject(store, tourUrl, id, (s) =>
+          addDraftBaseKey(s, id, "written", key),
+        );
+      }
     },
     forgetObject: (id) => {
       const store = draftStore;

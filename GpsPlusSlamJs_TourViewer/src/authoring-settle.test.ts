@@ -56,6 +56,7 @@ import {
   objectKey,
   readDraft,
   visitKey,
+  parseDraftBase,
 } from "./draft-persistence.js";
 import type { SummaryModel } from "./summary-model.js";
 import type { SummaryPanel } from "./summary-panel.js";
@@ -356,6 +357,9 @@ function slowDraftStore() {
 function authoring(
   options: {
     store?: DraftFileStore;
+    /** Holds the draft's opening until it settles (the window between
+     *  the object list showing and the namespace being open). */
+    storeOpens?: Promise<void>;
     summary?: Pick<SummaryPanel, "show" | "hide">;
   } = {},
 ) {
@@ -499,7 +503,8 @@ function authoring(
       revealStep: () => undefined,
     } as never,
     dom: dom as unknown as CreatorSetupDom,
-    openDraftStore: () => Promise.resolve(options.store),
+    openDraftStore: () =>
+      (options.storeOpens ?? Promise.resolve()).then(() => options.store),
     ...(options.summary === undefined ? {} : { summary: options.summary }),
   });
   // AFTER the wiring, which writes the page's default into the field (as
@@ -2116,7 +2121,10 @@ describe(
       await flush();
       a.dom.objectList.listHandlers!.editText("h1", "Second");
       await flush();
-      expect(files.get("base:h1")).toBe(objectContentKey(hosted));
+      expect(parseDraftBase(files.get("base:h1") as string)).toEqual({
+        seen: [objectContentKey(hosted)],
+        written: [],
+      });
     });
 
     it("shows the edit as in progress until the draft write lands, then says whether it did", async () => {
@@ -3241,6 +3249,71 @@ describe(
         });
         expect(c.dom.draftOfferText.textContent).toMatch(/1 change/);
         expect(c.ctx.placementNote ?? "").not.toMatch(/replaced/);
+      });
+
+      // Why (re-review #1): the creator uploads this page's own Finish
+      // from the same tab and edits again. The version they uploaded is
+      // this device's work, so the later edit must be offered - a base
+      // decided once per page load called it "replaced" and deleted it.
+      it("offers an edit made after the creator uploaded this page's own Finish (re-review #1)", async () => {
+        const { store } = memoryDraftStore();
+        const a = await load(store, [hosted("h1", "Gate")]);
+        a.setWalk(walk());
+        await a.mint();
+        a.endVisit();
+        await flush();
+        a.dom.objectList.listHandlers!.editText("h1", "Gate, phone 1");
+        await flush();
+        a.device.live = false;
+        a.dom.finishButton.click();
+        await finished(a.ctx);
+        const uploaded = a.ctx.tourManifest!.objects.find(
+          (o) => o.id === "h1",
+        )!;
+        // Uploaded from this tab; the page stays open and edits again.
+        a.dom.objectList.listHandlers!.editText("h1", "Gate, phone 2");
+        await flush();
+        const c = await load(store, [uploaded]);
+        await vi.waitFor(() => {
+          expect(c.dom.draftOfferText.textContent).not.toBe("");
+        });
+        expect(c.dom.draftOfferText.textContent).toMatch(/1 change/);
+        expect(c.ctx.placementNote ?? "").not.toMatch(/replaced/);
+      });
+
+      // Why (re-review #2): an edit made while the draft is still opening
+      // is written when it opens; its base must still name the version the
+      // creator edited (the desktop's), or the next load drops it.
+      it("keeps an edit made while the draft opens, over a desktop edit (re-review #2)", async () => {
+        const { store } = memoryDraftStore();
+        const a0 = hosted("h1", "Gate");
+        const a = await load(store, [a0]);
+        a.setWalk(walk());
+        await a.mint();
+        a.endVisit();
+        await flush();
+        a.dom.objectList.listHandlers!.editText("h1", "Gate, phone");
+        await flush();
+        const desk = { ...a0, label: "Gate, desk" } as TourObject;
+        let open!: () => void;
+        const b = authoring({
+          store,
+          storeOpens: new Promise<void>((r) => {
+            open = r;
+          }),
+        });
+        await openFinishableTour(b);
+        b.ctx.tourManifest = { ...createEmptyTourManifest(), objects: [desk] };
+        b.setup.presentDraftForTour(TOUR);
+        b.dom.objectList.listHandlers!.editText("h1", "Gate, phone again");
+        await flush();
+        open();
+        await flush();
+        const c = await load(store, [desk]);
+        await vi.waitFor(() => {
+          expect(c.dom.draftOfferText.textContent).not.toBe("");
+        });
+        expect(c.dom.draftOfferText.textContent).toMatch(/1 change/);
       });
 
       it("says a desktop edit won once, and forgets the replaced record (review #4)", async () => {

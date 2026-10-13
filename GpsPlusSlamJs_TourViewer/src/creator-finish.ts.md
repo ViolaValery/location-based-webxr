@@ -160,6 +160,10 @@ module's sidecar states them as its contract.
   rejects duplicates: one already-hosted object would otherwise make every
   finish throw for as long as the draft was restored, with no escape inside
   the app.
+- The objects it wrote are reported to the draft (`draft.finished`, M6
+  E2p): their versions in this file are this device's own, so a creator
+  who uploads it from this tab and edits again is not told the edit was
+  replaced by a newer one.
 
 ## Tests
 

@@ -13,19 +13,23 @@ asked. Pure - the OPFS mechanics are the framework's
   `deleted` holds the ids deleted on this device (tombstones, authoring
   plan 2026-09-28-0953 §3.4, M4).
 - `draftKeyForTour(tourUrl) -> string`.
-- **A newer edit elsewhere wins (M6 E2p, the E2 plan review #1).** A
-  draft may carry `bases` (per object id, the content key of the hosted
-  version its record started from or reached). With a base, a record
-  whose hosted object changed since, or is gone though it was hosted, is
-  SUPERSEDED: not offered, not keeping the draft alive
+- **A newer edit elsewhere wins (M6 E2p, the E2 plan review #1, its
+  milestone review and re-review).** A draft may carry `bases`: per object
+  id a `DraftBase`, the versions this device knows as its own line, as
+  content keys - `seen` (versions it saw hosted: the tour as a page opened
+  it, a record found published) and `written` (versions its own Finishes
+  wrote, which the creator may upload from the same tab). Only facts, so
+  they only accumulate (`withBaseKey`, newest last, at most
+  `DRAFT_BASE_MAX_KEYS` = 32 per list). A record is SUPERSEDED when the
+  hosted version is in neither list, or the object is gone though a
+  version of it was SEEN hosted (a written-only placement may simply not
+  be uploaded): not offered, not keeping the draft alive
   (`draftObjectsSuperseded`); the page says so (`supersededLine`, owner
-  question Q-E2-2's default). `draftObjectsPublished` names the
-  records the hosted zip carries with the same content whose base is not
-  that content yet (absent or older) - the page sets it, so a later delete
-  elsewhere is not undone and this device's own published edit is not
-  read as one made elsewhere (E2p review #1). A
-  draft without bases (every draft before E2p) behaves as before. Not
-  covered: a phone deletion against a newer edit elsewhere.
+  question Q-E2-2's default). `draftObjectsPublished` names the records
+  the hosted zip carries with the same content not yet in `seen` - the page
+  adds them, so a later delete elsewhere is not undone. A draft without
+  bases (every draft before E2p) behaves as before. Not covered: a phone
+  deletion against a newer edit elsewhere (the tombstone still deletes).
 - `draftObjectsNotYetHosted(draft, manifest) -> readonly TourObject[]` -
   the whole state machine in one function; see the invariants. Compares
   CONTENT (`objectContentKey`), not ids.

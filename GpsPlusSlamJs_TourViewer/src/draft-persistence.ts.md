@@ -18,16 +18,24 @@ are the framework's.
   optional, and `readDraft` returns the one `level` as the list for a meta
   written before it. Each entry is checked like `level`; one that does not
   read costs itself (`draft.levels`).
-- `writeDraftEdit(store, object, blob, base)` (M6 E2p) - a placement or
-  an edit, and its base (`base:<id>`): a content key is written, `null`
-  removes the base, `undefined` leaves it. The caller decides
-  (`creator-draft.ts`, once per object per page load). Both writes run at
-  once; the result is the record's write only (E2p review #6). The page's
-  object writes go through it.
-- `writeDraftBase(store, id, base)`, `baseKey(id)` - one base. `readDraft`
-  reads them into `draft.bases` (absent when there are none);
-  `removeDraftObject` removes it with the object's other files (up to five:
-  object, photo, deletion, visit, base).
+- `writeDraftEdit(store, object, blob, seen)` (M6 E2p) - a placement or
+  an edit, and, when `seen` is given, that version added to the object's
+  base as seen hosted (`creator-draft.ts` passes the tour as opened). Both
+  writes run at once; the result is the record's write only (E2p review
+  #6). The page's object writes go through it.
+- `addDraftBaseKey(store, id, list, key)` - one key added to `base:<id>`
+  (JSON `{ seen, written }`), read and written in place, nothing written
+  for a key already there. Callers run it in the id's write queue, so the
+  read and the write are not raced.
+- `parseDraftBase(text)` - a stored base, or `undefined` for anything
+  that does not read as two string lists with at least one key: such a
+  base behaves as none (never superseded - a damaged file can only offer
+  too much, never drop work). `readDraft` reads the bases into
+  `draft.bases` (absent when there are none); `baseKey(id)`.
+- `removeDraftObject` removes the base with the object's other files (up
+  to five: object, photo, deletion, visit, base). A deletion
+  (`writeDraftDeletion`) leaves it: a base is read only beside a record,
+  so it is inert there (re-review #4).
 - `writeDraftObject(store, object, blob?)` - one placement. Returns false
   if either file failed, so a half-written photo is reported rather than
   believed.
