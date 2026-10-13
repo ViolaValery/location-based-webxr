@@ -67,7 +67,6 @@ describe.skipIf(!ENABLED)("the Finish's rebuild cost (Q-Save)", () => {
       const runs: number[] = [];
       for (let run = 0; run < 3; run += 1) {
         const t0 = performance.now();
-        // eslint-disable-next-line no-await-in-loop
         const out = await rebuildZipWithEntries(input, ADDED);
         runs.push(performance.now() - t0);
         expect(out.size).toBeGreaterThan(input.size);

@@ -186,10 +186,10 @@ describe("objectListModel in AR", () => {
     }
   });
 
-  it("puts the selected object's controls on ONE line in AR, with Done to let it go (360x640, ar-layout.spec.js)", () => {
+  it("puts the selected object's controls on ONE line in AR, with Close to let it go (360x640, ar-layout.spec.js)", () => {
     // Why: the selected state is one line of buttons under one line of
     // text so every control fits the first screen of a 360x640 phone (the
-    // layout e2e, 2026-10-01). With Previous and Next gone, Done is back
+    // layout e2e, 2026-10-01). With Previous and Next gone, Close is
     // on that line (H1's object bar): object mode is left by a tap on it
     // or on empty scene.
     const codes = [pin("code", 47.5001).geo];

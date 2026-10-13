@@ -336,6 +336,28 @@ describe("setupHint / finishReadiness", () => {
     expect(kept).not.toMatch(/replaces/);
     expect(kept).toMatch(/Saved position kept/);
     expect(kept).toMatch(/Finish/);
+    // In AR the way out is Done (polish round M3, Q-Done): the hint names
+    // the button the creator sees there, and never Finish, which is not on
+    // screen in a session.
+    for (const inTour of ["this-code", "other-codes", "none"] as const) {
+      const inAr = setupHint({
+        measured: true,
+        tourOpen: true,
+        inTour,
+        inAr: true,
+      });
+      expect(inAr).toMatch(/Done saves the tour/);
+      expect(inAr).not.toMatch(/tap Finish/);
+    }
+    expect(
+      setupHint({
+        measured: true,
+        tourOpen: true,
+        inTour: "this-code",
+        keptStored: true,
+        inAr: true,
+      }),
+    ).toBe("Saved position kept. Place pins and photos; Done saves the tour.");
     const settled = "settled" as const;
     expect(
       finishReadiness({ hasWork: false, tourOpen: true, manifest: settled }),

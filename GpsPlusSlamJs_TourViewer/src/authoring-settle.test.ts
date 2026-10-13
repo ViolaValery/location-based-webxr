@@ -2217,8 +2217,8 @@ describe(
       expect(a.dom.objectList.lastModel!.rows).toEqual([]);
     });
 
-    it("lets the selection go with Done, back to placing (polish round M3, Q-HUD)", async () => {
-      // Why: object mode is left by Done (H1's object bar) as well as by a
+    it("lets the selection go with Close, back to placing (polish round M3, Q-HUD)", async () => {
+      // Why: object mode is left by Close (H1's object bar, renamed from Done) as well as by a
       // tap on empty scene; the place buttons come back with it.
       const a = await withHostedTour([
         hostedPin("h1", "Gate"),

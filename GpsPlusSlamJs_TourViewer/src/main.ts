@@ -65,6 +65,7 @@ import { wireVisitorStations } from "./visitor-stations.js";
 import { relocationRequested } from "./tour-relocation.js";
 import { wireVisitorScreen } from "./visitor-screen.js";
 import { wireVisitorStart } from "./visitor-start.js";
+import { wireFoldingLabel } from "./folding-label.js";
 import { pictureProblem } from "./image-cap.js";
 import { driveProxyBaseUrl } from "./drive-proxy-url.js";
 import { stepStoreOrUndefined, wireWizard } from "./wizard.js";
@@ -111,9 +112,10 @@ const debug = debugUiEnabledFromSearch(location.search);
 // The troubleshooting recording (authoring recording plan 2026-09-28-0953,
 // M1a; a visitor's with `?debug=1` since M1b): the store is built with its
 // backend and gate, and both stay silent until someone opts in and enters
-// AR. Its controls show for a creator, and for a visitor only with
-// `?debug=1` - without it nothing about a visitor's page changes.
-const recordingControls = mode === "creator" || debug;
+// AR. Its controls show only with `?debug=1`, for a creator too since
+// polish round M3 (Q-Data, A20: it was the developer's) - without it
+// nothing about either page changes.
+const recordingControls = debug;
 const recordingTag =
   mode === "creator" ? AUTHORING_CONTEXT_TAG : VIEWING_CONTEXT_TAG;
 const recording = createAuthoringRecording({
@@ -137,6 +139,9 @@ ctx.debug = debug;
 // with ?debug=1, and never to a visitor, whose tour appears in AR.
 element("gallery").hidden = !(mode === "creator" && debug);
 element<HTMLPreElement>("ar-debug").hidden = !ctx.debug;
+// The page's CSS keeps a creator's technical AR line for ?debug=1 only
+// (polish round M3: the HUD's readout is the setup status card).
+document.body.dataset["debug"] = String(ctx.debug);
 element("recording-block").hidden = !recordingControls;
 const hooks = createUnwiredHooks();
 
@@ -428,6 +433,31 @@ const summary = createSummaryPanel({
     element("enter-ar").click();
   },
 });
+// The H1 strip's chips fold to their icons after their first use (polish
+// round M3, D-P4). Wired BEFORE the setup binds the chips' own clicks: a
+// long press that unfolds a label must not also place a pin.
+if (mode === "creator") {
+  const store = (() => {
+    try {
+      return window.localStorage;
+    } catch {
+      return null;
+    }
+  })();
+  for (const [id, label] of [
+    ["setup-pin", "Place a pin"],
+    ["setup-photo", "Take a photo"],
+  ] as const) {
+    wireFoldingLabel({
+      button: element(id),
+      key: id,
+      label,
+      store,
+      now: () => performance.now(),
+    });
+  }
+}
+
 const setup = wireCreatorSetup({
   ctx,
   mode,

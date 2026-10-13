@@ -28,19 +28,21 @@ zip's and this device's - with **Edit text**, **Move to the reticle** and
 - `ObjectRowModel` - `title` (a pin's text, a photo's caption or "Photo"),
   `detail` ("Pin · in the zip · 4 m from the code"), `selected`, `busy`,
   `canEditText` (pins only), `canMove` (pins only, in AR only),
-  `canDeselect` (the selected row in AR: Done), `enabled`.
+  `canDeselect` (the selected row in AR: Close), `enabled`.
 - `SELECT_HINT` - the AR hint while nothing is selected.
 - `createObjectListView(container, doc): ObjectListView` - the DOM view over
   `#object-list`: `bind(handlers)` once, `render(model)` any time.
 - `ObjectListHandlers` - `editText(id, text)`, `move(id)`, `remove(id)`,
-  `undo()`, `deselect()` (Done).
+  `undo()`, `deselect()` (the row's Close).
 - `ObjectRowModel.compact` - in AR: the row is drawn as ONE line of text
   (title and distance - `detail` holds only the distance in AR) over ONE
-  line of buttons with short labels: Edit, Move, Delete, Done (accessible
-  names "Edit text", "Move to the reticle", "Delete", "Done"; test ids
-  `object-edit`, `object-move`, `object-delete`, `object-done`).
+  line of buttons with short labels: Edit, Move, Delete, Close (accessible
+  names "Edit text", "Move to the reticle", "Delete", "Close this object's
+  actions"; test ids
+  `object-edit`, `object-move`, `object-delete`, `object-close` - "Close",
+  not "Done": the AR button's Done leaves AR, polish round M3).
 - **No Previous / Next** (polish round M3, the owner's Q-HUD, B2): an
-  object is selected by a tap on it, and left by Done or a tap on empty
+  object is selected by a tap on it, and left by Close or a tap on empty
   scene. Until 2026-10-13 a chooser stepped through every object (M4
   review #4) so that a far, occluded or overlapping one could still be
   reached; without it such an object is reached by walking closer.
@@ -63,7 +65,7 @@ zip's and this device's - with **Edit text**, **Move to the reticle** and
   the first screen of a 360x640 phone with the code's re-measure offered
   (`ar-layout.spec.js` covers the selected state). The compact row's
   buttons use tighter padding (`.object-row-compact`, the tap minimum
-  kept). Since polish round M3 the line is Edit / Move / Delete / Done.
+  kept). Since polish round M3 the line is Edit / Move / Delete / Close.
 - **Edit text is for pins only**: a photo's optional caption is shown
   nowhere in the viewer, so editing it would change nothing a visitor sees.
 - **The view redraws only when the model changed** (JSON key), and the
@@ -99,7 +101,7 @@ view.render(
 
 ## Tests
 
-- `object-list.test.ts` - no chooser (tap-to-select only), Done on the selected AR row, the page list and the AR selection, the words per row, the
+- `object-list.test.ts` - no chooser (tap-to-select only), Close on the selected AR row, the page list and the AR selection, the words per row, the
   nearest code, hidden when empty, busy and locked rows, and a property
   that the page lists every object once and AR at most the selected one.
 - The DOM view: `playwright-tests/object-editing.spec.js` (edit, delete,

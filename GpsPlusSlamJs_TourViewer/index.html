@@ -1533,6 +1533,199 @@
           animation: none;
         }
       }
+
+      /* ===== The creator's HUD in AR, the owner's H1 (polish round M3) =====
+         D-P4: H1 with an action strip. In a creator's session the camera
+         view stays clear: the readout is a dark card at the top left, the
+         one way out (Done) a chip at the top right, and the place actions a
+         row of chips at the bottom - "Place a pin" first and largest, its
+         label folding to the icon after its first use (folding-label.ts).
+         A selected object's actions take the strip's place (object mode).
+         The reference is public/prototypes/hud-1-chips/. */
+      body[data-mode="creator"][data-ar-active="true"]:not([data-debug="true"])
+        #ar-status {
+        display: none;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #setup-status {
+        order: 2;
+        margin: 0 104px 0 0;
+        /* The vertical spacing is a border of the card's own colour: the
+           two-line clamp clips at the padding box, so vertical padding
+           showed a cut third line. */
+        padding: 0 14px;
+        border-block: 10px solid rgb(20 22 26 / 66%);
+        border-radius: 16px;
+        background: rgb(20 22 26 / 66%);
+        background-clip: padding-box;
+        color: #fff;
+        font-size: 14px;
+        line-height: 1.35;
+        text-shadow: none;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #setup-status:empty {
+        display: none;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #ar-root #enter-ar {
+        position: fixed;
+        top: calc(12px + env(safe-area-inset-top));
+        right: 12px;
+        z-index: 6;
+        min-height: 44px;
+        padding: 0 18px;
+        border: 1px solid rgb(255 255 255 / 30%);
+        border-radius: 999px;
+        background: rgb(20 22 26 / 78%);
+        color: #fff;
+        box-shadow: none;
+        font-weight: 600;
+        letter-spacing: normal;
+        text-transform: none;
+      }
+      /* The panel is the whole screen as a column: the size offer (the
+         owner's "short card above the status") and the status at the top,
+         a spacer, then the selected object's line, the chips and the
+         Finish's retry at the bottom. It lets taps through to the scene
+         (a tap there selects); only its cards catch them. */
+      body[data-mode="creator"][data-ar-active="true"] #setup-panel {
+        position: fixed;
+        inset: 0;
+        z-index: 5;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: none;
+        margin: 0;
+        padding: calc(12px + env(safe-area-inset-top)) 12px
+          calc(16px + env(safe-area-inset-bottom));
+        pointer-events: none;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #setup-panel > * {
+        pointer-events: auto;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #setup-panel::before {
+        content: "";
+        flex: 1;
+        order: 3;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #size-offer {
+        order: 1;
+        margin-right: 104px;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #object-list {
+        order: 4;
+        align-self: center;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #setup-finish {
+        order: 6;
+        align-self: center;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #setup-controls {
+        order: 5;
+        align-self: center;
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        max-width: 100%;
+        padding: 2px;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #setup-controls[hidden] {
+        display: none;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #setup-pin,
+      body[data-mode="creator"][data-ar-active="true"] #setup-photo {
+        display: inline-flex;
+        flex: none;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-width: 52px;
+        min-height: 52px;
+        padding: 0 20px;
+        border: 0;
+        border-radius: 999px;
+        background: rgb(20 22 26 / 80%);
+        color: #fff;
+        box-shadow: none;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: normal;
+        text-transform: none;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #setup-pin {
+        min-width: 56px;
+        min-height: 56px;
+        padding: 0 22px;
+        background: var(--accent);
+        color: #1d1206;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #setup-pin[hidden],
+      body[data-mode="creator"][data-ar-active="true"] #setup-photo[hidden] {
+        display: none;
+      }
+      body[data-mode="creator"][data-ar-active="true"]
+        #setup-controls
+        [data-folded="true"] {
+        padding: 0;
+      }
+      body[data-mode="creator"][data-ar-active="true"]
+        [data-folded="true"]
+        .chip-label {
+        display: none;
+      }
+      /* Typing a new pin's text: the field and its buttons take the row. */
+      body[data-mode="creator"][data-ar-active="true"]
+        #setup-controls:has(#pin-label:not([hidden]))
+        #setup-pin,
+      body[data-mode="creator"][data-ar-active="true"]
+        #setup-controls:has(#pin-label:not([hidden]))
+        #setup-photo {
+        display: none;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #pin-label {
+        flex: 1;
+        min-width: 0;
+        min-height: 48px;
+        border-radius: 999px;
+      }
+      /* The selected object's line, and the code's size offer: cards over
+         the camera, above the strip. */
+      body[data-mode="creator"][data-ar-active="true"]
+        #object-list:has([data-selected="true"]),
+      body[data-mode="creator"][data-ar-active="true"]
+        #size-offer:not([hidden]) {
+        width: 100%;
+        max-width: 520px;
+        padding: 10px 12px;
+        border-radius: 16px;
+        background: rgb(20 22 26 / 66%);
+        color: #fff;
+      }
+      /* The selected object's actions as H1's object bar: dark pills. */
+      body[data-mode="creator"][data-ar-active="true"] #object-list .btn {
+        min-height: 40px;
+        padding: 0 14px;
+        border: 1px solid rgb(255 255 255 / 25%);
+        border-radius: 999px;
+        background: rgb(255 255 255 / 12%);
+        color: #fff;
+        box-shadow: none;
+        font-weight: 600;
+        letter-spacing: normal;
+        text-transform: none;
+      }
+      body[data-mode="creator"][data-ar-active="true"] #recording-marker {
+        position: fixed;
+        top: calc(64px + env(safe-area-inset-top));
+        left: 12px;
+        z-index: 5;
+      }
+      .chip-icon {
+        width: 22px;
+        height: 22px;
+        flex: none;
+      }
     </style>
   </head>
   <body class="page">
@@ -2974,10 +3167,14 @@
               ></div>
             </div>
             <section id="ar-root">
+              <!-- The creator's outline of the AR part (polish round M3,
+               A19): the details are said in AR, in the HUD's card, as they
+               become the next move. A visitor's line replaces it
+               (visitor-screen.ts). -->
               <p id="ar-hint" class="hint--dim" data-testid="ar-hint">
-                AR opens the camera. Keep the printed code in view until the
-                page says it is measured; walking a few metres with GPS
-                reception lets the phone align to the map.
+                In AR: point the camera at the hung code until it is measured,
+                walk the route placing pins and photos, then tap Done - the tour
+                is saved.
               </p>
               <!-- The visible line changes per camera frame for a creator and
                with ?debug=1, so it is NOT a live region; a visitor's
@@ -3217,7 +3414,28 @@
                     data-testid="setup-pin"
                     disabled
                   >
-                    Place a pin here
+                    <!-- A map pin with a plus (D-P4); the label folds to
+                     the icon after its first use (folding-label.ts). -->
+                    <svg
+                      class="chip-icon"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M12 21s-6.5-5.8-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 15.2 12 21 12 21z"
+                        fill="none"
+                        stroke="currentcolor"
+                        stroke-width="2"
+                        stroke-linejoin="round"
+                      />
+                      <path
+                        d="M12 6.8v6M9 9.8h6"
+                        stroke="currentcolor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                    <span class="chip-label">Place a pin</span>
                   </button>
                   <input
                     id="pin-label"
@@ -3253,7 +3471,28 @@
                     data-testid="setup-photo"
                     disabled
                   >
-                    Capture a photo here
+                    <svg
+                      class="chip-icon"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M3.5 8.5h3.2l1.9-2.6h6.8l1.9 2.6h3.2v10.6h-17z"
+                        fill="none"
+                        stroke="currentcolor"
+                        stroke-width="2"
+                        stroke-linejoin="round"
+                      />
+                      <circle
+                        cx="12"
+                        cy="13.6"
+                        r="3.4"
+                        fill="none"
+                        stroke="currentcolor"
+                        stroke-width="2"
+                      />
+                    </svg>
+                    <span class="chip-label">Take a photo</span>
                   </button>
                 </div>
                 <!-- OUTSIDE #setup-controls on purpose: the controls are the

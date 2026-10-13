@@ -18,7 +18,7 @@ Wired by `creator-setup.ts`, drawn by `object-list.ts`.
 - `wireObjectEditing(deps): ObjectEditing` - binds the list's handlers.
   - `render()` - redraw the list (cheap when nothing changed).
   - `select(id | null)` - a tap in AR (the id `object-pick.ts` returned).
-  - the list's `deselect()` handler - Done: clears the selection, same
+  - the list's `deselect()` handler - the row's Close: clears the selection, same
     note rule as a tap (polish round M3; the Previous / Next chooser is
     gone).
   - `selected()` - the selected id or null; `deps.selectionChanged` is
@@ -114,7 +114,7 @@ editing.render(); // from the panel's render
   and of a local pin with its record, its expiry at `OUTCOME_HOLD_MS`,
   Delete's "Deleting…" and Move's "Moving…" with their refused (and
   throwing) writes, an outcome held through a selecting tap, and the
-  Done letting the selection go with the place buttons back
+  Close letting the selection go with the place buttons back
   (`authoring-settle.test.ts`).
 - `playwright-tests/object-editing.spec.js` - the page's Undo button and
   its withdrawal when the hold timer fires.

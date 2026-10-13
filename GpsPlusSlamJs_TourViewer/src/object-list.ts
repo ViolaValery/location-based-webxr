@@ -77,7 +77,7 @@ interface ObjectRowModel {
   /** Move to the reticle: pins only, and only in AR (a photo's pose is
    *  where it was taken). */
   readonly canMove: boolean;
-  /** Done: let the selection go, back to placing - the selected row in AR
+  /** Close: let the selection go, back to placing - the selected row in AR
    *  only (H1's object bar, polish round M3). */
   readonly canDeselect: boolean;
   /** Every action is off while the row is busy or the list is locked. */
@@ -186,7 +186,7 @@ export interface ObjectListHandlers {
   remove(id: string): void;
   /** Undo the last delete (the note's "Undo"). */
   undo(): void;
-  /** Done: let the selection go (polish round M3, Q-HUD - an object is
+  /** Close: let the selection go (polish round M3, Q-HUD - an object is
    *  selected by a tap on it; the Previous / Next chooser is gone). */
   deselect(): void;
 }
@@ -245,7 +245,7 @@ export function createObjectListView(
   /**
    * A row's buttons. In AR (compact) short labels - the accessible name
    * keeps the full one, which contains the visible word (WCAG 2.5.3 "label
-   * in name"), and Done last for the selected row in AR.
+   * in name"), and Close last for the selected row in AR.
    */
   function rowButtons(row: ObjectRowModel): HTMLButtonElement[] {
     const labelled = (
@@ -282,7 +282,10 @@ export function createObjectListView(
     );
     if (row.canDeselect) {
       out.push(
-        labelled("Done", "Done", "object-done", () => {
+        // "Close", not "Done": the AR button's Done is the way out of AR
+        // (polish round M3, Q-Done), and two Dones on one screen read as
+        // the same thing.
+        labelled("Close", "Close this object's actions", "object-close", () => {
           handlers?.deselect();
         }),
       );

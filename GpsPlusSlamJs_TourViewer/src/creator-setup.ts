@@ -435,6 +435,17 @@ export function wireCreatorSetup(deps: {
   /** The ring on the selected object (`selection-mark.ts`). */
   const selectionMark = createSelectionMark();
 
+  /** The selected object wears a ring in the scene (polish round M3, B2);
+   *  idempotent, and it follows a preview redrawn by a move. */
+  function renderSelectionMark(): void {
+    const selected = editing.selected();
+    selectionMark.show(
+      selected === null
+        ? null
+        : (ctx.placedPreviews.get(selected)?.root ?? null),
+    );
+  }
+
   function renderAuthorReadout(): void {
     measuring.renderSizeOffer();
     if (!creator) return;
@@ -447,14 +458,7 @@ export function wireCreatorSetup(deps: {
     // earlier objects' frame).
     settle.judgeOnNewFix();
     editing.render();
-    // The selected object wears a ring in the scene (polish round M3, B2);
-    // idempotent, and it follows a preview redrawn by a move.
-    const selected = editing.selected();
-    selectionMark.show(
-      selected === null
-        ? null
-        : (ctx.placedPreviews.get(selected)?.root ?? null),
-    );
+    renderSelectionMark();
     // F11: the AR controls belong to the AR session. On the setup page they
     // were a row of greyed-out buttons under "AR not supported", which is
     // what the owner reported. The STATUS line stays either way - it is
@@ -553,6 +557,7 @@ export function wireCreatorSetup(deps: {
             ? "other-codes"
             : "none",
       keptStored: levelInHandIsStored(),
+      inAr: sessionLive(),
     });
     const count = placement.countLine();
     // What is happening to the tour the code names (plan §9 #9), and which

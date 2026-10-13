@@ -3098,7 +3098,7 @@ test("an opted-in authoring session is recorded across the finish and saved as i
   // after it are in the SAME numbered stream; and the tour zip the creator
   // publishes carries no recording (the visitor's geo join would replay
   // any `actions/` it found there).
-  await page.goto("/?nocache=1");
+  await page.goto("/?nocache=1&debug=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
   await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
@@ -3244,6 +3244,23 @@ test("an opted-in authoring session is recorded across the finish and saved as i
   );
 });
 
+test("the troubleshooting recording is offered to a creator only with ?debug=1 (polish round M3, Q-Data)", async ({
+  page,
+}) => {
+  // Why: "Record this session for troubleshooting" was for the developer
+  // (A20); the owner decided it shows only with ?debug=1.
+  await page.goto("/?nocache=1");
+  await expect(page.getByTestId("record-session")).toBeHidden();
+  await page.goto("/?nocache=1&debug=1");
+  await expect(page.getByTestId("recording-block")).toBeAttached();
+  await expect(page.getByTestId("record-session")).toBeAttached();
+  expect(
+    await page
+      .getByTestId("recording-block")
+      .evaluate((el) => /** @type {HTMLElement} */ (el).hidden),
+  ).toBe(false);
+});
+
 test("a recording whose tab was killed is offered on the next open, saved from its own actions, and not offered again", async ({
   page,
 }) => {
@@ -3256,7 +3273,7 @@ test("a recording whose tab was killed is offered on the next open, saved from i
   // is released, the new page finds the folder, rebuilds session.json from
   // the recorded fixes, hands the zip over through the same seam, and the
   // saved marker keeps it from being offered a second time.
-  await page.goto("/?nocache=1");
+  await page.goto("/?nocache=1&debug=1");
   await openMeasureStep(page);
   await expect(page.getByTestId("recording-block")).toHaveAttribute(
     "data-housekeeping",

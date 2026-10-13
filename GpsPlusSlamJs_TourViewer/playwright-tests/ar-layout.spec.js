@@ -187,10 +187,90 @@ for (const viewport of PHONES) {
       '[data-testid="object-row"][data-selected="true"]',
     );
     await expect(selected.getByTestId("object-move")).toBeVisible();
-    await expect(selected.getByTestId("object-done")).toBeVisible();
+    await expect(selected.getByTestId("object-close")).toBeVisible();
     // Object mode: the place buttons step aside.
     await expect(page.getByTestId("setup-pin")).toBeHidden();
 
     expect(await controlsBelowTheFold(page)).toEqual([]);
+  });
+}
+
+/** The box of a test id, in viewport pixels. */
+async function box(page, testId) {
+  const b = await page.getByTestId(testId).boundingBox();
+  if (b === null) throw new Error(`${testId} has no box`);
+  return { left: b.x, top: b.y, right: b.x + b.width, bottom: b.y + b.height };
+}
+
+for (const viewport of [
+  { width: 412, height: 915 },
+  { width: 360, height: 640 },
+  { width: 915, height: 412 },
+]) {
+  test(`the creator's HUD in AR is H1 on ${viewport.width}x${viewport.height}: the card top left, Done top right, the chips at the bottom (polish round M3, D-P4)`, async ({
+    page,
+  }) => {
+    // Why: the owner chose H1 - the camera view kept clear, the readout a
+    // card at the top, the way out a chip beside it, the place actions a
+    // row of chips at the bottom with "Place a pin" first. A test that only
+    // asked whether each control is visible passed the old stacked panel;
+    // this pins where each one sits (root CLAUDE.md: a chosen prototype is
+    // pinned by positions, not presence).
+    await page.setViewportSize(viewport);
+    await installTourViewerArFakes(page);
+    await page.goto("/");
+    await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
+    await page.getByTestId("open-button").click();
+    await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
+      timeout: 15000,
+    });
+    if (
+      !(await page
+        .getByTestId("step-measure")
+        .evaluate((el) => /** @type {any} */ (el).open))
+    ) {
+      await page.getByTestId("station-measure").click();
+    }
+    await expect(page.getByTestId("enter-ar")).toBeEnabled({ timeout: 10000 });
+    await page.getByTestId("enter-ar").click();
+    await page.evaluate((text) => {
+      /** @type {any} */ (window).__tourViewerTest.armQrDetection(text);
+    }, E2E_QR_TEXT);
+    await expect
+      .poll(
+        async () => {
+          await page.evaluate(() => {
+            /** @type {any} */ (window).__tourViewerTest.emitFrames(1);
+          });
+          return page.getByTestId("setup-status").textContent();
+        },
+        { timeout: 20000 },
+      )
+      .toMatch(/waiting for GPS alignment/i);
+    await seedAlignment(page);
+    await expect(page.getByTestId("setup-pin")).toBeEnabled();
+
+    const done = await box(page, "enter-ar");
+    const card = await box(page, "setup-status");
+    const pin = await box(page, "setup-pin");
+    const photo = await box(page, "setup-photo");
+    // Done: a chip at the top right.
+    await expect(page.getByTestId("enter-ar")).toHaveText("Done");
+    expect(done.top).toBeLessThan(40);
+    expect(viewport.width - done.right).toBeLessThan(40);
+    // The card: top left, beside Done, never under it.
+    expect(card.top).toBeLessThan(40);
+    expect(card.left).toBeLessThan(40);
+    expect(card.right).toBeLessThanOrEqual(done.left);
+    // The chips: at the bottom, one row, "Place a pin" first, centred.
+    expect(viewport.height - pin.bottom).toBeLessThan(80);
+    expect(Math.abs(pin.top - photo.top)).toBeLessThan(6);
+    expect(pin.right).toBeLessThanOrEqual(photo.left);
+    const middle = (pin.left + photo.right) / 2;
+    expect(Math.abs(middle - viewport.width / 2)).toBeLessThan(2);
+    // The camera view between them is clear: nothing of the panel there.
+    expect(pin.top - card.bottom).toBeGreaterThan(viewport.height * 0.3);
+    // The technical line is ?debug=1's only.
+    await expect(page.getByTestId("ar-status")).toBeHidden();
   });
 }

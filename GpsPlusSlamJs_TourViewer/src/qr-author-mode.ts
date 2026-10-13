@@ -355,21 +355,28 @@ export function setupHint(state: {
    *  hosted or draft level, or an earlier visit's): it is kept, never
    *  replaced by a new measurement (D10b). */
   keptStored?: boolean;
+  /** In an AR session: the way out is Done, not the panel's Finish
+   *  (polish round M3, Q-Done). */
+  inAr?: boolean;
 }): string {
   if (!state.measured) return "";
+  const next =
+    state.inAr === true
+      ? "Place pins and photos; Done saves the tour."
+      : "Place content, or tap Finish to rebuild the zip.";
   // With no tour open, `codeTourLine` says what is happening to the tour
   // the code names (scan-to-open plan §9 #9).
   if (!state.tourOpen) return "Position saved.";
   if (state.keptStored === true) {
-    return "Saved position kept. Place content, or tap Finish to rebuild the zip.";
+    return `Saved position kept. ${next}`;
   }
   const saved =
     state.inTour === "this-code"
       ? "Position saved - it replaces this code's saved position in the tour. "
       : state.inTour === "other-codes"
-        ? "Position saved - Finish adds it to the tour as one more code. "
+        ? "Position saved - saving adds it to the tour as one more code. "
         : "Position saved. ";
-  return `${saved}Place content, or tap Finish to rebuild the zip.`;
+  return `${saved}${next}`;
 }
 
 /**
