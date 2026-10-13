@@ -20,9 +20,9 @@ phone's own Finish rules (`finish-rebuild.ts`). Page-free: the page draws
     `refused` with the phone's sentence).
   - `move(id, lat, lon)` - `moveObjectTo` (height and facing kept).
   - `remove(id)` - `deleteObject`; returns the undo (`undoDelete`), which
-    refuses (`false`) once a save wrote the delete - a save whose snapshot was
-    taken after it, not one already running when it was made (E2b plan
-    review #2).
+    refuses (`false`) once a save that writes the delete has started (its snapshot
+    taken after the delete), not for one already running when it was made
+    (E2b plan review #2, the third E2p review #6).
   - `save({ keepScan })` - `rebuildFinishedTour` with `levels: []`, the
     photo spots decided once per open (`captureSpotsForRebuild`, its result
     kept), `previous` = the last save's bytes; returns `{ blob, filename,

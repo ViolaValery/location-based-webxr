@@ -763,6 +763,24 @@ describe("writeDraftEdit (M6 E2p)", () => {
   });
 });
 
+describe("addDraftBaseKey (M6 E2p, third review #2)", () => {
+  // Why: an older base left beside a newer record can call this device's
+  // own work "replaced" and remove it; a base that could not be updated is
+  // removed instead, and no base is never superseded.
+  it("removes the base when its update does not land", async () => {
+    const inner = memoryStore();
+    await writeDraftMeta(inner, META);
+    await addDraftBaseKey(inner, "a", "seen", "v0");
+    const store: DraftFileStore = {
+      ...inner,
+      put: (key, data) =>
+        key.startsWith("base:") ? Promise.resolve(false) : inner.put(key, data),
+    };
+    expect(await addDraftBaseKey(store, "a", "seen", "v1")).toBe(false);
+    expect(inner.files.has("base:a")).toBe(false);
+  });
+});
+
 describe("parseDraftBase (M6 E2p)", () => {
   // Why: a base that does not read must behave as NO base - never
   // superseded - so a damaged file can only offer too much, never drop

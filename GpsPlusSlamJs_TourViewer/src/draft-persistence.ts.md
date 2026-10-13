@@ -25,7 +25,9 @@ are the framework's.
   #6). The page's object writes go through it.
 - `addDraftBaseKey(store, id, list, key)` - one key added to `base:<id>`
   (JSON `{ seen, written }`), read and written in place, nothing written
-  for a key already there. Callers run it in the id's write queue, so the
+  for a key already there; an update that does not land removes the base
+  (an older base beside a newer record could call it replaced; no base is
+  never superseded). Callers run it in the id's write queue, so the
   read and the write are not raced.
 - `parseDraftBase(text)` - a stored base, or `undefined` for anything
   that does not read as two string lists with at least one key: such a

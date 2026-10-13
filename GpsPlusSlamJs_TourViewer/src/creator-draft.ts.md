@@ -25,9 +25,10 @@ M2 (`GpsPlusSlamJs_Docs/docs/2026-10-06-1601-tour-viewer-code-book-refactor-plan
     to what this page wrote, which is not hosted until the creator uploads
     it), and every hosted comparison of `present` uses that snapshot. Every
     draft write of an object adds the opened tour's version of it as seen,
-    read when the write runs (so a write queued before the namespace
-    opened still names the tour edited); `finished(ids, written)` adds a
-    Finish's versions as written; records the hosted zip carries unchanged
+    taken when the write is queued (a queued write can run after another
+    open, whose tour is not the one edited); `finished(ids, written)` adds a
+    Finish's versions as written, keyed as a reader of the written file
+    parses them; records the hosted zip carries unchanged
     are added as seen on open (`draftObjectsPublished`). Superseded
     records are not offered, one line says so (combined with the AR note
     when in AR, never overwritten by it), and their files are removed -
@@ -43,7 +44,12 @@ M2 (`GpsPlusSlamJs_Docs/docs/2026-10-06-1601-tour-viewer-code-book-refactor-plan
     (`rebuiltZip.delivered` is not proof of one), and a written version
     alone cannot tell "deleted" from "not uploaded" (follow-up F19). And a
     record superseded by a desktop edit is dropped whole: a code move the
-    phone made to it since is not merged.
+    phone made to it since is not merged. And (third review #3, #4) a
+    Finish that completes before the draft namespace opens records no
+    written versions, and its objects are not in the live set that guards
+    the open's removals: the window is the OPFS open right after the
+    manifest settles, which a Finish (an AR visit, a rebuild) cannot fit
+    in.
   - `present(tourUrl)` - a tour opened and its manifest settled: open the
     namespace, then sweep a spent draft, offer what is not hosted yet, or
     start one. Every continuation re-checks `ctx.openGeneration`.

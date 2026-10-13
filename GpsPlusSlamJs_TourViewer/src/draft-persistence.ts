@@ -139,7 +139,8 @@ export async function removeDraftObject(
  * Record a placement or an edit, and - when `seen` is given - that this
  * device saw that version of the object hosted (M6 E2p): the tour as the
  * page opened it. The result is the record's write: a base that did not
- * land only falls back to the behaviour before E2p (review #6). Both writes
+ * land is removed, which falls back to the behaviour before E2p (review #6,
+ * third review #2). Both writes
  * run at once; callers queue an id's writes, so the base's read and write
  * are not raced.
  */
@@ -178,7 +179,8 @@ export function parseDraftBase(
 }
 
 /** Add one key to an object's base (M6 E2p), read and written in place;
- *  a key already there writes nothing. */
+ *  a key already there writes nothing, and a write that fails removes the
+ *  base. */
 export async function addDraftBaseKey(
   store: DraftFileStore,
   id: string,
@@ -188,7 +190,11 @@ export async function addDraftBaseKey(
   const before = parseDraftBase(await store.getText(baseKey(id)));
   const after = withBaseKey(before, list, key);
   if (after === before) return true;
-  return store.put(baseKey(id), JSON.stringify(after));
+  if (await store.put(baseKey(id), JSON.stringify(after))) return true;
+  // An older base left beside a newer record could call this device's own
+  // work "replaced" (third review #2); no base is never superseded.
+  await store.remove(baseKey(id));
+  return false;
 }
 
 /**

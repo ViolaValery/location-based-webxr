@@ -243,6 +243,25 @@ describe("createEditorSession, the review's cases (E0c + E2a review #9, #10, #12
     await session.close();
   });
 
+  // Why (third E2p review #6): a save that snapshotted after the delete
+  // writes it, so an undo while it runs would bring back a note the file
+  // it is writing no longer carries.
+  it("refuses the undo as soon as a save that writes the delete starts", async () => {
+    const { session, manifest } = await opened([pin("a"), pin("b")]);
+    const editor = createEditorSession({
+      session,
+      manifest,
+      levels: new Map(),
+    });
+    const undo = editor.remove("a");
+    const writing = editor.save({ keepScan: false });
+    expect(undo()).toBe(false);
+    const tour = await carried((await writing).blob);
+    expect(tour.objects.map((o) => o.id)).toEqual(["b"]);
+    expect(editor.model().items.map((i) => i.id)).toEqual(["b"]);
+    await session.close();
+  });
+
   it("keeps a deleted photo's file gone across two saves", async () => {
     // Why: the second save rebuilds from the first one's bytes; from the
     // opened zip again, the deleted photo's file would come back.

@@ -30,6 +30,7 @@ import { MIN_ALIGNMENT_SAMPLES } from "gps-plus-slam-app-framework/ar/qr/qr-mint
 import { parseQrLevel } from "gps-plus-slam-app-framework/ar/qr/qr-level";
 import {
   createEmptyTourManifest,
+  parseTourManifest,
   serializeTourManifest,
   type TourObject,
 } from "gps-plus-slam-app-framework/ar/tour-manifest";
@@ -3267,9 +3268,11 @@ describe(
         a.device.live = false;
         a.dom.finishButton.click();
         await finished(a.ctx);
-        const uploaded = a.ctx.tourManifest!.objects.find(
-          (o) => o.id === "h1",
-        )!;
+        // As the next open reads it: parsed from the written file (third
+        // review #5), not the page's in-memory object.
+        const uploaded = parseTourManifest(
+          JSON.parse(serializeTourManifest(a.ctx.tourManifest!)),
+        ).objects.find((o) => o.id === "h1")!;
         // Uploaded from this tab; the page stays open and edits again.
         a.dom.objectList.listHandlers!.editText("h1", "Gate, phone 2");
         await flush();

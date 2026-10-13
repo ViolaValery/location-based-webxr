@@ -11,9 +11,11 @@
 import { qrLevelIdFromEntryName } from "gps-plus-slam-app-framework/ar/qr/qr-level-archive";
 import { AUTHOR_DEFAULT_SIZE_M } from "gps-plus-slam-app-framework/ar/qr/qr-mint-level";
 import { readSideM, writeSideM } from "./printed-side.js";
-import type {
-  TourManifest,
-  TourObject,
+import {
+  parseTourManifest,
+  serializeTourManifest,
+  type TourManifest,
+  type TourObject,
 } from "gps-plus-slam-app-framework/ar/tour-manifest";
 import type { DraftFileStore } from "gps-plus-slam-app-framework/storage";
 import {
@@ -250,13 +252,26 @@ export function wireCreatorDraft(deps: {
    *  hosted until the creator uploads it. Every hosted comparison of
    *  `present` uses it (re-review #3). */
   let opened: TourManifest | null = null;
+  /** `manifest` as a reader of the written file sees it (third review #5):
+   *  the parser normalises some fields (a heading into [0, 360)), and every
+   *  other comparison is between parsed versions. The manifest itself if
+   *  the round trip fails - a key that may not match only offers too much. */
+  function asRead(manifest: TourManifest): TourManifest {
+    try {
+      return parseTourManifest(JSON.parse(serializeTourManifest(manifest)));
+    } catch {
+      return manifest;
+    }
+  }
+
   /** The line saying the draft gave way to newer edits, for the open. */
   let supersededNote: string | null = null;
 
   /** The opened tour's version of an object, recorded as seen with each
    *  draft write of it (M6 E2p); none for an object it does not carry.
-   *  Read when the write RUNS, so a write queued before the draft opened
-   *  still names the tour the creator edited (re-review #2). */
+   *  Taken when the write is QUEUED: a queued write can run after another
+   *  open (`reset`, `present`), whose tour is not the one edited (third
+   *  review #1). */
   function seenKey(id: string): string | undefined {
     const hosted = opened?.objects.find((o) => o.id === id);
     return hosted === undefined ? undefined : objectContentKey(hosted);
@@ -273,8 +288,9 @@ export function wireCreatorDraft(deps: {
       if (draftTourUrl !== null) noteNoPersistence();
       return;
     }
+    const seen = seenKey(object.id);
     void writeForObject(store, tourUrl, object.id, (s) =>
-      writeDraftEdit(s, object, blob, seenKey(object.id)),
+      writeDraftEdit(s, object, blob, seen),
     ).then((ok) => {
       if (!ok) noteNoPersistence();
     });
@@ -838,16 +854,19 @@ export function wireCreatorDraft(deps: {
     recordPlacement,
     recordVisit,
     write: draftWrite,
-    writeObject: (object, blob) =>
-      draftWrite(object.id, (s) =>
-        writeDraftEdit(s, object, blob, seenKey(object.id)),
-      ),
+    writeObject: (object, blob) => {
+      const seen = seenKey(object.id);
+      return draftWrite(object.id, (s) =>
+        writeDraftEdit(s, object, blob, seen),
+      );
+    },
     finished: (ids, written) => {
       const store = draftStore;
       const tourUrl = draftTourUrl;
       if (store === undefined || tourUrl === null) return;
+      const read = asRead(written);
       for (const id of ids) {
-        const object = written.objects.find((o) => o.id === id);
+        const object = read.objects.find((o) => o.id === id);
         if (object === undefined) continue;
         const key = objectContentKey(object);
         void writeForObject(store, tourUrl, id, (s) =>
