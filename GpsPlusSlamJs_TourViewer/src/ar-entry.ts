@@ -36,6 +36,8 @@ import {
   startTourArRuntime,
 } from "./ar-mode.js";
 import type { DepthSamplerConfig } from "gps-plus-slam-app-framework/ar/depth-sampler";
+import { createLogger } from "gps-plus-slam-app-framework/utils/logger";
+import type { Object3D } from "three";
 import { RECORDING_DEPTH } from "./authoring-recording.js";
 import {
   MESH_DEPTH,
@@ -58,6 +60,8 @@ import {
   type TourViewerSession,
   type TourViewerStore,
 } from "./tour-viewer-session.js";
+
+const log = createLogger("ArEntry");
 
 export interface ArEntryDom {
   /** The initAR container = the WebXR DOM-overlay root. */
@@ -191,6 +195,18 @@ export function wireArEntry(deps: {
     seams.startDepthCapture(depth.config);
     depthRunning = true;
     depthRecorded = depth.recorded;
+  }
+
+  /** The creator's mesh, or null when it cannot be built (no worker
+   *  support, a failing mesher): the ring then runs on the hit-test alone,
+   *  as without the flag (M5 review #11). */
+  function startMeshSurfaceSafely(worldGroup: Object3D): MeshSurface | null {
+    try {
+      return seams.startMeshSurface(worldGroup, arStore);
+    } catch (err) {
+      log.warn("Mesh cursor unavailable; the ring follows the hit-test", err);
+      return null;
+    }
   }
 
   /** The scan card shows the visitor's sentence while the gate waits;
@@ -608,9 +624,7 @@ export function wireArEntry(deps: {
         // With ?mesh=1 the ring follows a mesh of the surroundings where
         // there is one, the hit-test elsewhere (polish round M5).
         meshSurface =
-          deps.meshCursor === true
-            ? seams.startMeshSurface(worldGroup, arStore)
-            : null;
+          deps.meshCursor === true ? startMeshSurfaceSafely(worldGroup) : null;
         const surface = meshSurface;
         ctx.reticle = seams.startHitTestReticle(
           worldGroup,

@@ -571,4 +571,25 @@ describe('startHitTestReticle — a surface pick (Tour Viewer polish round M5c)'
       handle.getWorldPosition(new Vector3()).distanceTo(expected)
     ).toBeLessThan(1e-9);
   });
+
+  it('falls back to the hit-test when the pick throws, instead of breaking the frame', async () => {
+    const source = { cancel: vi.fn() };
+    const session = makeSession(vi.fn(() => Promise.resolve(source)));
+    const group = new Group();
+    const handle = startHitTestReticle({
+      arWorldGroup: group,
+      surfacePick: () => {
+        throw new Error('no mesh yet');
+      },
+    });
+    const hitAt = new Matrix4().makeTranslation(7, 0, 7).toArray();
+    tick(session, makeHitFrame(hitAt));
+    await flush();
+    expect(() => tick(session, makeHitFrame(hitAt))).not.toThrow();
+    group.updateMatrixWorld(true);
+    const expected = new Vector3(7, 0, 7).applyMatrix4(WEBXR_TO_NUE);
+    expect(
+      handle.getWorldPosition(new Vector3()).distanceTo(expected)
+    ).toBeLessThan(1e-9);
+  });
 });

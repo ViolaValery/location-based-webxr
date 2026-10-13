@@ -34,6 +34,7 @@ function makeDeps() {
     dispose: vi.fn(),
     setDebugStyle: vi.fn(),
     getMesh: vi.fn(() => ({ name: 'the-occluder-mesh' })),
+    setVisible: vi.fn(),
   };
   const driver = { request: vi.fn() };
   const worker = { driver, dispose: vi.fn() };
@@ -170,5 +171,23 @@ describe('createOccluderSink', () => {
       createWorker: d.createWorker,
     });
     expect(handle.mesh()).toEqual({ name: 'the-occluder-mesh' });
+  });
+
+  // Why (Tour Viewer polish round M5 review #2): a mesh used only as a
+  // cursor's pick target must not hide the scene behind reconstructed
+  // surfaces; the raycaster hits a hidden mesh all the same.
+  it('can keep the mesh as a hidden pick target that occludes nothing', () => {
+    const d = makeDeps();
+    createOccluderSink(PARENT as never, makeOccupancy({ occlude: false }), {
+      createMesh: d.createMesh as never,
+      createWorker: d.createWorker,
+    });
+    expect(d.mesh.setVisible).toHaveBeenCalledWith(false);
+    const occluding = makeDeps();
+    createOccluderSink(PARENT as never, makeOccupancy({}), {
+      createMesh: occluding.createMesh as never,
+      createWorker: occluding.createWorker,
+    });
+    expect(occluding.mesh.setVisible).not.toHaveBeenCalled();
   });
 });

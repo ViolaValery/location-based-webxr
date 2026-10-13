@@ -513,7 +513,7 @@ export async function installTourViewerArFakes(page, options = {}) {
           test.meshSurfaces += 1;
           return {
             pick: () => null,
-            stats: () => ({ frameMs: null, triangles: 0 }),
+            stats: () => ({ frame: null, triangles: 0 }),
             dispose: () => {
               test.meshSurfaceDisposals += 1;
             },

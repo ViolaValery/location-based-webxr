@@ -46,6 +46,10 @@ export interface OccluderSinkOptions {
   readonly radiusM: number;
   /** The confidence floor a cell needs to be meshed. */
   readonly minConfidence: number;
+  /** Write depth, hiding what is behind the surfaces (default true); false
+   *  keeps the mesh only as a hidden pick target (the Tour Viewer's mesh
+   *  cursor, polish round M5) - the raycaster hits a hidden mesh too. */
+  readonly occlude?: boolean;
 }
 
 /** The off-thread mesher (`createOccluderMeshWorker`). */
@@ -105,6 +109,8 @@ export function createOccluderSink(
   // so the mesh's shape can be judged on-device/on-replay. No effect on
   // occlusion (additive skins).
   mesh.setDebugStyle(options.debugStyle);
+  // After the debug style, which re-adds its skins as visible.
+  if (options.occlude === false) mesh.setVisible(false);
   // Mesh off the main thread so a large-grid re-mesh (100s of ms at hundreds
   // of metres) never stalls rendering; coalesces to the latest snapshot while
   // busy, synchronous fallback if a worker can't be created.

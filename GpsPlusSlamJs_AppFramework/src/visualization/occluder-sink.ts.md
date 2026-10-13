@@ -16,7 +16,8 @@ variables in every teardown path" pattern that produced several leak-class revie
 
 - `createOccluderSink(parent, options, deps) → OccluderSinkHandle` — build the trio for one
   session. The caller decides WHETHER; this factory owns HOW, from `OccluderSinkOptions`:
-  `meshMode`, `debugStyle`, `radiusM` (0: unbounded) and `minConfidence`.
+  `meshMode`, `debugStyle`, `radiusM` (0: unbounded), `minConfidence`, and `occlude`
+  (default true; false keeps the mesh as a hidden pick target - the raycaster still hits it).
 - `OccluderSinkDeps` — `createWorker` (required: the app's
   `createOccluderMeshWorker(() => new Worker(new URL(...)))`, because the worker file's URL
   resolves against the app's source) and an optional `createMesh` (tests).
@@ -43,30 +44,55 @@ variables in every teardown path" pattern that produced several leak-class revie
 ## Examples
 
 ```ts
+// The app supplies its worker: the worker file's URL resolves against the app's source.
+const createWorker = () =>
+  createOccluderMeshWorker(
+    () =>
+      new Worker(
+        new URL('../workers/occlusion-mesher.worker.ts', import.meta.url),
+        {
+          type: 'module',
+        }
+      )
+  );
 let handle: OccluderSinkHandle | null = null;
-let occluderSink: OccluderSink | undefined;
-if (options.occupancy.persistentOcclusion) {
-  handle = createOccluderSink(arWorldGroup, options.occupancy);
-  occluderSink = handle.sink;
+if (persistentOcclusion) {
+  handle = createOccluderSink(
+    arWorldGroup,
+    {
+      meshMode: 'corner-fit',
+      debugStyle: 'off',
+      radiusM: 12,
+      minConfidence: 2,
+    },
+    { createWorker }
+  );
 }
-wireOccupancyGridSubscribers({ /* … */ occluder: occluderSink });
+wireOccupancyGridSubscribers({ /* ... */ occluder: handle?.sink });
 // teardown (any path):
 handle?.dispose();
 handle = null;
 ```
 
+The Tour Viewer's mesh cursor passes `occlude: false` and casts against `handle.mesh()`.
+
 ## Tests
 
-- `occluder-sink.test.ts` — construction knobs (mode/debug style/parent), unbounded vs
-  windowed snapshot selection, non-finite-pose degradation, geometry application + clear,
-  and the dispose contract (idempotent; post-dispose refresh/clear/late-response no-ops).
-- The live/replay integration stays covered by `main.occupancy-cubes-wiring.test.ts`
-  (mocks `OcclusionMesh` + the worker client by module specifier, which the factory imports
-  through the same specifiers).
+- `occluder-sink.test.ts` - construction knobs (mode/debug style/parent, `occlude: false`
+  hides the mesh), unbounded vs windowed snapshot selection, non-finite-pose degradation,
+  geometry application + clear, and the dispose contract (idempotent; post-dispose
+  refresh/clear/late-response no-ops).
+- The RecorderApp's live/replay integration stays covered by its
+  `main.occupancy-cubes-wiring.test.ts`, which mocks only the app's worker client
+  (`./visualization/occluder-mesh-worker-client`); the framework mesh and this factory run
+  for real there since the lift.
+- The Tour Viewer's `mesh-surface.test.ts` composes it for real (grid, sink, synchronous
+  mesher, subscriber) and picks a fed floor.
 
 ## Related
 
-- [occluder-mesh-worker-client.ts.md](occluder-mesh-worker-client.ts.md) — the worker the
-  sink drives; [wire-occupancy-grid-subscribers.ts.md](wire-occupancy-grid-subscribers.ts.md)
-  — the throttled driver of `refresh`; the framework's
-  [occlusion-mesh.ts.md](../../../GpsPlusSlamJs_AppFramework/src/visualization/occlusion-mesh.ts.md).
+- [occluder-mesh-worker-client.ts.md](occluder-mesh-worker-client.ts.md) - the worker the
+  sink drives; [occlusion-mesh.ts.md](occlusion-mesh.ts.md) - the mesh it owns; the
+  RecorderApp's
+  [wire-occupancy-grid-subscribers.ts.md](../../../GpsPlusSlamJs_RecorderApp/src/visualization/wire-occupancy-grid-subscribers.ts.md)
+  - the throttled driver of `refresh`.

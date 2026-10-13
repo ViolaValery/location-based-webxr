@@ -153,11 +153,6 @@ function cancelSource(source: XRHitTestSource | null | undefined): void {
   }
 }
 
-/**
- * Install the hit-test reticle under `arWorldGroup` and start driving it from
- * the XR frame loop. Returns a handle the app reads at placement time (or
- * ignores entirely when it placed via `onSelect`).
- */
 /** The app's surface point, or null - a throwing pick falls back to the
  *  hit-test rather than breaking the frame. */
 function pickSurface(
@@ -171,6 +166,11 @@ function pickSurface(
   }
 }
 
+/**
+ * Install the hit-test reticle under `arWorldGroup` and start driving it from
+ * the XR frame loop. Returns a handle the app reads at placement time (or
+ * ignores entirely when it placed via `onSelect`).
+ */
 export function startHitTestReticle(
   args: HitTestReticleArgs
 ): HitTestReticleHandle {

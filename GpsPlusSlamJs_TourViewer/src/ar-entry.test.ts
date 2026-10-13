@@ -132,7 +132,10 @@ function harness(
   };
   const meshSurface = {
     pick: vi.fn(() => ({ position: "the mesh point" })),
-    stats: () => ({ frameMs: { median: 16, worst: 40 }, triangles: 1200 }),
+    stats: () => ({
+      frame: { p50: 16, p95: 30, p99: 38, max: 40, count: 120 },
+      triangles: 1200,
+    }),
     dispose: vi.fn(),
   };
   const entry = wireArEntry({
@@ -782,12 +785,27 @@ describe("the creator's mesh cursor behind ?mesh=1 (polish round M5)", () => {
     expect(h.seams.startMeshSurface).not.toHaveBeenCalled();
   });
 
-  it("frees the mesh when the session ends", async () => {
+  it("frees the mesh and stops the sampler when the session ends", async () => {
     const h = harness({ mode: "creator", enableOk: true, meshCursor: true });
     await h.enter();
     h.enabledConfig()!.callbacks?.onSessionEnd?.({ requestedByApp: false });
     await settle();
     expect(h.meshSurface.dispose).toHaveBeenCalledTimes(1);
+    expect(h.seams.stopDepthCapture).toHaveBeenCalledTimes(1);
+  });
+
+  // Why (M5 review #11): a mesh that cannot be built must cost the creator
+  // nothing but the mesh - the ring still runs on the hit-test.
+  it("keeps the hit-test ring when the mesh cannot be built", async () => {
+    const h = harness({ mode: "creator", enableOk: true, meshCursor: true });
+    h.seams.startMeshSurface.mockImplementation(() => {
+      throw new Error("no worker support");
+    });
+    await h.enter();
+    expect(h.seams.startHitTestReticle).toHaveBeenCalledTimes(1);
+    expect(
+      (h.seams.startHitTestReticle.mock.calls[0] as unknown[])[2],
+    ).toBeUndefined();
   });
 
   it("puts the frame time and the triangles in the ?debug=1 block", async () => {
@@ -797,7 +815,7 @@ describe("the creator's mesh cursor behind ?mesh=1 (polish round M5)", () => {
     h.setArStatus("running");
     h.entry.renderArStatus();
     expect(h.dom.arDebug.textContent).toContain(
-      "mesh: 1200 triangles · frame 16/40 ms",
+      "mesh: 1200 triangles · frame 16/30/40 ms",
     );
   });
 });
