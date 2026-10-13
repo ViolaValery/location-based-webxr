@@ -140,7 +140,7 @@ export function draftObjectsNotYetHosted(
   return draft.objects.filter(
     (o) =>
       hosted.get(o.id) !== objectContentKey(o) &&
-      !superseded(draft, hosted, o.id),
+      !(manifest !== null && superseded(draft, hosted, o.id)),
   );
 }
 
@@ -177,6 +177,10 @@ export function draftObjectsSuperseded(
   draft: AuthoringDraft,
   manifest: TourManifest | null,
 ): readonly TourObject[] {
+  // No hosted manifest is no evidence about any object (PR #612 review):
+  // a wrong upload or another file answering must not read as "everything
+  // deleted elsewhere".
+  if (manifest === null) return [];
   const hosted = hostedKeys(manifest);
   return draft.objects.filter(
     (o) =>

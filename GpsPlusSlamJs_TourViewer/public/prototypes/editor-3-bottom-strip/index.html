@@ -2018,7 +2018,7 @@
           return;
         }
         if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-          if (moving) return;
+          if (moving || objects.length === 0) return;
           e.preventDefault();
           const i = objects.findIndex((x) => x.id === selId),
             d = e.key === "ArrowRight" ? 1 : -1;

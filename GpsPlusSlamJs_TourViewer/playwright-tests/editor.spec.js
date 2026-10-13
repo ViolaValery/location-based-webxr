@@ -796,3 +796,25 @@ test("the save's result stays until it is closed", async ({ page }) => {
   await result.locator("button", { hasText: "Close" }).click();
   await expect(result).toHaveCount(0);
 });
+
+test("the file chooser can be reached and opened from the keyboard", async ({
+  page,
+}) => {
+  // Why (PR #612 review): the chooser was a styled span in a label around
+  // a hidden input, none of which is in the tab order, so a keyboard user
+  // could open only the sample.
+  await page.goto("/edit.html");
+  const choose = page.locator("#choose-btn");
+  await choose.focus();
+  await expect(choose).toBeFocused();
+  const chooser = page.waitForEvent("filechooser");
+  await page.keyboard.press("Enter");
+  await (
+    await chooser
+  ).setFiles({
+    name: "editor-fixture.zip",
+    mimeType: "application/zip",
+    buffer: await editorTour(),
+  });
+  await expect(page.locator("#tour-name")).toHaveText("Editor fixture");
+});

@@ -67,6 +67,9 @@ createTourViewerStore();
 const modal = element("open-modal");
 const drop = element("drop");
 const zipInput = element<HTMLInputElement>("zip-input");
+/** The chooser's own button: the label and its hidden input are not in the
+ *  tab order, so a keyboard user reaches the chooser here (PR #612 review). */
+const chooseButton = element<HTMLButtonElement>("choose-btn");
 const openStatus = element("open-status");
 const openError = element("open-error");
 const sampleButton = element<HTMLButtonElement>("sample-btn");
@@ -457,6 +460,7 @@ function setBusy(on: boolean, text: string): void {
   busy = on;
   sampleButton.disabled = on;
   zipInput.disabled = on;
+  chooseButton.disabled = on;
   cancelButton.disabled = on;
   openStatus.textContent = text;
 }
@@ -636,6 +640,12 @@ async function runSave(): Promise<void> {
 
 saveButton.addEventListener("click", () => {
   void runSave();
+});
+chooseButton.addEventListener("click", (event) => {
+  // A button inside the label does not forward its click to the input;
+  // preventDefault keeps it that way whatever the browser does.
+  event.preventDefault();
+  if (!busy) zipInput.click();
 });
 zipInput.addEventListener("change", () => {
   const file = zipInput.files?.[0];

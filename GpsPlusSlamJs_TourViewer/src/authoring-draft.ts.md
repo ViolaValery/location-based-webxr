@@ -28,8 +28,14 @@ asked. Pure - the OPFS mechanics are the framework's
   question Q-E2-2's default). `draftObjectsPublished` names the records
   the hosted zip carries with the same content not yet in `seen` - the page
   adds them, so a later delete elsewhere is not undone. A draft without
-  bases (every draft before E2p) behaves as before. Not covered: a phone
-  deletion against a newer edit elsewhere (the tombstone still deletes).
+  bases (every draft before E2p) behaves as before. No hosted manifest
+  (`null`: no readable `tour.json`) supersedes nothing - it is no evidence
+  about any object (PR #612 review). Not covered: a phone deletion against
+  a newer edit elsewhere (the tombstone still deletes); and a hosted copy
+  OLDER than this device has seen but never seen by it (a rolled-back
+  upload) reads as made elsewhere and wins - telling older from newer
+  needs the signed series version, and whether to ask instead is owner
+  question Q-E2-2.
 - `draftObjectsNotYetHosted(draft, manifest) -> readonly TourObject[]` -
   the whole state machine in one function; see the invariants. Compares
   CONTENT (`objectContentKey`), not ids.

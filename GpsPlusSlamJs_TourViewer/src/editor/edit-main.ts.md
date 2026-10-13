@@ -8,6 +8,9 @@ the rail and the card in the chosen variant 1 layout, and edits it (E2a).
 
 ## Behaviour
 
+- The open dialog's "Choose…" is a button, so the chooser can be reached
+  and opened from the keyboard (the label and its hidden input are not in
+  the tab order, PR #612 review).
 - A text refused when committed by clicking away is said in a toast,
   since the card then shows something else (PR #611 review).
 - Toasts last the Undo's 8 s, except the save's result, which says where

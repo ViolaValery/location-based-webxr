@@ -501,6 +501,23 @@ describe("a newer edit elsewhere wins over the phone's draft (M6 E2p)", () => {
     ).toBe(true);
   });
 
+  // Why (PR #612 review): a hosted file without a readable tour.json is
+  // no evidence about any object - a wrong upload or a proxy answering with
+  // another file. Reading it as "every seen object deleted elsewhere"
+  // removed the records and could sweep the whole draft.
+  it("supersedes nothing when there is no hosted manifest to compare with", () => {
+    const a0 = pin("a");
+    const draft: AuthoringDraft = {
+      ...draftOf([relabel(a0, "phone")]),
+      bases: new Map([["a", seen(a0)]]),
+    };
+    expect(draftObjectsSuperseded(draft, null)).toEqual([]);
+    expect(draftObjectsNotYetHosted(draft, null).map((o) => o.id)).toEqual([
+      "a",
+    ]);
+    expect(draftIsSpent({ ...draft, level: null }, null)).toBe(false);
+  });
+
   // Why: a record found published is recorded as seen there, so a later
   // delete elsewhere is not undone - once, not on every open.
   it("names the published records whose base has not seen that version", () => {
