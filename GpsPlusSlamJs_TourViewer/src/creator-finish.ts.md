@@ -10,6 +10,15 @@ on the page; plus the keep-the-walk switch. Split out of
 (`GpsPlusSlamJs_Docs/docs/2026-10-06-1601-tour-viewer-code-book-refactor-plan.md`);
 M4 makes it write every code of the book, not only the one in hand.
 
+Since M6 E0 the page-free rules below - the manifest with the edits, the
+title, the files written and removed, the series successor, the newest
+bytes as input, the session's budget - run in `finish-rebuild.ts`
+(`rebuildFinishedTour`), shared with the desktop editor. This file keeps
+the page: readiness, the settle, the capture-spot bake, progress, the
+re-checks of `ctx.session`, what the written zip changes on the page, and
+the hand-off. The rules are described here as the Finish's behaviour; the
+module's sidecar states them as its contract.
+
 ## Public API
 
 - `wireCreatorFinish({ ctx, arStore, arController, wizard, codes, dom, measuring, settle, handoff, previews, draft, sessionLive, render }): CreatorFinish`
