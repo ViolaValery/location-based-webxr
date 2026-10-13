@@ -1596,12 +1596,22 @@ describe(
         expect(a.dom.status.textContent).toMatch(
           /code is being measured.*tap Done again/i,
         );
+        // `ar-entry.ts` re-renders right after Done (`renderArState`), and
+        // every store dispatch re-renders too: the line must survive both,
+        // or it never shows (PR #599 review, F17).
+        a.setup.renderAuthorReadout();
+        expect(a.dom.status.textContent).toMatch(
+          /code is being measured.*tap Done again/i,
+        );
         idHold.gate = null;
         release();
         await vi.waitFor(() => {
           expect(measured()).toBeGreaterThan(before);
         });
         await flush();
+        // Measured: the wait is over, so the line goes with it.
+        a.setup.renderAuthorReadout();
+        expect(a.dom.status.textContent).not.toMatch(/tap Done again/i);
         expect(a.setup.finishNow()).toBe(true);
         expect(a.ctx.finishing).toBe(true);
         await finished(a.ctx);

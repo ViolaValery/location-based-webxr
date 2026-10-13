@@ -433,6 +433,12 @@ export function wireCreatorSetup(deps: {
    * starts clamped; the page is never clamped.
    */
   let statusExpanded = false;
+
+  /** A Done tapped while a code was being measured: the readout carries
+   *  `DONE_WAITS_FOR_MEASURING` until that measurement lands. A flag the
+   *  render reads, not a one-off append - `ar-entry.ts` re-renders right
+   *  after Done, and so does every store dispatch (PR #599 review, F17). */
+  let doneWaits = false;
   dom.status.addEventListener("click", () => {
     statusExpanded = !statusExpanded;
     renderAuthorReadout();
@@ -584,6 +590,8 @@ export function wireCreatorSetup(deps: {
     if (readiness === "ready" && ctx.session !== null) {
       dom.status.textContent += ` · ${archiveSizeNote(ctx.session.archive.size)}`;
     }
+    if (doneWaits && !measuring.inFlight()) doneWaits = false;
+    if (doneWaits) dom.status.textContent += ` · ${DONE_WAITS_FOR_MEASURING}`;
   }
 
   /** Placing a pin or a photo in AR (`creator-placement.ts`). */
@@ -710,8 +718,8 @@ export function wireCreatorSetup(deps: {
       // would end the visit with its changes unsaved and nothing said in
       // AR, so Done stays and says so (PR #598 review).
       if (measuring.inFlight()) {
+        doneWaits = true;
         renderAuthorReadout();
-        dom.status.textContent += ` · ${DONE_WAITS_FOR_MEASURING}`;
         return true;
       }
       return finish.start();
@@ -747,6 +755,7 @@ export function wireCreatorSetup(deps: {
       codes.endVisit();
       settle.endVisit();
       statusExpanded = false;
+      doneWaits = false;
       // What the previews were made from, and the earlier visits' frame.
       previews.endVisit();
       // An AR selection means nothing on the page.

@@ -12,6 +12,10 @@
  * @see copy-with-feedback.ts.md
  */
 
+import { createLogger } from './logger';
+
+const log = createLogger('Copy');
+
 /** The button, structurally (a plain object in unit tests). */
 export interface CopyButton {
   disabled: boolean;
@@ -34,9 +38,9 @@ export interface CopyFeedback {
 /**
  * Write `text` with `write` (normally `navigator.clipboard.writeText`;
  * undefined where there is none), showing `labels` on `button`. Resolves
- * whether it was copied. A failed write never rejects it; a hook that
- * throws does (the button is enabled again either way), so keep the hooks
- * to plain assignments.
+ * whether it was copied, and never rejects: a failed write is `false`, and
+ * a hook that throws is logged, not passed on (PR #600 review, F17) - the
+ * call sites discard the promise with `void`.
  */
 export function copyWithFeedback(
   button: CopyButton,
@@ -54,16 +58,25 @@ export function copyWithFeedback(
     .then(
       () => {
         button.textContent = labels.done;
-        labels.onDone?.();
+        runHook(() => labels.onDone?.());
         return true;
       },
       (error: unknown) => {
         button.textContent = labels.failed;
-        labels.onFailed?.(error);
+        runHook(() => labels.onFailed?.(error));
         return false;
       }
     )
     .finally(() => {
       button.disabled = false;
     });
+}
+
+/** A hook's throw is the caller's bug, not the copy's outcome. */
+function runHook(hook: () => void): void {
+  try {
+    hook();
+  } catch (error) {
+    log.warn('A copy hook threw:', error);
+  }
 }

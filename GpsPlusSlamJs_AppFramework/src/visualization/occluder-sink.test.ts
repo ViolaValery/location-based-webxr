@@ -34,6 +34,7 @@ function makeDeps() {
     dispose: vi.fn(),
     setDebugStyle: vi.fn(),
     getMesh: vi.fn(() => ({ name: 'the-occluder-mesh' })),
+    getTriangleCount: vi.fn(() => 7),
     setVisible: vi.fn(),
   };
   const driver = { request: vi.fn() };
@@ -171,6 +172,20 @@ describe('createOccluderSink', () => {
       createWorker: d.createWorker,
     });
     expect(handle.mesh()).toEqual({ name: 'the-occluder-mesh' });
+  });
+
+  // Why (PR #599 review, F17): the Tour Viewer's mesh readout counted the
+  // triangles through a structural cast of the mesh's geometry; the mesh
+  // already knows its count, and after dispose there is no mesh to count.
+  it('reports the mesh triangle count, and none once disposed', () => {
+    const d = makeDeps();
+    const handle = createOccluderSink(PARENT as never, makeOccupancy({}), {
+      createMesh: d.createMesh as never,
+      createWorker: d.createWorker,
+    });
+    expect(handle.triangleCount()).toBe(7);
+    handle.dispose();
+    expect(handle.triangleCount()).toBe(0);
   });
 
   // Why (Tour Viewer polish round M5 review #2): a mesh used only as a

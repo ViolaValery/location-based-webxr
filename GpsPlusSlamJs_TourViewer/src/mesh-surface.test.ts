@@ -110,6 +110,7 @@ describe("createMeshSurface", () => {
     const sink = {
       sink: { refresh: vi.fn(), clear: vi.fn() },
       mesh: () => mesh ?? new Group(),
+      triangleCount: () => 12,
       dispose: vi.fn(),
     };
     const unsubscribe = vi.fn();
@@ -163,6 +164,9 @@ describe("createMeshSurface", () => {
     }
     const stats = s.surface.stats();
     expect(stats.frame).toMatchObject({ p50: 16, max: 50, count: 5 });
+    // The triangles are the sink's own count (PR #599 review, F17), not a
+    // structural read of the mesh's geometry: the fake mesh has none.
+    expect(stats.triangles).toBe(12);
   });
 
   it("disposes the sink and the subscription once", () => {

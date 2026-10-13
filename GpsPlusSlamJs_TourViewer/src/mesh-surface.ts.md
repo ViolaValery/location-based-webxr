@@ -28,7 +28,8 @@ now? }) → MeshSurface` - composes the framework's pieces:
     most once a second, a sample that fails to fold logged as a warning.
   - `pick()` - the surface point under the screen centre (world point and world normal),
     or null; also notes the frame gap (one pick per frame). One `Raycaster`, reused.
-  - `stats()` - `{ frame: FrameTimesSummary | null, triangles }` (the framework's
+  - `stats()` - `{ frame: FrameTimesSummary | null, triangles }` (the sink handle's
+    `triangleCount()`, and the framework's
     `createFrameTimes` over the last 120 gaps).
   - `reset()` - clears the grid and the mesh (follow-up F11): after a
     WebXR origin reset their cells sit in a frame that no longer exists.

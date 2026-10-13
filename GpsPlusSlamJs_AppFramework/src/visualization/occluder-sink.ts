@@ -70,6 +70,9 @@ export interface OccluderSinkHandle {
   /** The occluder's mesh, for a raycast (the Tour Viewer's mesh cursor,
    *  polish round M5c). Depth-only, but the raycaster still hits it. */
   mesh(): Object3D;
+  /** Triangles in the mesh as last applied (a readout's number); 0 once
+   *  disposed. */
+  triangleCount(): number;
   /**
    * Dispose the mesh + worker and turn the sink callbacks into no-ops.
    * Idempotent — safe from any teardown path.
@@ -154,6 +157,7 @@ export function createOccluderSink(
   return {
     sink,
     mesh: () => mesh.getMesh(),
+    triangleCount: () => (disposed ? 0 : mesh.getTriangleCount()),
     dispose: (): void => {
       if (disposed) {
         return;

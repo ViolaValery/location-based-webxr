@@ -84,8 +84,10 @@ were here. What stays is the Finish's side:
     manifest, so it cannot be asked earlier), `beginAuthorVisit`,
     `endAuthorVisit`, `finishNow` (polish round M3, Q-Done: the creator's
     Done in AR starts a Finish through `CreatorFinish.start`, or, while a
-    code is being measured, keeps the session and adds "tap Done again"
-    to the status - PR #598 review; in a session
+    code is being measured, keeps the session and the status carries
+    "tap Done again" until that measurement lands - PR #598 review; a
+    flag the readout reads, so the re-render after Done keeps it, #599
+    review / F17; in a session
     the panel's Finish is hidden, and comes back as the retry after a
     failed finish), and `selectInView` (M4: a tap in AR - an XR select
     the overlay did not cancel - selects the object the `pickObjectInView`

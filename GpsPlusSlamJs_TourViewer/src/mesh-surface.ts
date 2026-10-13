@@ -188,12 +188,9 @@ export function createMeshSurface(deps: {
       );
     },
     stats() {
-      const geometry = (
-        handle.mesh() as { geometry?: { index?: { count: number } | null } }
-      ).geometry;
       return {
         frame: frames.summary(),
-        triangles: Math.floor((geometry?.index?.count ?? 0) / 3),
+        triangles: handle.triangleCount(),
       };
     },
     reset() {
