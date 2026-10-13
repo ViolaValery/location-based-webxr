@@ -19,7 +19,7 @@ import { placePopover, type Box } from "./popover-place.js";
 const CARD_WIDTH_PX = 320;
 
 /** R7's precision, both figures (M6 E1 plan review #10). */
-export const PRECISION_LINE =
+const PRECISION_LINE =
   "Placed from GPS alignment: about 0.1-0.7 m near a code, 1-3 m further away.";
 
 const CODE_LINE =

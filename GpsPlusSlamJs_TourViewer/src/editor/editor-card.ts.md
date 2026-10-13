@@ -20,7 +20,7 @@ view" chip.
     corner, without arrow or chip (E1 review #3). The card is as wide as
     the free area, up to 320 px (E1 review #7).
   - `hide()`, `shown()`.
-- `PRECISION_LINE` - R7's two figures: "about 0.1-0.7 m near a code, 1-3 m
+- The precision line (`PRECISION_LINE`, internal) - R7's two figures: "about 0.1-0.7 m near a code, 1-3 m
   further away" (M6 E1 plan review #10).
 
 ## Invariants & assumptions

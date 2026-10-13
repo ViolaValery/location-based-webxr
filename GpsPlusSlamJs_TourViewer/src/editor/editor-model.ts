@@ -54,11 +54,11 @@ export interface EditorModel {
 }
 
 /** A recorded photo's id: its frame's entry name, which is unique. */
-export const RECORDED_PREFIX = "recorded:";
+const RECORDED_PREFIX = "recorded:";
 
 /** A station's id in the editor: stations and objects have separate id
  *  spaces in the manifest. */
-export const STATION_PREFIX = "station:";
+const STATION_PREFIX = "station:";
 
 function noteMeta(object: TourObject, codes: readonly QrGeoPose[]): string {
   const distance = codeDistanceLine(object, codes);

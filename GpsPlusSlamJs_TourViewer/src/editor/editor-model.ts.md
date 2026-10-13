@@ -33,8 +33,8 @@ name on the phone and on the desktop (M6 E1 plan review #1, #3). Design:
   name, `loadEntry`); null without a photo (E1 review #1).
 - `filterItems(items, query)` - the rows whose title or meta contains the
   trimmed query, case-insensitive; all for an empty query.
-- `EditorItem`, `EditorItemKind`, `EditorModel`, `RECORDED_PREFIX`,
-  `STATION_PREFIX`.
+- `EditorItem`, `EditorItemKind`, `EditorModel` (the id prefixes `recorded:` and
+  `station:` are internal).
 
 ## Invariants & assumptions
 
