@@ -67,6 +67,7 @@ import {
 import type { SummaryPanel } from "./summary-panel.js";
 import { createVisitLog } from "./visit-log.js";
 import { wireObjectEditing } from "./object-editing.js";
+import { createSelectionMark } from "./selection-mark.js";
 import type { ObjectListView } from "./object-list.js";
 import type { ViewerMode } from "./mode.js";
 import {
@@ -426,6 +427,9 @@ export function wireCreatorSetup(deps: {
     renderAuthorReadout();
   });
 
+  /** The ring on the selected object (`selection-mark.ts`). */
+  const selectionMark = createSelectionMark();
+
   function renderAuthorReadout(): void {
     measuring.renderSizeOffer();
     if (!creator) return;
@@ -438,6 +442,14 @@ export function wireCreatorSetup(deps: {
     // earlier objects' frame).
     settle.judgeOnNewFix();
     editing.render();
+    // The selected object wears a ring in the scene (polish round M3, B2);
+    // idempotent, and it follows a preview redrawn by a move.
+    const selected = editing.selected();
+    selectionMark.show(
+      selected === null
+        ? null
+        : (ctx.placedPreviews.get(selected)?.root ?? null),
+    );
     // F11: the AR controls belong to the AR session. On the setup page they
     // were a row of greyed-out buttons under "AR not supported", which is
     // what the owner reported. The STATUS line stays either way - it is

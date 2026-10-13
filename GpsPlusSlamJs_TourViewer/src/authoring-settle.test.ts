@@ -39,6 +39,7 @@ import {
 import { Group, Matrix4, Object3D, Quaternion, Vector3 } from "three";
 
 import { writeSideM } from "./printed-side.js";
+import { SELECTION_MARK_NAME } from "./selection-mark.js";
 import { wireCreatorSetup, type CreatorSetupDom } from "./creator-setup.js";
 import type { ObjectListHandlers, ObjectListModel } from "./object-list.js";
 import type { TourViewerSeams } from "./seams.js";
@@ -2211,6 +2212,27 @@ describe(
       list.listHandlers!.deselect();
       expect(list.lastModel!.rows).toEqual([]);
       expect(a.dom.pinButton.hidden).toBe(false);
+    });
+
+    it("marks the selected object in the scene, and takes the mark away with the selection (polish round M3, B2)", async () => {
+      // Why: the owner wants to SEE what a tap selected (B2); the list row
+      // alone is off to the side of the camera view.
+      const a = await withHostedTour([
+        hostedPin("h1", "Gate"),
+        hostedPin("h2", "Mill"),
+      ]);
+      await flush();
+      const ringOn = (id: string) =>
+        (a.ctx.placedPreviews.get(id)?.root.children ?? []).some(
+          (c) => c.name === SELECTION_MARK_NAME,
+        );
+      expect(a.ctx.placedPreviews.has("h2")).toBe(true);
+      a.pick.fn = () => "h2";
+      a.setup.selectInView(null);
+      expect(ringOn("h2")).toBe(true);
+      expect(ringOn("h1")).toBe(false);
+      a.dom.objectList.listHandlers!.deselect();
+      expect(ringOn("h2")).toBe(false);
     });
 
     it("cancels the XR select of a tap on the panel, so Delete does not also select what is behind it", () => {

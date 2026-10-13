@@ -85,7 +85,10 @@ were here. What stays is the Finish's side:
     `endAuthorVisit`, and `selectInView` (M4: a tap in AR - an XR select
     the overlay did not cancel - selects the object the `pickObjectInView`
     seam names among the rendered previews for the tap's target ray, or
-    the screen centre when it is null; or clears the selection on a miss),
+    the screen centre when it is null; or clears the selection on a miss;
+    polish round M3: the selected object wears a ring in the scene,
+    `selection-mark.ts`, re-applied on every readout render, and the place
+    buttons step aside while it is selected),
     and `measuredCodeIds()` (code book plan M4d: every code the book holds,
     for the print panel's reprint warning).
   - `CreatorSetup.renderAuthorReadout()` - the measuring readout
