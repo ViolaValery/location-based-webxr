@@ -109,6 +109,7 @@ module's sidecar states them as its contract.
     manifest naming photos the archive does not contain. Both halves are
     needed, and the e2e finishes twice in one open tour to hold them.
 - **The rebuilt zip is named after the hosted file** -
+  `finishedFileName` (`finish-rebuild.ts`, shared with the desktop editor):
   `session.hostedFileName()`, else `archiveFileName(url)` - because Drive
   offers "Replace" only for the same name (Drive replace plan §2
   decision 3).

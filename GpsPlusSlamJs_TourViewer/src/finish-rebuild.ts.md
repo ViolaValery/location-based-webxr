@@ -52,6 +52,12 @@ signature, a broken series list (M6 design §5, cold review #2). Design:
   `TourIntegrityError` are rethrown. A decline is the caller's to keep, so
   a page that saves often does not replay the recording each time (E2).
 
+- `finishedFileName(tour)` (M6 E2a) - the name a finished tour is saved
+  under: the hosted file's own (Drive offers "Replace" only for the same
+  name), made safe where a download would change it
+  (`content-disposition.ts`), else the link's file name, else `tour.zip`.
+  The phone's Finish and the desktop editor's Save.
+
 ## Invariants & assumptions
 
 - **Edits:** records replace theirs by id in place, new ones are appended,

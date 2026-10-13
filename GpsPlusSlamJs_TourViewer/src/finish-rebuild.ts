@@ -43,7 +43,11 @@ import {
 import type { LevelText } from "./code-book.js";
 import { finishEntries, type FinishEntry } from "./finish-entries.js";
 import { scanEntryNames } from "./tour-read-set.js";
-import type { TourSession } from "./tour-session.js";
+import {
+  downloadSafeName,
+  nameSurvivesDownload,
+} from "./content-disposition.js";
+import { archiveFileName, type TourSession } from "./tour-session.js";
 
 /** The open tour, as far as a rebuild reads it. */
 type FinishTour = Pick<
@@ -331,4 +335,21 @@ export async function captureSpotsForRebuild(
       }`,
     };
   }
+}
+
+/**
+ * The name a finished tour is saved under: the hosted file's own name -
+ * Drive offers "Replace" only for the same name (Drive replace plan §2
+ * decision 3) - made safe where a download would change it, else the
+ * link's file name, else `tour.zip`. The phone's Finish and the desktop
+ * editor's Save (M6 E2a, E2 plan review #7).
+ */
+export function finishedFileName(
+  tour: Pick<TourSession, "hostedFileName"> & {
+    readonly archive: { readonly url: string };
+  },
+): string {
+  const hosted = tour.hostedFileName();
+  if (hosted === null) return archiveFileName(tour.archive.url);
+  return nameSurvivesDownload(hosted) ? hosted : downloadSafeName(hosted);
 }

@@ -28,6 +28,7 @@ import {
 } from "gps-plus-slam-app-framework/ar/tour-manifest";
 import {
   captureSpotsForRebuild,
+  finishedFileName,
   pendingAfterRebuild,
   rebuildFinishedTour,
 } from "./finish-rebuild.js";
@@ -518,5 +519,39 @@ describe("captureSpotsForRebuild (M6 E0b: the photos' spots for a save)", () => 
       manifestOf([]),
     );
     expect(out).toEqual({ notPlaced: "no recording in this tour" });
+  });
+});
+
+describe("finishedFileName (M6 E2a: the Finish's naming rule, shared)", () => {
+  // Why: Drive offers "Replace" only for a file of the same name (Drive
+  // replace plan §2 decision 3), so a saved tour keeps the hosted file's
+  // name - made safe where a phone would change it - on the phone and on
+  // the desktop alike (E2 plan review #7).
+  const tour = (hosted: string | null, url: string) => ({
+    hostedFileName: () => hosted,
+    archive: { url },
+  });
+
+  it("keeps the hosted file's name", () => {
+    expect(finishedFileName(tour("Altstadt.zip", "x"))).toBe("Altstadt.zip");
+  });
+
+  it("makes a name a download would change safe", () => {
+    // A hosted name never carries a path separator (the header parser
+    // refuses one); a save replaces what a file system refuses, and Chrome
+    // appends a missing .zip.
+    expect(finishedFileName(tour("Walk: part 2?.zip", "x"))).toBe(
+      "Walk- part 2-.zip",
+    );
+    expect(finishedFileName(tour("walk", "x"))).toBe("walk.zip");
+  });
+
+  it("falls back to the link's file name, else tour.zip", () => {
+    expect(
+      finishedFileName(tour(null, "https://example.org/tours/walk.zip")),
+    ).toBe("walk.zip");
+    expect(finishedFileName(tour(null, "https://example.org/share?id=1"))).toBe(
+      "tour.zip",
+    );
   });
 });

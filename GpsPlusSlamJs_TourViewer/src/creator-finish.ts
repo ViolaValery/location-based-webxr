@@ -15,10 +15,6 @@ import {
   type TourCaptureSpots,
   type TourManifest,
 } from "gps-plus-slam-app-framework/ar/tour-manifest";
-import {
-  downloadSafeName,
-  nameSurvivesDownload,
-} from "./content-disposition.js";
 import type { CreatorCodes } from "./creator-codes.js";
 import type { CreatorDraft } from "./creator-draft.js";
 import type { CreatorHandoff } from "./creator-handoff.js";
@@ -27,13 +23,14 @@ import type { CreatorPreviews } from "./creator-previews.js";
 import type { CreatorSettle } from "./creator-settle.js";
 import {
   captureSpotsForRebuild,
+  finishedFileName,
   pendingAfterRebuild,
   rebuildFinishedTour,
 } from "./finish-rebuild.js";
 import { FINISH_LABELS, finishReadiness } from "./qr-author-mode.js";
 import { authoringFinished } from "./tour-authoring-actions.js";
 import { scanEntryNames } from "./tour-read-set.js";
-import { archiveFileName, type TourSession } from "./tour-session.js";
+import type { TourSession } from "./tour-session.js";
 import type {
   ArController,
   TourViewerSession,
@@ -252,20 +249,13 @@ export function wireCreatorFinish(deps: {
         });
         if (finished === null || ctx.session !== current) return;
         const { blob, written, signedManifest, scanLeftOut } = finished;
-        const hosted = current.hostedFileName();
         ctx.rebuiltZip = {
           blob,
           ...(signedManifest === undefined ? {} : { signedManifest }),
-          // The hosted file's own name first: Drive offers "Replace" only
-          // for the same name (Drive replace plan §2 decision 3) - made safe
-          // to save where a phone would change it, and the Drive steps then
-          // ask for the same rename on Drive (§5 #7).
-          filename:
-            hosted === null
-              ? archiveFileName(current.archive.url)
-              : nameSurvivesDownload(hosted)
-                ? hosted
-                : downloadSafeName(hosted),
+          // The hosted file's own name, made safe (`finishedFileName`, the
+          // rule the desktop editor shares); the Drive steps then ask for the
+          // same rename on Drive (Drive replace plan §5 #7).
+          filename: finishedFileName(current),
         };
         madeZip = ctx.rebuiltZip;
         // The Finish's result sentences: they stay on the line under the
