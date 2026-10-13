@@ -33,7 +33,7 @@ are the framework's.
   that does not read as two string lists with at least one key: such a
   base behaves as none (never superseded - a damaged file can only offer
   too much, never drop work). `readDraft` reads the bases into
-  `draft.bases` (absent when there are none); `baseKey(id)`.
+  `draft.bases` (each `base:<id>`; absent when there are none).
 - `removeDraftObject` removes the base with the object's other files (up
   to five: object, photo, deletion, visit, base). A deletion
   (`writeDraftDeletion`) leaves it: a base is read only beside a record,

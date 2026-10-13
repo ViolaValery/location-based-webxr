@@ -81,7 +81,7 @@ const BASE_PREFIX = "base:";
 
 /** An object's base (M6 E2p): its known versions (`DraftBase`) as JSON.
  *  Its own file, so a draft from before E2p reads unchanged. */
-export function baseKey(id: string): string {
+function baseKey(id: string): string {
   return `${BASE_PREFIX}${id}`;
 }
 
