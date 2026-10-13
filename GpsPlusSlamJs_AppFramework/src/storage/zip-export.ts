@@ -20,6 +20,7 @@ import { BlobWriter, ZipWriter, BlobReader } from '@zip.js/zip.js';
 import { createLogger } from '../utils/logger';
 import { getSessionsRootHandle } from './opfs-storage';
 import { assertSafeZipEntryPaths } from './zip-entry-path.js';
+import { writeFileOrAbort } from './write-file-or-abort';
 
 const log = createLogger('ZipExport');
 
@@ -294,10 +295,9 @@ export async function syncToExternalZip(
   // Export session as blob
   const result = await exportSessionAsZip(sessionName, options);
 
-  // Write to external file handle
-  const writable = await fileHandle.createWritable();
-  await writable.write(result.blob);
-  await writable.close();
+  // Write to external file handle: aborted on failure, so the last good
+  // ZIP stays (writeFileOrAbort).
+  await writeFileOrAbort(fileHandle, result.blob);
 
   log.info(`Synced ${result.blob.size} bytes to external file`);
 
@@ -379,9 +379,9 @@ export async function downloadBlob(
           },
         ],
       });
-      const writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
+      // Aborted on failure: a close() after a failed write would commit a
+      // partial file over the one the user picked (writeFileOrAbort).
+      await writeFileOrAbort(handle, blob);
       log.info(`Saved via File System Access API: ${filename}`);
       return true;
     } catch (err) {

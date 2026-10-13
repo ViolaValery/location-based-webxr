@@ -452,6 +452,37 @@ describe('zip-export', () => {
         vi.unstubAllGlobals();
       }
     });
+
+    // Why (Tour Viewer M6 E2 plan review #7, DEC-A3): the save picker's
+    // write was hand-rolled without abort(), so a failed write left the
+    // writable open - its close() would commit a partial file over a good
+    // one, and the lock leaked. It goes through writeFileOrAbort now.
+    it('aborts, never closes, a picked file whose write fails', async () => {
+      const writable = {
+        write: vi.fn(() => Promise.reject(new Error('disk full'))),
+        close: vi.fn(() => Promise.resolve()),
+        abort: vi.fn(() => Promise.resolve()),
+      };
+      const handle = { createWritable: vi.fn(() => Promise.resolve(writable)) };
+      vi.stubGlobal('window', {
+        showSaveFilePicker: vi.fn(() => Promise.resolve(handle)),
+      });
+      vi.stubGlobal('document', {
+        createElement: () => ({ click: vi.fn(), style: {} }),
+        body: { appendChild: vi.fn(), removeChild: vi.fn() },
+      });
+      vi.stubGlobal('URL', {
+        createObjectURL: vi.fn(() => 'blob:x'),
+        revokeObjectURL: vi.fn(),
+      });
+      try {
+        await downloadZip(new Blob(['zip']), 'tour.zip');
+        expect(writable.abort).toHaveBeenCalledTimes(1);
+        expect(writable.close).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
   });
 
   describe('syncToExternalZip', () => {
@@ -485,6 +516,27 @@ describe('zip-export', () => {
 
       return { handle, getWrittenData: () => writtenBlob };
     }
+
+    // Why (DEC-A3, as above): a failed sync must leave the last good ZIP.
+    it('aborts, never closes, the external file when the write fails', async () => {
+      await initOpfsStorage();
+      const { sessionName } = await createFlatSession(
+        new Date('2026-01-30T10:00:00Z')
+      );
+      const writable = {
+        write: vi.fn(() => Promise.reject(new Error('disk full'))),
+        close: vi.fn(() => Promise.resolve()),
+        abort: vi.fn(() => Promise.resolve()),
+      };
+      const handle = {
+        createWritable: vi.fn(() => Promise.resolve(writable)),
+      } as unknown as FileSystemFileHandle;
+      await expect(syncToExternalZip(handle, sessionName)).rejects.toThrow(
+        'disk full'
+      );
+      expect(writable.abort).toHaveBeenCalledTimes(1);
+      expect(writable.close).not.toHaveBeenCalled();
+    });
 
     it('writes a valid ZIP to the external file handle', async () => {
       // Why: This is the primary use case - sync OPFS data to user's chosen file
