@@ -20,28 +20,33 @@ integration over `createEnableGpsArController` + `registerXrFrameUpdate`.
   over its observable state via the pure `buttonView()` mapping
   (checking → unsupported/ready → starting → running/stopping/error).
 - On click, calls `controller.enable({ container, requestHitTest: true,
-  isolationOptions, onGpsPosition })` inside the user gesture so permission
-  prompts are allowed. `isolationOptions` disables the camera/depth
+  isolationOptions, callbacks, onGpsPosition })` inside the user gesture so
+  permission prompts are allowed. `isolationOptions` disables the camera/depth
   crash-surface flags (`enableCameraAccess`, `enableDepthSensingFeature`,
   `enableCameraTextureAcquisition` → `false`) since this example only places
   content under a hit-test reticle; `dom-overlay` / CSS3D stay on for the
   status-hint UI.
-- Once `running`, installs the hit-test reticle: requests a `viewer`-space
-  hit-test source once, then each XR frame reads
-  `frame.getHitTestResults(source)` and drives the reticle via the framework's
-  `hit-test-reticle.ts` (`createReticleMesh` / `updateReticle`). On session
-  `end` the per-session frame callback unregisters itself (via the handle from
-  `registerXrFrameUpdate`) so a later AR re-entry — which calls
-  `startArInteraction` again against a fresh `arWorldGroup` + reticle — does not
-  leave the old callback (or a hit-test source it resolved after `end`) running
-  against the new session.
-- Wires the AR `select` (tap) through the GPS gate in [placement.ts](placement.ts):
-  before the first GPS fix a tap flashes a transient "waiting for GPS…" hint;
-  after a fix it co-spawns the contrast pair (see below).
+- Once `running`, installs the hit-test reticle via the framework's shared
+  driver
+  ([ar/hit-test-reticle-driver](../../GpsPlusSlamJs_AppFramework/src/ar/hit-test-reticle-driver.ts.md),
+  which owns the source request, the per-frame `getHitTestResults` loop and
+  every session-end/race guard). The returned handle is disposed from
+  `callbacks.onSessionEnd`, so a later AR re-entry — which calls
+  `startArInteraction` again against a fresh `arWorldGroup` — starts a fresh
+  driver instead of leaving the old one running (each `running` transition
+  also defensively disposes any stale handle first).
+- Wires the AR `select` (tap) through the GPS gate in [placement.ts](placement.ts)
+  inside the driver's `onSelect` callback (fired on every tap with the reticle
+  world position or `null`): before the first GPS fix a tap flashes a transient
+  "waiting for GPS…" hint — even with no surface, the GPS gate outranks the
+  surface check; after a fix it co-spawns the contrast pair (see below).
 - Feeds GPS + orientation into the store: dispatches `startSession` when AR
   starts (recording must be active), forwards every fix through
   `createGpsPositionHandler` and every orientation sample through
   `updateDeviceOrientation`, so the alignment matrix the anchor reads is live.
+  The handler also starts the compass cold start's `AbsoluteOrientationSensor`
+  at the first recorded fix (framework default since 2026-10-02, D30; a clean
+  no-op off Chrome Android), with no code here.
 - On a valid tap, `placeContrastPair` co-spawns (via [co-spawn.ts](co-spawn.ts))
   the deliberate floater cube under the scene root and an anchored marker under
   `arWorldGroup` at the same world pose, then hands the marker to
@@ -70,7 +75,13 @@ integration over `createEnableGpsArController` + `registerXrFrameUpdate`.
 ## Tests
 
 This module is WebXR glue and is verified manually via `pnpm dev` on an
-AR-capable device. The pure pieces it depends on are unit-tested:
-the reticle view-model in [reticle.test.ts](reticle.test.ts) and the status
-formatter in [status.test.ts](status.test.ts). The store boot is covered by
+AR-capable device. The pure pieces it depends on are unit-tested: the
+reticle view-model and its driver loop in the framework's
+[hit-test-reticle.test.ts](../../GpsPlusSlamJs_AppFramework/src/visualization/hit-test-reticle.test.ts)
+and
+[hit-test-reticle-driver.test.ts](../../GpsPlusSlamJs_AppFramework/src/ar/hit-test-reticle-driver.test.ts),
+the tap decision in [placement.test.ts](placement.test.ts), the status
+formatter in [status.test.ts](status.test.ts), and the status
+panel (write-skipping cache + transient hints) in
+[status-panel.test.ts](status-panel.test.ts). The store boot is covered by
 [boot.test.ts](boot.test.ts).

@@ -49,6 +49,11 @@ const testGpsDataSlice = createSlice({
     setZeroPos(_state, action: PayloadAction<{ lat: number; lon: number }>) {
       return { zero: action.payload };
     },
+    // Stands in for the library's per-AR-entry reset, which a teardown
+    // dispatches AFTER `endSession` (ar-session-teardown.ts).
+    resetGpsSessionData(state) {
+      return state;
+    },
   },
 });
 
@@ -530,5 +535,415 @@ describe('slicePrefixOf', () => {
 
   it('only splits on the first slash', () => {
     expect(slicePrefixOf('a/b/c')).toBe('a');
+  });
+});
+
+describe('persistence re-entrancy tripwire', () => {
+  // Why these tests matter: a persisted action dispatched re-entrantly (inside
+  // another dispatch's `next()`, e.g. from a synchronous `store.subscribe`
+  // listener) receives a LOWER replay index than its trigger and is dropped on
+  // replay — a SILENT, replay-only failure (the 2026-06-27 field bug). The
+  // tripwire turns that into a loud dev-time warning. These tests pin that it
+  // (a) fires on the re-entrant case naming the offending action, once;
+  // (b) stays silent for normal top-level dispatches; (c) is observational
+  // only (does not drop/reorder the recorded writes); and (d) does not
+  // false-positive on the middleware's own async `recordWriteFailure` dispatch.
+  // See 2026-06-28-0751-subscriber-dispatch-persistence-ordering-review.md.
+
+  const gpsSlice = createSlice({
+    name: 'gpsData',
+    initialState: null as {
+      zero: { lat: number; lon: number };
+      flag?: boolean;
+    } | null,
+    reducers: {
+      setZeroPos(_s, a: PayloadAction<{ lat: number; lon: number }>) {
+        return { zero: a.payload };
+      },
+      setFlag(s, a: PayloadAction<boolean>) {
+        if (s) s.flag = a.payload;
+      },
+    },
+  });
+  const recSlice = createSlice({
+    name: 'recording',
+    initialState: { isRecording: false, failedWriteCount: 0 },
+    reducers: {
+      startSession(s) {
+        s.isRecording = true;
+      },
+      endSession(s) {
+        s.isRecording = false;
+      },
+      recordWriteFailure(s) {
+        s.failedWriteCount += 1;
+      },
+    },
+  });
+
+  function makeBackend() {
+    return {
+      createSession: vi.fn().mockResolvedValue({ sessionName: 'test' }),
+      listSessions: vi.fn().mockResolvedValue([]),
+      writeAction: vi.fn().mockResolvedValue(undefined),
+      writeFrame: vi.fn().mockResolvedValue(undefined),
+      writeSessionMetadata: vi.fn().mockResolvedValue(undefined),
+    } as unknown as StorageBackend & { writeAction: ReturnType<typeof vi.fn> };
+  }
+
+  function makeStore(backend: StorageBackend) {
+    return configureStore({
+      reducer: { recording: recSlice.reducer, gpsData: gpsSlice.reducer },
+      middleware: (getDefaultMiddleware) =>
+        getDefaultMiddleware({
+          serializableCheck: false,
+          immutableCheck: false,
+        }).concat(
+          createPersistenceMiddleware({
+            storageBackend: backend,
+            persistedPrefixes: ['gpsData', 'recording'],
+          })
+        ),
+    });
+  }
+
+  // Collect the warning lines (joined args) emitted by the tripwire. Typed
+  // against the call-args array (not the loosely-typed spy) to stay lint-clean.
+  const reentrantWarnings = (
+    calls: readonly (readonly unknown[])[]
+  ): string[] =>
+    calls
+      .map((args) =>
+        args.filter((a): a is string => typeof a === 'string').join(' ')
+      )
+      .filter((line) => line.includes('dispatched re-entrantly'));
+
+  it('warns once (naming the action) when a persisted action is dispatched re-entrantly from a subscriber, without dropping the recorded writes', () => {
+    const backend = makeBackend();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const store = makeStore(backend);
+
+    // The exact field-bug shape: a subscriber reacts to gpsData appearing by
+    // synchronously dispatching a follow-up persisted action (inside the
+    // setZeroPos dispatch's next()). Guarded to fire once (no loop).
+    let fired = false;
+    store.subscribe(() => {
+      if (store.getState().gpsData && !fired) {
+        fired = true;
+        store.dispatch(gpsSlice.actions.setFlag(true));
+      }
+    });
+
+    store.dispatch(recSlice.actions.startSession());
+    store.dispatch(gpsSlice.actions.setZeroPos({ lat: 1, lon: 2 }));
+
+    const warnings = reentrantWarnings(warnSpy.mock.calls);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!).toContain('gpsData/setFlag');
+
+    // Observational only: both actions are still persisted — and with the
+    // inverted index the warning is diagnosing (the re-entrant setFlag lands
+    // BEFORE the setZeroPos that created the slice).
+    const calls = (
+      backend.writeAction as ReturnType<typeof vi.fn>
+    ).mock.calls.map((c) => ({
+      type: (c[0] as { type: string }).type,
+      index: c[1] as number,
+    }));
+    const zero = calls.find((c) => c.type === 'gpsData/setZeroPos');
+    const flag = calls.find((c) => c.type === 'gpsData/setFlag');
+    expect(zero).toBeDefined();
+    expect(flag).toBeDefined();
+    expect(flag!.index).toBeLessThan(zero!.index);
+
+    warnSpy.mockRestore();
+  });
+
+  it('does not warn for normal top-level persisted dispatches', () => {
+    const backend = makeBackend();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const store = makeStore(backend);
+
+    store.dispatch(recSlice.actions.startSession());
+    store.dispatch(gpsSlice.actions.setZeroPos({ lat: 1, lon: 2 }));
+    store.dispatch(gpsSlice.actions.setFlag(true));
+
+    expect(reentrantWarnings(warnSpy.mock.calls)).toHaveLength(0);
+    warnSpy.mockRestore();
+  });
+
+  it('does not false-positive on the async recordWriteFailure dispatch when a write fails', async () => {
+    const backend = makeBackend();
+    (backend.writeAction as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('disk full')
+    );
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const store = makeStore(backend);
+
+    store.dispatch(recSlice.actions.startSession());
+    store.dispatch(gpsSlice.actions.setZeroPos({ lat: 1, lon: 2 }));
+    // Let the write queue reject and dispatch recordWriteFailure (top-level,
+    // in a later macrotask — depth 1 and excluded from persistence).
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(reentrantWarnings(warnSpy.mock.calls)).toHaveLength(0);
+    warnSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+});
+
+/**
+ * flushPendingWrites — the stop-flow drain hook (2026-07-12).
+ *
+ * Why these tests matter: the WriteQueue is fire-and-forget with a
+ * concurrency cap, so a mark dispatched moments before Stop can still be
+ * in flight (or queued) when the recorder's stop flow reads `actions/`
+ * for the final sync / ZIP export — the trailing write would land after
+ * the export enumerated the directory and silently miss the zip. The
+ * flush API is what the stop flow awaits to close that race; these tests
+ * pin its contract: resolves immediately when idle, resolves only after
+ * EVERY queued write settled (beyond the concurrency cap), and never
+ * hangs on failed writes.
+ */
+describe('flushPendingWrites', () => {
+  const recSlice = createSlice({
+    name: 'recording',
+    initialState: { isRecording: false, failedWriteCount: 0 },
+    reducers: {
+      startSession(state) {
+        state.isRecording = true;
+      },
+      recordWriteFailure(state) {
+        state.failedWriteCount += 1;
+      },
+    },
+  });
+  const gpsSlice = createSlice({
+    name: 'gpsData',
+    initialState: null as { zero: { lat: number; lon: number } } | null,
+    reducers: {
+      setZeroPos(_s, action: PayloadAction<{ lat: number; lon: number }>) {
+        return { zero: action.payload };
+      },
+    },
+  });
+
+  function backendWith(writeAction: ReturnType<typeof vi.fn>) {
+    return {
+      createSession: vi.fn().mockResolvedValue({ sessionName: 't' }),
+      listSessions: vi.fn().mockResolvedValue([]),
+      writeAction,
+      writeFrame: vi.fn().mockResolvedValue(undefined),
+      writeSessionMetadata: vi.fn().mockResolvedValue(undefined),
+    } as unknown as StorageBackend;
+  }
+
+  function storeWithMiddleware(writeAction: ReturnType<typeof vi.fn>) {
+    const middleware = createPersistenceMiddleware({
+      storageBackend: backendWith(writeAction),
+      persistedPrefixes: ['gpsData', 'recording'],
+    });
+    const store = configureStore({
+      reducer: { recording: recSlice.reducer, gpsData: gpsSlice.reducer },
+      middleware: (getDefault) =>
+        getDefault({ serializableCheck: false, immutableCheck: false }).concat(
+          middleware
+        ),
+    });
+    return { store, middleware };
+  }
+
+  it('resolves immediately when nothing is queued', async () => {
+    const { middleware } = storeWithMiddleware(
+      vi.fn().mockResolvedValue(undefined)
+    );
+    await expect(middleware.flushPendingWrites()).resolves.toBeUndefined();
+  });
+
+  it('resolves only after EVERY queued write settled (past the concurrency cap)', async () => {
+    // Manually-released writes: all five persisted actions stay in flight
+    // until the test resolves them, and only 3 may run concurrently.
+    const releases: Array<() => void> = [];
+    const writeAction = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releases.push(resolve);
+        })
+    );
+    const { store, middleware } = storeWithMiddleware(writeAction);
+
+    store.dispatch(recSlice.actions.startSession());
+    for (let i = 0; i < 4; i++) {
+      store.dispatch(gpsSlice.actions.setZeroPos({ lat: i, lon: i }));
+    }
+
+    let flushed = false;
+    const flushPromise = middleware.flushPendingWrites().then(() => {
+      flushed = true;
+    });
+
+    // Concurrency cap: only 3 of the 5 writes may have started.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(writeAction).toHaveBeenCalledTimes(3);
+    expect(flushed).toBe(false);
+
+    // Release progressively; flush must not resolve until the LAST settles.
+    while (releases.length > 0) {
+      releases.shift()!();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    while (writeAction.mock.calls.length < 5 || releases.length > 0) {
+      if (releases.length > 0) releases.shift()!();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    await flushPromise;
+    expect(flushed).toBe(true);
+    expect(writeAction).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not hang when writes fail (rejections still count as settled)', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const writeAction = vi.fn().mockRejectedValue(new Error('disk full'));
+    const { store, middleware } = storeWithMiddleware(writeAction);
+
+    store.dispatch(recSlice.actions.startSession());
+    store.dispatch(gpsSlice.actions.setZeroPos({ lat: 1, lon: 2 }));
+
+    await expect(middleware.flushPendingWrites()).resolves.toBeUndefined();
+    errSpy.mockRestore();
+  });
+});
+
+describe('session-spanning recordings (persistWhile, continuousActionIndex)', () => {
+  // Why these tests matter: an app that dispatches `startSession` on EVERY AR
+  // entry and `endSession` + `resetGpsSessionData` on every exit (the Tour
+  // Viewer) cannot record one troubleshooting session across several AR
+  // entries under the default rules - the reset comes after `endSession` so
+  // it is never written, an action dispatched on the page outside AR is
+  // never written, and each entry restarts the numbering at 000001 and
+  // overwrites the entries before it. A replay then mixes two entries'
+  // alignments. The two options make such a recording possible; the
+  // defaults must stay exactly as they were, because the Recorder relies
+  // on them (plan 2026-09-28-0953 §2.3, review findings 1 and 2).
+  function backend() {
+    return {
+      createSession: vi.fn().mockResolvedValue({ sessionName: 'test' }),
+      listSessions: vi.fn().mockResolvedValue([]),
+      writeAction: vi.fn().mockResolvedValue(undefined),
+      writeFrame: vi.fn().mockResolvedValue(undefined),
+      writeSessionMetadata: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  /** Two AR entries as the Tour Viewer dispatches them, with a page-side
+   *  action between them. */
+  function twoVisits(store: ReturnType<typeof createTestStore>): void {
+    const { startSession, endSession } = testRecorderSlice.actions;
+    const { setZeroPos, resetGpsSessionData } = testGpsDataSlice.actions;
+    store.dispatch(startSession());
+    store.dispatch(setZeroPos({ lat: 1, lon: 1 }));
+    store.dispatch(endSession());
+    store.dispatch(resetGpsSessionData());
+    store.dispatch(setZeroPos({ lat: 9, lon: 9 })); // on the page, outside AR
+    store.dispatch(startSession());
+    store.dispatch(setZeroPos({ lat: 2, lon: 2 }));
+    store.dispatch(endSession());
+    store.dispatch(resetGpsSessionData());
+  }
+
+  /** Every queued write, past the 3-write concurrency cap, has started. */
+  async function drained(): Promise<void> {
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+  }
+
+  function written(b: ReturnType<typeof backend>): [string, number][] {
+    return b.writeAction.mock.calls.map(([action, index]) => [
+      (action as { type: string }).type,
+      index as number,
+    ]);
+  }
+
+  it('with persistWhile and a continuous index, two AR entries record every action, numbered without restarting', async () => {
+    const b = backend();
+    const store = createTestStore({
+      storageBackend: b,
+      persistWhile: () => true,
+      continuousActionIndex: true,
+    });
+
+    twoVisits(store);
+    await drained();
+
+    expect(written(b)).toEqual([
+      ['recording/startSession', 1],
+      ['gpsData/setZeroPos', 2],
+      ['recording/endSession', 3],
+      // The reset a replay needs to give each entry its own alignment.
+      ['gpsData/resetGpsSessionData', 4],
+      // Dispatched on the page between the entries.
+      ['gpsData/setZeroPos', 5],
+      // NOT 1 again: a restart would overwrite 000001.json.
+      ['recording/startSession', 6],
+      ['gpsData/setZeroPos', 7],
+      ['recording/endSession', 8],
+      ['gpsData/resetGpsSessionData', 9],
+    ]);
+  });
+
+  it('persistWhile REPLACES the recording gate: false writes nothing, even inside a session', async () => {
+    // The predicate is the whole gate when given - an app that has not
+    // opted in must write nothing, whatever its sessions do.
+    const b = backend();
+    let on = false;
+    const store = createTestStore({
+      storageBackend: b,
+      persistWhile: () => on,
+      continuousActionIndex: true,
+    });
+
+    store.dispatch(testRecorderSlice.actions.startSession());
+    store.dispatch(testGpsDataSlice.actions.setZeroPos({ lat: 1, lon: 1 }));
+    await drained();
+    expect(b.writeAction).not.toHaveBeenCalled();
+
+    on = true;
+    store.dispatch(testGpsDataSlice.actions.setZeroPos({ lat: 2, lon: 2 }));
+    await drained();
+    expect(written(b)).toEqual([['gpsData/setZeroPos', 1]]);
+  });
+
+  it('persistWhile alone still restarts the numbering at each startSession (the flags are independent)', async () => {
+    const b = backend();
+    const store = createTestStore({
+      storageBackend: b,
+      persistWhile: () => true,
+    });
+
+    twoVisits(store);
+    await drained();
+
+    expect(written(b).map(([, index]) => index)).toEqual([
+      1, 2, 3, 4, 5, 1, 2, 3, 4,
+    ]);
+  });
+
+  it('the defaults are unchanged: the reset after endSession and the page-side action are NOT written, and each session restarts at 1', async () => {
+    // The Recorder's contract. If this ever changes, every Recorder
+    // recording changes shape with it.
+    const b = backend();
+    const store = createTestStore({ storageBackend: b });
+
+    twoVisits(store);
+    await drained();
+
+    expect(written(b)).toEqual([
+      ['recording/startSession', 1],
+      ['gpsData/setZeroPos', 2],
+      ['recording/endSession', 3],
+      ['recording/startSession', 1],
+      ['gpsData/setZeroPos', 2],
+      ['recording/endSession', 3],
+    ]);
   });
 });

@@ -21,13 +21,54 @@ import {
   TextWriter,
   type Entry,
   type FileEntry,
+  type Reader,
 } from '@zip.js/zip.js';
+import { GPS_POINT_SOURCE_DEVICE, gpsPointSourceOf } from 'gps-plus-slam-js';
+import { recordedGpsEventPayloads } from '../utils/gps-event-actions';
 import { createLogger } from '../utils/logger';
+import { DEFAULT_ARCHIVE_LIMITS } from './archive-limits';
+import { DecompressionBudget, readZipEntryText } from './capped-zip-entries';
+import { unpackDepthAction } from './depth-sample-codec';
 
 const log = createLogger('ZipReader');
 
-// Re-export Entry type so callers don't need to import @zip.js/zip.js directly
+// Re-export Entry type so callers don't need to import @zip.js/zip.js directly.
+// (Reader is deliberately NOT re-exported: implementers of lazy readers
+// subclass it from '@zip.js/zip.js' directly, and an unused re-export fails
+// the workspace knip gate.)
 export type { Entry } from '@zip.js/zip.js';
+
+/**
+ * Input accepted by the zip-reading helpers: either the full zip bytes
+ * (the original behavior) or any zip.js {@link Reader} — e.g. a ranged
+ * reader over a file descriptor — so callers scanning many large archives
+ * can read only the central directory + the entries they open instead of
+ * loading whole files into memory.
+ *
+ * Reader contract: a single Reader instance may back several helper calls
+ * concurrently (see `loadRecording` in gps-plus-slam-recorder, which fans
+ * out over three helpers via Promise.all), so `init()` must be idempotent
+ * and `readUint8Array(index, length)` must support interleaved ranged reads.
+ * The caller owns the underlying resource lifecycle (helpers close their
+ * ZipReader wrappers, never the Reader's resource).
+ */
+export type ZipSource = Uint8Array | Reader<unknown>;
+
+/**
+ * Wrap a {@link ZipSource} in a fresh zip.js ZipReader.
+ *
+ * Exported deliberately: consumers outside this workspace resolve this
+ * module from the published dist at runtime and probe
+ * `typeof toZipReader === 'function'` as the capability marker for lazy
+ * Reader support before passing anything other than Uint8Array (older
+ * published versions accept only Uint8Array). Do not rename or remove
+ * without treating it as a breaking API change.
+ */
+export function toZipReader(source: ZipSource): ZipReader<unknown> {
+  return new ZipReader(
+    source instanceof Uint8Array ? new Uint8ArrayReader(source) : source
+  );
+}
 
 /**
  * Maximum allowed uncompressed size (in bytes) for a single action or
@@ -57,11 +98,11 @@ export interface ZipActionEntry {
 /**
  * Read all entries from a zip file.
  *
- * @param data - The zip file content as a Uint8Array
+ * @param data - The zip content as a Uint8Array, or a zip.js Reader for lazy access
  * @returns Array of zip entries (directories and files)
  */
-export async function readZipEntries(data: Uint8Array): Promise<Entry[]> {
-  const reader = new ZipReader(new Uint8ArrayReader(data));
+export async function readZipEntries(data: ZipSource): Promise<Entry[]> {
+  const reader = toZipReader(data);
   try {
     return await reader.getEntries();
   } finally {
@@ -83,21 +124,113 @@ function extractActionIndex(filename: string): number {
 }
 
 /**
+ * The caller's decompression budget, or one for the whole archive read
+ * through `data`.
+ * Called after the entries were listed, so a lazy Reader knows its size;
+ * one that still reports none gets the absolute ceiling rather than the
+ * small-archive floor, which would refuse a real long recording.
+ */
+function budgetFor(
+  data: ZipSource,
+  given: DecompressionBudget | undefined
+): DecompressionBudget {
+  if (given !== undefined) return given;
+  const size = data instanceof Uint8Array ? data.length : data.size;
+  return Number.isSafeInteger(size) && size > 0
+    ? DecompressionBudget.forArchive(size)
+    : new DecompressionBudget({
+        maxEntryBytes: DEFAULT_ARCHIVE_LIMITS.maxEntryBytes,
+        maxTotalBytes: DEFAULT_ARCHIVE_LIMITS.maxTotalBytes,
+      });
+}
+
+/**
  * Load all recorded Redux actions from a zip file.
  *
  * Filters for JSON files in the actions/ directory, parses them, and returns
- * them sorted by their filename index (chronological order for replay).
+ * them sorted by filename. That is chronological order for replay because
+ * `formatActionFilename` zero-pads the index to six digits, so lexicographic
+ * and numeric order agree; the numeric index is extracted only to warn about
+ * a name that does not fit the scheme.
  *
- * @param data - The zip file content as a Uint8Array
- * @param maxFileSize - Maximum allowed uncompressed size per entry (defaults to MAX_ACTION_FILE_SIZE)
- * @returns Array of action entries sorted by index
+ * @param data - The zip content as a Uint8Array, or a zip.js Reader for lazy access
+ * @param maxFileSize - Maximum allowed uncompressed size per entry (defaults to MAX_ACTION_FILE_SIZE),
+ *   checked against the declared size up front AND against the bytes actually inflated
+ * @param budget - The archive's decompression allowance (`capped-zip-entries`); a
+ *   caller reading several parts of one archive passes one budget to all of them.
+ *   Defaults to one sized from the archive (`DecompressionBudget.forArchive`).
+ * @returns Array of action entries sorted by filename
+ * @throws ArchiveLimitError when the inflated bytes pass a cap
  */
 export async function loadActionsFromZip(
-  data: Uint8Array,
-  maxFileSize: number = MAX_ACTION_FILE_SIZE
+  data: ZipSource,
+  maxFileSize: number = MAX_ACTION_FILE_SIZE,
+  budget?: DecompressionBudget
 ): Promise<ZipActionEntry[]> {
   const entries = await readZipEntries(data);
+  const allowance = budgetFor(data, budget);
+  return loadActionsFromEntries(
+    entries,
+    (entry, maxBytes) => readZipEntryText(entry, allowance, maxBytes),
+    maxFileSize
+  );
+}
 
+/**
+ * The action one entry's text holds, or null - with a warning naming the
+ * file - when it holds none: malformed JSON, no `type` string, or a
+ * damaged packed depth grid. A packed depth sample (scan pass S2,
+ * `depth-sample-codec.ts`) gets its points back here, so every reader sees
+ * the action as it was dispatched.
+ */
+function parseActionText(
+  text: string,
+  filename: string
+): RecordedAction | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    log.warn(`Skipping malformed JSON in "${filename}": parse failed`);
+    return null;
+  }
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    typeof (parsed as RecordedAction).type !== 'string'
+  ) {
+    log.warn(
+      `Skipping "${filename}": parsed JSON is not a valid action (missing "type" string)`
+    );
+    return null;
+  }
+  const unpacked = unpackDepthAction(parsed);
+  if (!unpacked.ok) {
+    log.warn(`Skipping "${filename}": ${unpacked.reason}`);
+    return null;
+  }
+  return unpacked.action as RecordedAction;
+}
+
+/**
+ * The parse of {@link loadActionsFromZip} over an entry list the caller
+ * ALREADY HOLDS, each action entry read through `readText`. For a caller
+ * that has checked its list and must not let a second read of the
+ * directory replace it: the Tour Viewer reads a signed tour's recording
+ * from the list tier 1 checked, each entry hashed by its own reader (tour
+ * kit plan K1, milestone review R1) - re-listing a live range source could
+ * return another directory than the one that was checked.
+ *
+ * @param entries - The archive's entries (directories are skipped)
+ * @param read - Reads one action entry's text, given the per-file cap;
+ *   its rejection is the parse's
+ * @param maxFileSize - As for {@link loadActionsFromZip}
+ */
+export async function loadActionsFromEntries(
+  entries: readonly Entry[],
+  read: (entry: FileEntry, maxBytes: number) => Promise<string>,
+  maxFileSize: number = MAX_ACTION_FILE_SIZE
+): Promise<ZipActionEntry[]> {
   // Filter to action JSON files only
   const actionEntries = entries
     .filter(
@@ -126,27 +259,11 @@ export async function loadActionsFromZip(
             'The file will still be processed.'
         );
       }
-      const text = await entry.getData(new TextWriter());
-      let action: RecordedAction;
-      try {
-        const parsed: unknown = JSON.parse(text);
-        if (
-          typeof parsed !== 'object' ||
-          parsed === null ||
-          typeof (parsed as RecordedAction).type !== 'string'
-        ) {
-          log.warn(
-            `Skipping "${entry.filename}": parsed JSON is not a valid action (missing "type" string)`
-          );
-          continue;
-        }
-        action = parsed as RecordedAction;
-      } catch {
-        log.warn(
-          `Skipping malformed JSON in "${entry.filename}": parse failed`
-        );
-        continue;
-      }
+      const action = parseActionText(
+        await read(entry, maxFileSize),
+        entry.filename
+      );
+      if (action === null) continue;
       results.push({
         index,
         filename: entry.filename,
@@ -194,7 +311,14 @@ async function extractSessionMetadataFromReader(
       );
     }
 
-    const text = await sessionEntry.getData(new TextWriter());
+    // Counted while inflating too: the check above reads the DECLARED size.
+    const text = await readZipEntryText(
+      sessionEntry,
+      new DecompressionBudget({
+        maxEntryBytes: maxFileSize,
+        maxTotalBytes: maxFileSize,
+      })
+    );
     return JSON.parse(text) as Record<string, unknown>;
   } finally {
     await reader.close();
@@ -207,18 +331,15 @@ async function extractSessionMetadataFromReader(
  * Returns null if session.json is absent (graceful degradation for
  * recordings created before the metadata writing bug was fixed).
  *
- * @param data - The zip file content as a Uint8Array
+ * @param data - The zip content as a Uint8Array, or a zip.js Reader for lazy access
  * @param maxFileSize - Maximum allowed uncompressed size per entry (defaults to MAX_ACTION_FILE_SIZE)
  * @returns Parsed session metadata, or null if not found
  */
 export async function loadSessionMetadata(
-  data: Uint8Array,
+  data: ZipSource,
   maxFileSize: number = MAX_ACTION_FILE_SIZE
 ): Promise<Record<string, unknown> | null> {
-  return extractSessionMetadataFromReader(
-    new ZipReader(new Uint8ArrayReader(data)),
-    maxFileSize
-  );
+  return extractSessionMetadataFromReader(toZipReader(data), maxFileSize);
 }
 
 /**
@@ -263,11 +384,57 @@ export interface GpsPathCoord {
   readonly accuracy?: number;
 }
 
+type RecordedPoint = {
+  latitude?: unknown;
+  longitude?: unknown;
+  latLongAccuracy?: unknown;
+  source?: unknown;
+};
+
+function isDeviceFixWithCoords(
+  gps: RecordedPoint | null | undefined
+): gps is RecordedPoint & { latitude: number; longitude: number } {
+  return (
+    !!gps &&
+    typeof gps.latitude === 'number' &&
+    typeof gps.longitude === 'number' &&
+    // Any value is safe here: a stamp that is not a known source reads as
+    // 'unknown' at runtime, whatever its type.
+    gpsPointSourceOf(gps as { source?: string }) === GPS_POINT_SOURCE_DEVICE
+  );
+}
+
+/** One recorded GPS event payload's track point, or null when it has no
+ *  numeric coordinates or is not a device fix. Reads both the old
+ *  (`gpsPoint`) and the new (`rawGpsPoint`) payload format. A synthetic QR
+ *  vote sits up to 30 m along its code's face, where nobody walked, so it is
+ *  no track point (and no coverage); neither is a reading whose source stamp
+ *  is unknown - the core's `gpsPointSourceOf` never rounds that to device. */
+function gpsPathCoordOf(event: unknown): GpsPathCoord | null {
+  if (typeof event !== 'object' || event === null) return null;
+  const payload = event as {
+    rawGpsPoint?: RecordedPoint;
+    gpsPoint?: RecordedPoint;
+  };
+  const gps = payload.rawGpsPoint ?? payload.gpsPoint;
+  if (!isDeviceFixWithCoords(gps)) return null;
+  const accuracy =
+    typeof gps.latLongAccuracy === 'number' && gps.latLongAccuracy > 0
+      ? gps.latLongAccuracy
+      : undefined;
+  return {
+    lat: gps.latitude,
+    lng: gps.longitude,
+    ...(accuracy !== undefined ? { accuracy } : {}),
+  };
+}
+
 /**
  * Extract GPS coordinates from a recording zip provided as a Blob.
  *
  * Uses BlobReader for memory-efficient reading. Reads all action JSON files,
- * identifies `gpsData/recordGpsEvent` actions, and returns only the lightweight
+ * identifies the GPS actions (`gpsData/recordGpsEvent`, and every event of a
+ * `gpsData/recordGpsEventBatch`), and returns only the lightweight
  * `{ lat, lng }` pairs — all other action data is discarded immediately.
  *
  * Returns coordinates in chronological order (sorted by action filename).
@@ -302,44 +469,19 @@ export async function loadGpsPathFromBlob(
       }
 
       const text = await entry.getData(new TextWriter());
-      let action: {
-        type?: string;
-        payload?: {
-          gpsPoint?: {
-            latitude?: number;
-            longitude?: number;
-            latLongAccuracy?: number;
-          };
-          rawGpsPoint?: {
-            latitude?: number;
-            longitude?: number;
-            latLongAccuracy?: number;
-          };
-        };
-      };
+      let action: unknown;
       try {
-        action = JSON.parse(text) as typeof action;
+        action = JSON.parse(text);
       } catch {
         continue;
       }
 
-      // Support both old (gpsPoint) and new (rawGpsPoint) payload formats
-      const gps = action.payload?.rawGpsPoint ?? action.payload?.gpsPoint;
-      if (
-        action.type === 'gpsData/recordGpsEvent' &&
-        gps &&
-        typeof gps.latitude === 'number' &&
-        typeof gps.longitude === 'number'
-      ) {
-        const accuracy =
-          typeof gps.latLongAccuracy === 'number' && gps.latLongAccuracy > 0
-            ? gps.latLongAccuracy
-            : undefined;
-        coords.push({
-          lat: gps.latitude,
-          lng: gps.longitude,
-          ...(accuracy !== undefined ? { accuracy } : {}),
-        });
+      // One fix per `recordGpsEvent`, every fix of a `recordGpsEventBatch`
+      // (core 1.26; the Tour Viewer's device fix with its ring), each read
+      // the same way.
+      for (const event of recordedGpsEventPayloads(action)) {
+        const coord = gpsPathCoordOf(event);
+        if (coord !== null) coords.push(coord);
       }
     }
 
@@ -388,11 +530,11 @@ export interface ZipSubdirEntry {
  * `relativePath` for deterministic iteration. Returns an empty array when
  * the subdir is absent (graceful degradation for older zips).
  *
- * @param data - The zip file content as a Uint8Array
+ * @param data - The zip content as a Uint8Array, or a zip.js Reader for lazy access
  * @param subdir - Top-level subdir to scan (no leading or trailing `/`)
  */
 export async function loadEntriesFromSubdir(
-  data: Uint8Array,
+  data: ZipSource,
   subdir: string
 ): Promise<ZipSubdirEntry[]> {
   if (!subdir || subdir.includes('/') || subdir.startsWith('.')) {

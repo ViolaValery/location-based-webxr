@@ -202,6 +202,33 @@ describe('extractActionTimestamp', () => {
     expect(extractActionTimestamp(makeDepthSampleAction(12345.67))).toBeNull();
   });
 
+  it('returns epoch ms from diagnostics/note.payload.atMs', () => {
+    // Why: `atMs` is epoch ms BY CONTRACT (both real callers pass
+    // `nowEpochMs()`, and `ar-entry-wiring.test.ts` pins it as "AN ABSOLUTE
+    // TIMELINE, not the XR frame clock"). Without this case a sparse note
+    // between two paced actions returned null on both sides of the pairwise
+    // delay, so the whole real gap around it was silently skipped on replay —
+    // found by claude[bot] review on PR #351.
+    const ts = 1708300007000;
+    expect(
+      extractActionTimestamp({
+        type: 'diagnostics/note',
+        payload: { kind: 'ar-entry-ready', atMs: ts, detail: {} },
+      })
+    ).toBe(ts);
+  });
+
+  it('returns null for a diagnostics note whose atMs is not a number', () => {
+    // Why: a non-finite atMs is persisted as JSON null; pacing must degrade to
+    // "no delay" rather than compute with a non-number.
+    expect(
+      extractActionTimestamp({
+        type: 'diagnostics/note',
+        payload: { kind: 'ar-entry-ready', atMs: null, detail: {} },
+      })
+    ).toBeNull();
+  });
+
   it('returns null for endSession (no timestamp)', () => {
     // Why: endSession has no timestamp in its payload
     expect(extractActionTimestamp(makeEndSessionAction())).toBeNull();
@@ -231,6 +258,66 @@ describe('extractActionTimestamp', () => {
     // Why: Defensive — some actions may be bare {type} objects
     const bare = { type: 'gpsData/recordGpsEvent' };
     expect(extractActionTimestamp(bare)).toBeNull();
+  });
+
+  // Why (core 1.26, Tour Viewer authoring plan 2026-09-28-0953 D18): a
+  // recording can carry its fixes in `recordGpsEventBatch` - a device fix
+  // with its keep-alive ring, a lock's votes. Unpaced, a batch reads as "no
+  // timestamp", which nulls the delay on BOTH sides of it, so a viewer
+  // recording made of batches replayed its whole walk with no pauses
+  // (M2e/M2f milestone review #5).
+  describe('a recordGpsEventBatch', () => {
+    const batch = (...events: unknown[]) => ({
+      type: 'gpsData/recordGpsEventBatch',
+      payload: { events },
+    });
+
+    it("is paced by its first event's timestamp - where the batch's span starts", () => {
+      const fix = makeGpsAction(1708300000000).payload;
+      const vote = makeGpsAction(1708300000400).payload;
+      expect(extractActionTimestamp(batch(fix, vote))).toBe(1708300000000);
+    });
+
+    it('skips an event without a usable timestamp - the core drops such an event alone', () => {
+      const corrupt = {
+        ...makeGpsAction(0).payload,
+        rawGpsPoint: { latitude: 50, longitude: 8, timestamp: Number.NaN },
+      };
+      const vote = makeGpsAction(1708300000400).payload;
+      expect(extractActionTimestamp(batch(corrupt, vote))).toBe(1708300000400);
+    });
+
+    it('reads the old gpsPoint field per event, like the single action', () => {
+      expect(
+        extractActionTimestamp(
+          batch(makeGpsActionOldFormat(1708300000000).payload)
+        )
+      ).toBe(1708300000000);
+    });
+
+    it('returns null for an empty or malformed batch', () => {
+      expect(extractActionTimestamp(batch())).toBeNull();
+      expect(
+        extractActionTimestamp({
+          type: 'gpsData/recordGpsEventBatch',
+          payload: { events: 'x' },
+        })
+      ).toBeNull();
+    });
+
+    it('paces a recording of batches like the same fixes dispatched one by one', () => {
+      // The delay between two ticks is the time between their fixes, as it
+      // is between the two single fixes they replace.
+      const a = batch(makeGpsAction(1708300000000).payload);
+      const b = batch(makeGpsAction(1708300001000).payload);
+      expect(
+        computeInterActionDelay(
+          extractActionTimestamp(a),
+          extractActionTimestamp(b),
+          1
+        )
+      ).toBe(1000);
+    });
   });
 });
 

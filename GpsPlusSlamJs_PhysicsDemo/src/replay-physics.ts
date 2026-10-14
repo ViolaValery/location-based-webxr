@@ -1,0 +1,297 @@
+/**
+ * Desktop-replay physics lifecycle — the per-replay resources behind ONE disposer.
+ *
+ * On the desktop path the demo, for each loaded recording, builds an occupancy
+ * view (occlusion AND collider), a shared physics runtime, an rAF step loop and
+ * click-to-shoot. This module owns all of that and returns a disposer that STOPS
+ * the loop and frees every resource + listener, so starting a new replay (or
+ * ending one) can never stack orphaned rAF loops, physics worlds or WebGL
+ * geometries — the leak/crash PR #197 review flagged (a freed Rapier world would
+ * throw on the next `step`; an undisposed one leaks unboundedly on reload).
+ *
+ * Extracted from `main.ts` (the "logic lives in tested modules" split) so the
+ * lifecycle is headless-testable: the rAF scheduler and the view/runtime
+ * factories are injectable.
+ *
+ * @see replay-physics.ts.md
+ */
+
+import * as THREE from "three";
+import { pointerToNdc } from "gps-plus-slam-app-framework/visualization/pointer-picking";
+import type { OccluderDebugStyle } from "gps-plus-slam-app-framework/visualization/occlusion-mesh";
+import type { MeshMode } from "gps-plus-slam-app-framework/ar/occupancy-mesher";
+import type { ReplaySessionController } from "gps-plus-slam-app-framework/state/replay-session";
+import {
+  bindShadowSwitch,
+  shadowsLabel,
+  startDemoShadows,
+  type DemoShadows,
+} from "./ar-shadows-wiring";
+import { createShadowProbe, installShadowProbe } from "./shadow-probe";
+import { createBallStatus, diagnosticsText, statsText } from "./ball-status";
+import { createEvery, createReceiverFlagsReader } from "./shadow-diagnostics";
+
+/** The diagnostics line's rate: about 4 Hz. */
+const DIAGNOSTICS_INTERVAL_MS = 250;
+import { createOccupancyView } from "./occupancy-view";
+import { createPhysicsRuntime } from "./physics-runtime";
+import { shootBallFromCamera } from "./shoot-ball";
+
+/** The mesh-panel controls + per-frame perf hook the replay physics drives. */
+export interface ReplayPhysicsControls {
+  /** Mesh-mode dropdown (Surface nets / Cubes / Corner-fit). */
+  readonly meshStyleSelect: HTMLSelectElement;
+  /** Shader dropdown (the `OccluderDebugStyle` skins). */
+  readonly meshShaderSelect: HTMLSelectElement;
+  /** Element that shows the `balls N · collider N tris` line. */
+  readonly statsEl: HTMLElement;
+  /** The diagnostics line's element (first-visit reports), when present. */
+  readonly diagnosticsEl?: HTMLElement;
+  /** Advance the always-on perf panel once per frame. */
+  readonly onFrame: () => void;
+  /** AR shadows from the thrown balls (off with `?shadows=0`). Default on. */
+  readonly shadows?: boolean;
+  /** The panel's Shadows switch (round-2 plan M1), when the page has one. */
+  readonly shadowToggle?: HTMLInputElement;
+  /**
+   * `?shadowProbe=1`: expose `window.__physicsShadowProbe` for the shadow
+   * pixel e2e (round-2 plan M1). Default off.
+   */
+  readonly shadowProbe?: boolean;
+}
+
+/** Injectable rAF scheduler so the step loop is unit-testable without a browser. */
+export interface FrameScheduler {
+  request(cb: (t: number) => void): number;
+  cancel(handle: number): void;
+}
+
+/** Injectable factories so the lifecycle is testable without WebGL/Rapier. */
+export interface ReplayPhysicsFactories {
+  readonly createOccupancyView: typeof createOccupancyView;
+  readonly createPhysicsRuntime: typeof createPhysicsRuntime;
+  readonly startDemoShadows: typeof startDemoShadows;
+}
+
+/**
+ * Max pointer travel (px) between pointerdown and pointerup for the gesture to
+ * count as a click-to-shoot; anything farther is an OrbitControls drag.
+ */
+const DRAG_THRESHOLD_PX = 5;
+
+const defaultScheduler: FrameScheduler = {
+  request: (cb) => requestAnimationFrame(cb),
+  cancel: (handle) => cancelAnimationFrame(handle),
+};
+
+const defaultFactories: ReplayPhysicsFactories = {
+  createOccupancyView,
+  createPhysicsRuntime,
+  startDemoShadows,
+};
+
+/**
+ * Wire desktop-replay physics onto a live replay `session` and return a disposer.
+ *
+ * The disposer stops the rAF loop (a straggler frame already queued becomes a
+ * no-op), disposes the runtime + occupancy view, and removes the pointer + mesh
+ * dropdown listeners. It is idempotent — safe to call before starting the next
+ * replay AND on final teardown.
+ */
+export function startReplayPhysics(
+  session: ReplaySessionController,
+  controls: ReplayPhysicsControls,
+  scheduler: FrameScheduler = defaultScheduler,
+  factories: ReplayPhysicsFactories = defaultFactories,
+): () => void {
+  const scene = session.getScene();
+
+  // The demo owns its occupancy view (one occluder for occlusion AND physics),
+  // fed by the replay store's depth stream. Mesh mode + shader come from the UI.
+  const occupancyView = factories.createOccupancyView(
+    scene.arWorldGroup,
+    session.getStore(),
+    {
+      meshMode: controls.meshStyleSelect.value as MeshMode,
+      debugStyle: controls.meshShaderSelect.value as OccluderDebugStyle,
+    },
+  );
+  const onMeshStyleChange = (): void =>
+    occupancyView.setMeshMode(controls.meshStyleSelect.value as MeshMode);
+  const onMeshShaderChange = (): void =>
+    occupancyView.setDebugStyle(
+      controls.meshShaderSelect.value as OccluderDebugStyle,
+    );
+  controls.meshStyleSelect.addEventListener("change", onMeshStyleChange);
+  controls.meshShaderSelect.addEventListener("change", onMeshShaderChange);
+
+  let shadows: DemoShadows | null = null;
+  let probe: ReturnType<typeof createShadowProbe> | null = null;
+  /**
+   * The viewer, AR's phone: the recorded phone pose (`arpose`), or the
+   * probe's standing view once it has one. Never the orbit camera, which
+   * hangs 5-200 m above the room: the shadow square follows the viewer 1.4 m
+   * below it, and resting balls would read as fallen through (M1 review).
+   */
+  const viewerOf = (): THREE.Object3D => probe?.viewCamera() ?? scene.arpose;
+  const ballStatus = createBallStatus();
+  // The receiver's program flags on the status line (first-visit report).
+  const readReceiver = createReceiverFlagsReader(
+    scene.renderer,
+    scene.arWorldGroup,
+  );
+  const viewerPosition = new THREE.Vector3();
+  const runtime = factories.createPhysicsRuntime(
+    scene.arWorldGroup,
+    occupancyView,
+    {
+      // The status line (round-2 plan M1): resting and fallen balls, the
+      // collider, and the shadows' state.
+      onStats: (_balls, tris) => {
+        const viewer = viewerOf().getWorldPosition(viewerPosition);
+        const status = ballStatus.update(
+          runtime.balls(),
+          viewer.y,
+          (p) => shadows?.inRange(p) ?? false,
+        );
+        controls.statsEl.textContent = statsText(
+          status,
+          tris,
+          shadowsLabel(shadows),
+        );
+      },
+    },
+  );
+  // The replay renderer's own loop draws a frame later than this tick, so a
+  // flying ball's shadow can trail it by one frame on the desktop (AR has no
+  // such lag: there the update runs before the render).
+  // Started even with ?shadows=0 (then switched off): enabling the shadow
+  // map later would recompile every lit material mid-session.
+  shadows = factories.startDemoShadows({
+    renderer: scene.renderer,
+    scene: scene.scene,
+    arWorldGroup: scene.arWorldGroup,
+    getOccluder: () => occupancyView.getOcclusionMesh(),
+    ballCount: () => runtime.ballCount(),
+    // The shadow square follows the viewer (see viewerOf).
+    getCamera: viewerOf,
+  });
+  const releaseSwitch = bindShadowSwitch(
+    shadows,
+    controls.shadows ?? true,
+    controls.shadowToggle,
+  );
+
+  if (controls.shadowProbe) {
+    probe = createShadowProbe({
+      pause: () => session.pause(),
+      renderer: scene.renderer,
+      scene: scene.scene,
+      runtime,
+      getFloorMesh: () => occupancyView.getMesh(),
+      shadows,
+      remesh: () => occupancyView.remesh(),
+      now: () => performance.now(),
+    });
+  }
+  const removeProbe = probe
+    ? installShadowProbe(
+        window as {
+          __physicsShadowProbe?: ReturnType<typeof createShadowProbe>;
+        },
+        probe,
+      )
+    : () => {};
+
+  // Desktop replay is driven by window rAF. `active` guards the straggler frame
+  // that can still fire after the pending handle is cancelled.
+  let active = true;
+  let frameHandle = 0;
+  // The diagnostics line (first-visit reports, 2026-09-27), the same as in
+  // AR but for the XR and start parts, at about 4 Hz. The rAF timestamp
+  // the collider is stamped with shares performance.now's clock.
+  const diagnosticsDue = createEvery(DIAGNOSTICS_INTERVAL_MS);
+  const writeDiagnostics = (t: number): void => {
+    if (!controls.diagnosticsEl || !diagnosticsDue(t)) return;
+    const depth = occupancyView.depthStats();
+    const builtAt = runtime.colliderBuiltAtMs();
+    controls.diagnosticsEl.textContent = diagnosticsText({
+      depthSamples: depth.samples,
+      depthAgeMs:
+        depth.lastSampleAtMs === null ? null : t - depth.lastSampleAtMs,
+      meshTris: occupancyView.getOcclusionMesh().getTriangleCount(),
+      colliderAgeMs: builtAt === null ? null : t - builtAt,
+      ...(shadows
+        ? { shadow: { receiver: readReceiver(), ...shadows.diagnostics() } }
+        : {}),
+    });
+  };
+
+  const tick = (t: number): void => {
+    if (!active) return;
+    runtime.step(t);
+    shadows?.update();
+    writeDiagnostics(t);
+    controls.onFrame();
+    frameHandle = scheduler.request(tick);
+  };
+  frameHandle = scheduler.request(tick);
+
+  // Placement (desktop): click → shoot a ball FROM the camera toward where you
+  // clicked, so it flies out, hits the reconstructed mesh and bounces. The
+  // canvas is shared with the replay scene's OrbitControls, so the shot fires
+  // on pointerUP and only when the pointer stayed within DRAG_THRESHOLD_PX of
+  // its pointerdown — a camera-orbit drag must not spawn a ball (PR #198
+  // review, gemini-code-assist). Primary button only: OrbitControls pans with
+  // the right button and the browser owns the context menu, so a stationary
+  // secondary click must not shoot either (PR #205 review, coderabbit);
+  // touch/pen contacts report button 0 and keep working.
+  const canvas = scene.renderer.domElement;
+  const raycaster = new THREE.Raycaster();
+  let pointerIsDown = false;
+  let downX = 0;
+  let downY = 0;
+  const onPointerDown = (e: PointerEvent): void => {
+    if (e.button !== 0) return;
+    pointerIsDown = true;
+    downX = e.clientX;
+    downY = e.clientY;
+  };
+  const onPointerUp = (e: PointerEvent): void => {
+    if (e.button !== 0 || !pointerIsDown) return;
+    pointerIsDown = false;
+    const dx = e.clientX - downX;
+    const dy = e.clientY - downY;
+    if (dx * dx + dy * dy > DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
+    const ndc = pointerToNdc(
+      e.clientX,
+      e.clientY,
+      canvas.getBoundingClientRect(),
+    );
+    raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), scene.camera);
+    shootBallFromCamera(
+      runtime,
+      scene.camera.getWorldPosition(new THREE.Vector3()),
+      raycaster.ray.direction,
+    );
+  };
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointerup", onPointerUp);
+
+  let disposed = false;
+  return (): void => {
+    if (disposed) return;
+    disposed = true;
+    active = false;
+    scheduler.cancel(frameHandle);
+    canvas.removeEventListener("pointerdown", onPointerDown);
+    canvas.removeEventListener("pointerup", onPointerUp);
+    controls.meshStyleSelect.removeEventListener("change", onMeshStyleChange);
+    controls.meshShaderSelect.removeEventListener("change", onMeshShaderChange);
+    removeProbe();
+    releaseSwitch();
+    shadows?.dispose();
+    runtime.dispose();
+    occupancyView.dispose();
+  };
+}

@@ -27,6 +27,24 @@ export {
   createCss3dRendererManager,
 } from './css3d-renderer-manager.js';
 
+// --- diamond-entrance ---
+export {
+  DIAMOND_ENTRANCE,
+  DIAMOND_ENTRANCE_SETTLED,
+  type DiamondEntranceOptions,
+  type DiamondEntranceState,
+  computeDiamondEntrance,
+} from './diamond-entrance.js';
+
+// --- diamond-marker-texture ---
+export {
+  DEFAULT_DIAMOND_HALO,
+  DIAMOND_GEOMETRY,
+  type DiamondMarkerTexture,
+  type DiamondMarkerTextureOptions,
+  createDiamondMarkerTexture,
+} from './diamond-marker-texture.js';
+
 // --- gps-compass-cubes ---
 export {
   COMPASS_CUBE_SIZE,
@@ -60,15 +78,50 @@ export {
   type GpsAnchorOptions,
   type GpsAnchorPhase,
   type GpsAnchorSamplePoint,
+  type GpsAnchorStartup,
   createGpsAnchor,
 } from './gps-anchor.js';
 
 // --- gps-event-markers ---
 export { GpsEventVisualizer, gpsEventVisualizer } from './gps-event-markers.js';
 
+// --- occlusion-mesh (persistent depth-only occluder of the occupancy grid) ---
+export {
+  type OcclusionMeshOptions,
+  type OccluderDebugStyle,
+  OCCLUDER_DEBUG_STYLES,
+  OcclusionMesh,
+} from './occlusion-mesh.js';
+
+// --- ar-shadows (virtual shadows on the reconstructed room, automatic) ---
+export {
+  AR_SHADOWS,
+  type ArShadows,
+  type ArShadowsFrame,
+  type ArShadowsOptions,
+  type ArShadowsRenderer,
+  type ShadowCastingLight,
+  type ShadowReception,
+  createArShadows,
+  shadowReception,
+} from './ar-shadows.js';
+
+// --- shadow-receiver (the shadow-only receiver recipe) ---
+export {
+  type ShadowReceiverOptions,
+  createShadowPlane,
+} from './shadow-receiver.js';
+
+// --- occupancy-cubes-visualizer (instanced debug cubes of the occupancy grid) ---
+export {
+  type OccupancyGridSource,
+  type ViewerPose,
+  type OccupancyCubesVisualizerOptions,
+  OccupancyCubesVisualizer,
+  pickNearestSubset,
+} from './occupancy-cubes-visualizer.js';
+
 // --- leaflet-map-overlay ---
-// NOTE: DEFAULT_ZOOM and DEFAULT_HEIGHT_OFFSET also exist in map-overlay;
-// import directly from the specific module if you need the leaflet variants.
 export {
   DEFAULT_LEAFLET_MAP_SIZE_PX,
   DEFAULT_WORLD_SIZE,
@@ -82,6 +135,23 @@ export { DEFAULT_LERP_RATE, clampedAlpha } from './lerp-utils.js';
 
 // --- map-data (shared trajectory model) ---
 export { type MapData, type MapDataInput, buildMapData } from './map-data.js';
+
+// --- pointer-picking (engine-free desktop raycast helper) ---
+export {
+  type Ndc,
+  type ElementRect,
+  pointerToNdc,
+  raycastPointer,
+  pickWorldPoint,
+} from './pointer-picking.js';
+
+// --- perf-stats-overlay (shared Stats.js FPS/MS/MB panel row) ---
+export {
+  type PerfStatsInstance,
+  type PerfStatsOverlayOptions,
+  type PerfStatsOverlayHandle,
+  createPerfStatsOverlay,
+} from './perf-stats-overlay.js';
 
 // --- accuracy-circles (shared per-event GPS accuracy circles) ---
 export {
@@ -105,17 +175,54 @@ export {
   drawMapData,
 } from './map-overlay-draw.js';
 
-// --- map-overlay ---
+// summary-map-shell and osm-tile-layer are deliberately NOT re-exported
+// here either: their consumers deep-import them, and the Tour Viewer imports
+// the shell DYNAMICALLY so its visitors never download Leaflet.
+
+// --- text-sprite ---
 export {
-  DEFAULT_ZOOM,
-  DEFAULT_MAP_SIZE,
-  DEFAULT_HEIGHT_OFFSET,
-  type TextureLoaderInterface,
-  type MapOverlayOptions,
-  latLonToTileXY,
-  tileXYToLatLon,
-  MapOverlay,
-} from './map-overlay.js';
+  type TextSprite,
+  type TextSpriteOptions,
+  createTextSprite,
+} from './text-sprite.js';
+
+// frame-texture-decoder is deliberately NOT re-exported here: every consumer
+// deep-imports `visualization/frame-texture-decoder` (this barrel feeds the
+// package-root `export *`, and DEC-H3's shared helpers stay off the root
+// export surface; the barrel is also unusable in node unit tests — leaflet).
+
+// --- wayfinding-hud (frustum-locked target indicators as camera children) ---
+export {
+  type WayfindingHud,
+  type WayfindingHudOptions,
+  DEFAULT_WAYFINDING_HUD,
+  DEFAULT_CIRCLE_ENTRANCE,
+  type CircleEntranceOptions,
+  type EntranceStats,
+  createWayfindingHud,
+  validateWayfindingHudOptions,
+} from './wayfinding-hud.js';
+
+// --- wayfinding-targets (the HUD's getTargets() boundary triage, pure) ---
+export {
+  type ResolvedTarget,
+  type TargetResolver,
+  type TargetResolverOptions,
+  createTargetResolver,
+} from './wayfinding-targets.js';
+
+// --- wayfinding-placement (pure seam of the wayfinding HUD) ---
+export {
+  type TargetPlacement,
+  type TargetPlacementInput,
+  type TargetPlacementState,
+  type ArrowPlacement,
+  type CirclePlacement,
+  type HiddenPlacement,
+  computeTargetPlacement,
+  formatDistanceLabel,
+  getHudFrustumExtents,
+} from './wayfinding-placement.js';
 
 // --- three-dispose ---
 export {

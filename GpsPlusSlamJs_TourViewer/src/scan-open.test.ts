@@ -1,0 +1,365 @@
+import { describe, expect, it, vi } from "vitest";
+
+import type { CodeTour } from "./code-tour.js";
+import {
+  createScanOpen,
+  type OpenOutcome,
+  type ScanOpenDeps,
+} from "./scan-open.js";
+import { createTourViewerSession } from "./tour-viewer-session.js";
+
+/**
+ * Why these tests matter (TourViewer scan-to-open plan §2, §9, and the
+ * milestone review): the owner decided step 4 needs no pasted link - the
+ * first code the camera reads opens its tour. These pin the policy: one
+ * open at a time; retries only for causes a creator can fix, with a capped
+ * backoff; once a tour is open, another tour's code is added to it rather
+ * than switching (plan §13); and work measured before any tour opened
+ * never landing in the wrong tour's zip.
+ */
+
+const A = "https://h.test/a.zip";
+const B = "https://h.test/b.zip";
+const codeOf = (url: string): string =>
+  `https://gps.csutil.com/tour/?qr=${encodeURIComponent(url)}`;
+
+function tour(url: string, levelId: string | null = null): CodeTour {
+  // A short link is the one kind the real resolver cannot compare.
+  const comparable = !url.startsWith("https://bit.ly/");
+  return { kind: "tour", url, normalizedUrl: url, comparable, levelId };
+}
+
+/** Let resolutions and opens settle. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 8; i += 1) await Promise.resolve();
+}
+
+function setup(
+  options: {
+    openAt?: string | null;
+    outcomes?: (OpenOutcome | "reject")[];
+    /** Opens wait for `release()` instead of settling at once. */
+    hold?: boolean;
+    /** The level id every resolved code carries (`qrCodeId` stand-in). */
+    levelId?: string;
+  } = {},
+) {
+  const ctx = createTourViewerSession();
+  if (options.openAt != null) {
+    ctx.session = { archive: { url: options.openAt } } as never;
+  }
+  const outcomes = [...(options.outcomes ?? [])];
+  let clock = 0;
+  let opening = false;
+  let release: () => void = () => undefined;
+  const opened: string[] = [];
+  const codeTexts: string[] = [];
+  const deps: ScanOpenDeps = {
+    ctx,
+    resolve: (text) => {
+      const url = new URL(text).searchParams.get("qr");
+      return Promise.resolve(
+        url === null
+          ? { kind: "not-a-tour-code" }
+          : tour(url, options.levelId ?? null),
+      );
+    },
+    open: (url, codeText) => {
+      opened.push(url);
+      codeTexts.push(codeText);
+      opening = true;
+      const outcome = outcomes.shift() ?? { kind: "opened" };
+      const gate =
+        options.hold === true
+          ? new Promise<void>((resolve) => {
+              release = resolve;
+            })
+          : Promise.resolve();
+      return gate.then(() => {
+        opening = false;
+        if (outcome === "reject") throw new Error("boom");
+        if (outcome.kind === "opened") {
+          ctx.session = { archive: { url } } as never;
+        }
+        return outcome;
+      });
+    },
+    isOpening: () => opening,
+    now: () => clock,
+    render: vi.fn(),
+  };
+  const scan = createScanOpen(deps);
+  /** Two detections a frame apart, as the 8 Hz capture delivers them. */
+  const see = async (text: string): Promise<void> => {
+    scan.onDetection(text);
+    await settle();
+    scan.onDetection(text);
+    await settle();
+  };
+  return {
+    ctx,
+    scan,
+    opened,
+    codeTexts,
+    see,
+    release: () => {
+      release();
+    },
+    setOpening: (value: boolean) => {
+      opening = value;
+    },
+    advance: (ms: number) => {
+      clock += ms;
+    },
+  };
+}
+
+describe("a creator with no tour open", () => {
+  it("opens the tour the first code names, once", async () => {
+    const s = setup();
+    await s.see(codeOf(A));
+    await s.see(codeOf(A));
+    expect(s.opened).toEqual([A]);
+    expect(s.scan.status(codeOf(A)).kind).toBe("quiet");
+  });
+
+  it("opens as soon as the code is read, on its first sighting", async () => {
+    // Milestone review #9: the open used to wait for a second detection,
+    // leaving "Opening…" on screen for a code seen once.
+    const s = setup();
+    s.scan.onDetection(codeOf(A));
+    await settle();
+    expect(s.opened).toEqual([A]);
+  });
+
+  it("hands the open the printed code's text, the code's trust source (tour kit plan K1)", async () => {
+    // §8 D2: trust on first use is keyed by the printed code as well as
+    // the link, so the open must know which code named the link.
+    const s = setup();
+    s.scan.onDetection(codeOf(A));
+    await settle();
+    expect(s.codeTexts).toEqual([codeOf(A)]);
+  });
+
+  it("starts one open however many frames arrive while it runs", async () => {
+    const s = setup({ hold: true });
+    s.scan.onDetection(codeOf(A));
+    await settle();
+    for (let i = 0; i < 5; i += 1) s.scan.onDetection(codeOf(A));
+    expect(s.opened).toEqual([A]);
+    expect(s.scan.status(codeOf(A)).kind).toBe("opening");
+    s.release();
+    await settle();
+    expect(s.scan.status(codeOf(A)).kind).toBe("quiet");
+  });
+
+  it("starts none while an open from step 1 is in flight", async () => {
+    const s = setup();
+    s.setOpening(true);
+    await s.see(codeOf(A));
+    expect(s.opened).toEqual([]);
+  });
+
+  it("says a code that names no tour does not point to one", async () => {
+    const s = setup();
+    await s.see("https://menu.test/today");
+    expect(s.opened).toEqual([]);
+    expect(s.scan.status("https://menu.test/today").kind).toBe("not-a-tour");
+  });
+});
+
+describe("a failed open", () => {
+  it("retries a file that is not hosted yet, with backoff", async () => {
+    const s = setup({
+      outcomes: [
+        { kind: "failed", cause: "missing" },
+        { kind: "failed", cause: "missing" },
+      ],
+    });
+    await s.see(codeOf(A));
+    expect(s.opened).toHaveLength(1);
+    expect(s.scan.status(codeOf(A))).toEqual({
+      kind: "failed",
+      cause: "missing",
+      retrying: true,
+    });
+    s.advance(9_999);
+    await s.see(codeOf(A));
+    expect(s.opened, "not before 10 s").toHaveLength(1);
+    s.advance(1);
+    await s.see(codeOf(A));
+    expect(s.opened).toHaveLength(2);
+    s.advance(19_999);
+    await s.see(codeOf(A));
+    expect(s.opened, "the second wait is 20 s").toHaveLength(2);
+    s.advance(1);
+    await s.see(codeOf(A));
+    expect(s.opened).toHaveLength(3);
+  });
+
+  it("never waits more than 30 s between tries", async () => {
+    // Milestone review #10: a creator who fixed the upload should not stand
+    // at the poster for minutes; a retry is one small request.
+    const failures = Array.from({ length: 6 }, () => ({
+      kind: "failed" as const,
+      cause: "cors" as const,
+    }));
+    const s = setup({ outcomes: failures });
+    await s.see(codeOf(A));
+    for (const wait of [10_000, 20_000, 30_000, 30_000]) {
+      s.advance(wait);
+      await s.see(codeOf(A));
+    }
+    expect(s.opened, "cors is retried, and the cap holds").toHaveLength(5);
+  });
+
+  it("retries a phone that was offline (K0)", async () => {
+    // Tour kit plan K0 split `offline` out of `cors`: a phone back online
+    // must get the same retry a blocked host did.
+    const s = setup({
+      outcomes: [{ kind: "failed", cause: "offline" }, { kind: "opened" }],
+    });
+    await s.see(codeOf(A));
+    expect(s.scan.status(codeOf(A))).toEqual({
+      kind: "failed",
+      cause: "offline",
+      retrying: true,
+    });
+    s.advance(10_000);
+    await s.see(codeOf(A));
+    expect(s.opened).toHaveLength(2);
+  });
+
+  it("does not retry a file that is there but unreadable", async () => {
+    const s = setup({ outcomes: [{ kind: "failed", cause: "corrupt" }] });
+    await s.see(codeOf(A));
+    s.advance(600_000);
+    await s.see(codeOf(A));
+    expect(s.opened).toHaveLength(1);
+    expect(s.scan.status(codeOf(A))).toEqual({
+      kind: "failed",
+      cause: "corrupt",
+      retrying: false,
+    });
+  });
+
+  it("treats an open that throws as a failure, not a hang", async () => {
+    const s = setup({ outcomes: ["reject"] });
+    await s.see(codeOf(A));
+    expect(s.scan.status(codeOf(A))).toMatchObject({
+      kind: "failed",
+      cause: "other",
+    });
+  });
+
+  it("does not count a superseded open against the link", async () => {
+    const s = setup({ outcomes: [{ kind: "superseded" }] });
+    s.scan.onDetection(codeOf(A));
+    await settle();
+    expect(s.opened).toHaveLength(1);
+    s.scan.onDetection(codeOf(A));
+    await settle();
+    expect(s.opened, "tried again on the next frame").toHaveLength(2);
+  });
+
+  it("is tried afresh in the next AR session", async () => {
+    const s = setup({ outcomes: [{ kind: "failed", cause: "corrupt" }] });
+    await s.see(codeOf(A));
+    s.ctx.arSessionGeneration += 1;
+    await s.see(codeOf(A));
+    expect(s.opened).toHaveLength(2);
+  });
+});
+
+describe("a creator with a tour open", () => {
+  // Plan §13 (owner): in authoring there is no wrong code. The open tour is
+  // the one being edited; a code printed from another tour's zip is one
+  // more reference for it - measured in, never a switch.
+  it("does nothing for the open tour's own code", async () => {
+    const s = setup({ openAt: A });
+    await s.see(codeOf(A));
+    expect(s.opened).toEqual([]);
+    expect(s.scan.status(codeOf(A)).kind).toBe("quiet");
+  });
+
+  it("stays quiet about a code that names no tour", async () => {
+    // Plan §9 #15: a third-party code near the poster must not talk over
+    // the measuring readout.
+    const s = setup({ openAt: A });
+    await s.see("https://menu.test/today");
+    expect(s.scan.status("https://menu.test/today").kind).toBe("quiet");
+  });
+
+  it("adds another tour's code to the open tour, however long it stays in view", async () => {
+    const s = setup({ openAt: A });
+    await s.see(codeOf(B));
+    s.advance(60_000);
+    await s.see(codeOf(B));
+    expect(s.opened).toEqual([]);
+    expect(s.scan.status(codeOf(B)).kind).toBe("added-to-open-tour");
+  });
+});
+
+describe("a code that cannot be compared with the open tour", () => {
+  it("neither switches tours nor claims another tour", async () => {
+    const s = setup({ openAt: A });
+    await s.see(codeOf("https://bit.ly/x"));
+    s.advance(5_000);
+    await s.see(codeOf("https://bit.ly/x"));
+    expect(s.opened).toEqual([]);
+    expect(s.scan.status(codeOf("https://bit.ly/x")).kind).toBe("unknown");
+  });
+});
+
+/**
+ * Why these tests matter (K0 milestone review R6): a tour opened from a
+ * FILE is known by a content key, so its own printed code could never
+ * match its link and the panel called the tour's own poster "a code from
+ * another tour". The level the tour carries for the code decides first.
+ */
+describe("a tour opened from a file", () => {
+  const FILE_KEY = "local-file:0123456789abcdef0123456789abcdef";
+
+  it("reads the tour's own code as this tour once its levels are in", async () => {
+    const s = setup({ openAt: FILE_KEY, levelId: "lvl1" });
+    s.ctx.currentLevels = new Map([["lvl1", {} as never]]);
+    await s.see(codeOf(A));
+    expect(s.scan.status(codeOf(A)).kind).toBe("quiet");
+    expect(s.opened).toEqual([]);
+  });
+
+  it("says it cannot tell, never 'another tour', for a code whose level it does not carry", async () => {
+    const s = setup({ openAt: FILE_KEY, levelId: "lvl2" });
+    s.ctx.currentLevels = new Map([["lvl1", {} as never]]);
+    await s.see(codeOf(A));
+    expect(s.scan.status(codeOf(A)).kind).toBe("unknown");
+  });
+});
+
+/**
+ * Why these tests matter (UI round 1, U3; second plan review #1): the
+ * creator's code is now measured automatically, and only a code of the
+ * open tour may be - `status` folds "the open tour's code", "a code naming
+ * no tour" and "still reading" into one "quiet", so the panel needs the
+ * relation itself.
+ */
+describe("relation", () => {
+  it("is 'resolving' until the code is read, then names its relation to the open tour", async () => {
+    const s = setup({ openAt: A });
+    expect(s.scan.relation(codeOf(A))).toBe("resolving");
+    await s.see(codeOf(A));
+    expect(s.scan.relation(codeOf(A))).toBe("this-tour");
+    await s.see(codeOf(B));
+    expect(s.scan.relation(codeOf(B))).toBe("other-tour");
+    await s.see("https://menu.test/today");
+    expect(s.scan.relation("https://menu.test/today")).toBe("not-a-tour");
+    await s.see(codeOf("https://bit.ly/x"));
+    expect(s.scan.relation(codeOf("https://bit.ly/x"))).toBe("unknown");
+  });
+
+  it("is 'no-tour-open' with no tour open", async () => {
+    const s = setup({ outcomes: [{ kind: "failed", cause: "other" }] });
+    await s.see(codeOf(A));
+    expect(s.scan.relation(codeOf(A))).toBe("no-tour-open");
+  });
+});

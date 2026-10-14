@@ -15,18 +15,23 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { vec3 as glVec3, quat as glQuat } from 'gl-matrix';
-import { quaternionMagnitude } from 'gps-plus-slam-js';
+import {
+  quaternionMagnitude,
+  type RecordGpsEventPayload,
+} from 'gps-plus-slam-js';
 import {
   extractOdomPosition,
   extractOdomRotation,
   buildRawGpsPoint,
   buildRecordGpsEventPayload,
+  toRawAbsoluteOrientation,
   createGpsPositionHandler,
   updateDeviceOrientation,
   getLastDeviceOrientation,
   resetCoordinatorState,
   eulerToQuaternion,
 } from './gps-event-coordinator';
+import type { AbsoluteOrientationReading } from '../sensors/absolute-orientation';
 import type { ReducersMapObject } from '@reduxjs/toolkit';
 import { createSlamAppStore, type SlamAppStore } from './create-slam-app-store';
 import { startSession } from './recording-slice';
@@ -261,81 +266,14 @@ describe('Recording Coordinator', () => {
       expect(result.heading).toBeUndefined();
       expect(result.speed).toBeUndefined();
     });
-
-    /**
-     * Why this test matters:
-     * The DeviceOrientationEvent.absolute flag indicates whether compass alpha
-     * is relative to magnetic north (true) or an arbitrary reference (false).
-     * If false, compass-based drift correction is unreliable. Must be preserved.
-     */
-    it('preserves DeviceOrientation absolute flag as compassAbsolute', () => {
-      const gpsPosition: GpsPosition = {
-        lat: 48.8567,
-        lon: 2.3523,
-        altitude: null,
-        accuracy: 5.0,
-        altitudeAccuracy: null,
-        heading: null,
-        speed: null,
-        timestamp: Date.now(),
-      };
-
-      const orientation: RawDeviceOrientation = {
-        alpha: 90,
-        beta: 0,
-        gamma: 0,
-        absolute: true,
-      };
-
-      const result = buildRawGpsPoint(gpsPosition, orientation);
-      expect(result.compassAbsolute).toBe(true);
-    });
-
-    it('sets compassAbsolute to false when DeviceOrientation.absolute is false', () => {
-      const gpsPosition: GpsPosition = {
-        lat: 48.8567,
-        lon: 2.3523,
-        altitude: null,
-        accuracy: 5.0,
-        altitudeAccuracy: null,
-        heading: null,
-        speed: null,
-        timestamp: Date.now(),
-      };
-
-      const orientation: RawDeviceOrientation = {
-        alpha: 90,
-        beta: 0,
-        gamma: 0,
-        absolute: false,
-      };
-
-      const result = buildRawGpsPoint(gpsPosition, orientation);
-      expect(result.compassAbsolute).toBe(false);
-    });
-
-    it('leaves compassAbsolute undefined when no orientation available', () => {
-      const gpsPosition: GpsPosition = {
-        lat: 48.8567,
-        lon: 2.3523,
-        altitude: null,
-        accuracy: 5.0,
-        altitudeAccuracy: null,
-        heading: null,
-        speed: null,
-        timestamp: Date.now(),
-      };
-
-      const result = buildRawGpsPoint(gpsPosition, null);
-      expect(result.compassAbsolute).toBeUndefined();
-    });
   });
 
   describe('buildRecordGpsEventPayload', () => {
     /**
      * Why this test matters:
      * Verifies the library-compatible payload structure with raw-storage pattern.
-     * Payload stores rawGpsPoint (raw sensor data) and rawDeviceOrientation (Euler angles).
+     * Payload stores rawGpsPoint (raw sensor data); the legacy
+     * rawDeviceOrientation field is no longer populated.
      * Derived fields are computed by the reducer.
      */
     it('builds payload with odomPosition, odomRotation, and rawGpsPoint', () => {
@@ -362,7 +300,55 @@ describe('Recording Coordinator', () => {
       expect(result.odomRotation).toEqual([0, 0, 0, 1]);
       expect(result.rawGpsPoint.latitude).toBe(48.8567);
       expect(result.rawGpsPoint).not.toHaveProperty('zeroRef');
-      expect(result.rawDeviceOrientation).toBeUndefined();
+      // No AbsoluteOrientationSensor reading provided → field absent (back-compat).
+      expect(result.rawAbsoluteOrientation).toBeUndefined();
+    });
+
+    /**
+     * Why this test matters: Phase 1 of the AbsoluteOrientationSensor plan
+     * snapshots the sensor reading into the GPS-event payload so it pairs 1:1
+     * with the AR pose. The capture-module `timestamp` must map to the payload's
+     * `sampleTimestamp`, and the quaternion/frame/screen-angle pass through.
+     */
+    it('injects the absolute-orientation reading and maps timestamp → sampleTimestamp', () => {
+      const gpsPosition: GpsPosition = {
+        lat: 0,
+        lon: 0,
+        altitude: null,
+        accuracy: 5,
+        altitudeAccuracy: null,
+        heading: null,
+        speed: null,
+        timestamp: 1000,
+      };
+      const arPose: ARPose = {
+        position: { x: 0, y: 0, z: 0 },
+        orientation: { x: 0, y: 0, z: 0, w: 1 },
+      };
+      const reading: AbsoluteOrientationReading = {
+        quaternion: [0.1, 0.2, 0.3, 0.9],
+        referenceFrame: 'device',
+        screenAngleDeg: 90,
+        timestamp: 555,
+      };
+
+      const result = buildRecordGpsEventPayload(
+        gpsPosition,
+        arPose,
+        null,
+        reading
+      );
+
+      expect(result.rawAbsoluteOrientation).toEqual({
+        quaternion: [0.1, 0.2, 0.3, 0.9],
+        referenceFrame: 'device',
+        screenAngleDeg: 90,
+        sampleTimestamp: 555,
+      });
+    });
+
+    it('toRawAbsoluteOrientation returns undefined for a null reading', () => {
+      expect(toRawAbsoluteOrientation(null)).toBeUndefined();
     });
   });
 
@@ -562,6 +548,52 @@ describe('Recording Coordinator', () => {
 
       const state = store.getState();
       expect(state.gpsData?.zero).toEqual({ lat: 48.8566, lon: 2.3522 });
+    });
+
+    /**
+     * Why this test matters (Tour Viewer authoring plan 2026-09-28-0953,
+     * D18): an app that sends other observations WITH a device fix in one
+     * solve - the viewer's keep-alive ring, as one `recordGpsEventBatch` -
+     * must receive the built fix instead of it being dispatched alone. The
+     * zero is still set first, so the app's router dispatches into a store
+     * that can take it; nothing else is dispatched for the fix.
+     */
+    it('hands the built fix to `recordFix` instead of dispatching it, after setting the zero', () => {
+      store.dispatch(
+        startSession({
+          scenarioName: 'Test',
+          sessionName: 'test-session',
+          startTime: Date.now(),
+        })
+      );
+      const routed: { payload: RecordGpsEventPayload; zeroSet: boolean }[] = [];
+      const handler = createGpsPositionHandler({
+        store,
+        getArPose: () => mockArPose,
+        recordFix: (payload) => {
+          routed.push({ payload, zeroSet: store.getState().gpsData !== null });
+        },
+      });
+
+      handler({
+        lat: 48.8566,
+        lon: 2.3522,
+        altitude: null,
+        accuracy: 5.0,
+        altitudeAccuracy: null,
+        heading: null,
+        speed: null,
+        timestamp: 1_700_000_000_000,
+      });
+
+      expect(routed).toHaveLength(1);
+      expect(routed[0]!.zeroSet).toBe(true);
+      expect(routed[0]!.payload.odomPosition).toEqual([1, 2, 3]);
+      expect(routed[0]!.payload.rawGpsPoint.timestamp).toBe(1_700_000_000_000);
+      // Not dispatched by the coordinator itself: the router owns it.
+      expect(store.getState().gpsData?.gpsEvents?.gpsPositions ?? []).toEqual(
+        []
+      );
     });
   });
 

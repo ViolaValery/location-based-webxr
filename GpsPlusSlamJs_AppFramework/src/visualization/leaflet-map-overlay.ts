@@ -1,9 +1,10 @@
 /**
  * Leaflet Map Overlay Module
  *
- * Replaces the old single-tile MapOverlay with a full Leaflet map
- * embedded in 3D space via Three.js CSS3DObject. The Leaflet map
- * provides native multi-tile rendering, pan/zoom, and overlay support.
+ * A full Leaflet map embedded in 3D space via Three.js CSS3DObject
+ * (it replaced the old single-tile MapOverlay, deleted 2026-07-11).
+ * The Leaflet map provides native multi-tile rendering, pan/zoom, and
+ * overlay support.
  *
  * The Leaflet map container (a real DOM element) is wrapped in a
  * CSS3DObject and positioned as a child of the camera or CameraFollower.
@@ -28,10 +29,13 @@
 import type * as THREE from 'three';
 import { CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import L from 'leaflet';
+import { OSM_TILE_URL } from '../utils/osm-tiles.js';
 import type { LatLong } from 'gps-plus-slam-js';
 import { VIS_COLORS } from './vis-colors';
 import type { MapData } from './map-data';
 import { drawMapData } from './map-overlay-draw';
+import { headingUpQuat, viewAzimuthDeg } from './heading-up-rotation';
+import { clampedAlpha, DEFAULT_LERP_RATE, lerpAngleDeg } from './lerp-utils';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('LeafletMapOverlay');
@@ -54,14 +58,33 @@ export const DEFAULT_LEAFLET_MAP_SIZE_PX = 600;
  */
 const REF_POINT_MARKER_SIZE_PX = 20;
 
-/** Default world-space size in meters (matches old MapOverlay) */
-export const DEFAULT_WORLD_SIZE = 10;
+/**
+ * Map-plane placement defaults (re-fit 2026-07-04, F1 user feedback).
+ *
+ * The plane's parent is the CameraFollower — camera POSITION is followed,
+ * rotation stays IDENTITY (GPS-world-aligned). CSS3D content crossing the
+ * viewer plane (camera-space z ≥ 0) is cut off by the browser (an effective
+ * near plane at 0 that camera.near cannot move), so the defaults must keep
+ * every plane corner in front of the viewer plane for ALL camera yaws and
+ * heading-up rotations at map-viewing pitches. Invariant (tests pin it):
+ *
+ *   |DEFAULT_Z_OFFSET| + DEFAULT_WORLD_SIZE/√2 + lag ≤ |h|·tan(θ*)
+ *
+ * with lag = 0.5 m (follower lerp) and design pitch θ* = 51°. Below θ* only
+ * the region farther than |h|·tan(pitch) behind the camera is cut, shrinking
+ * to nothing at θ*. Values 8 / −5 / 0 give θ* ≈ 51°; zOffset MUST stay 0 —
+ * with a world-yaw-locked parent a non-zero offset is a fixed compass
+ * direction, not "ahead of the user".
+ */
+
+/** Default world-space size in meters */
+export const DEFAULT_WORLD_SIZE = 8;
 
 /** Default height offset below camera (negative = below) */
-export const DEFAULT_HEIGHT_OFFSET = -4;
+export const DEFAULT_HEIGHT_OFFSET = -5;
 
-/** Default forward offset from parent (negative = forward in parent-local Z) */
-export const DEFAULT_Z_OFFSET = -1.0;
+/** Default offset from parent along world Z (keep 0 — see block comment) */
+export const DEFAULT_Z_OFFSET = 0;
 
 /** Default zoom level for the Leaflet map */
 export const DEFAULT_ZOOM = 17;
@@ -103,6 +126,14 @@ export interface LeafletMapOverlayOptions {
    * pass a scoped element to avoid injecting nodes into `<body>`.
    */
   readonly offscreenRoot?: HTMLElement;
+  /**
+   * Start in heading-up mode: rotate the whole map so the user's view direction
+   * always points up/forward (car-navigation style) instead of the fixed
+   * north-up. Default `false` (north-up). Can be toggled later via
+   * {@link LeafletMapOverlay.setHeadingUpEnabled}. See the
+   * 2026-06-29 heading-up plan.
+   */
+  readonly headingUp?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,12 +148,21 @@ export class LeafletMapOverlay {
   private readonly heightOffset: number;
   private readonly mapSizePx: number;
   private readonly tileServerUrl: string;
-  private readonly onTileError?: (error: unknown) => void;
+  private readonly onTileError?: ((error: unknown) => void) | undefined;
   private readonly offscreenRoot: HTMLElement;
 
   private zoomLevel: number;
   private gpsPosition: LatLong | null = null;
   private visible = false;
+
+  // Heading-up rotation state. When enabled, the CSS3DObject is yawed each
+  // frame so `currentHeadingDeg` (smoothed toward the ~1 Hz `targetHeadingDeg`)
+  // points up. `null` current = not yet sampled (snap on first update); `null`
+  // target = heading undefined (hold the last orientation). See the 2026-06-29
+  // heading-up plan.
+  private headingUp: boolean;
+  private targetHeadingDeg: number | null = null;
+  private currentHeadingDeg: number | null = null;
 
   // Leaflet state
   private mapContainer: HTMLDivElement | null = null;
@@ -162,10 +202,13 @@ export class LeafletMapOverlay {
     this.heightOffset = options.heightOffset ?? DEFAULT_HEIGHT_OFFSET;
     this.mapSizePx = options.mapSizePx ?? DEFAULT_LEAFLET_MAP_SIZE_PX;
     this.zoomLevel = options.zoomLevel ?? DEFAULT_ZOOM;
-    this.tileServerUrl =
-      options.tileServerUrl ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    // A DIFFERENT TILE SERVER STAYS A SUPPORTED CHOICE — only the default
+    // moved to the shared constant. The option is how a consumer points at
+    // their own tiles, which is a decision rather than a duplicate.
+    this.tileServerUrl = options.tileServerUrl ?? OSM_TILE_URL;
     this.onTileError = options.onTileError;
     this.offscreenRoot = options.offscreenRoot ?? document.body;
+    this.headingUp = options.headingUp ?? false;
   }
 
   // -------------------------------------------------------------------------
@@ -245,6 +288,16 @@ export class LeafletMapOverlay {
    */
   render(data: MapData): void {
     this.latestMapData = data;
+    // Cache the heading-up rotation target (~1 Hz). `updatePosition` smooths
+    // the actual map yaw toward it each frame. Absent/undefined OR non-finite
+    // (NaN/Infinity) → null = the heading is currently undefined (hold the last
+    // orientation). Normalizing non-finite values here keeps a bad sample from
+    // smoothing a NaN into `cssObject.quaternion.set(...)` downstream.
+    this.targetHeadingDeg =
+      typeof data.userHeadingDeg === 'number' &&
+      Number.isFinite(data.userHeadingDeg)
+        ? data.userHeadingDeg
+        : null;
     if (this.leafletMap) {
       this.drawTrajectory();
     }
@@ -337,12 +390,79 @@ export class LeafletMapOverlay {
   }
 
   /**
-   * No-op — kept for backward compatibility with the frame-loop call
-   * in main.ts. The CSS3DObject is a child of the parent, so Three.js
-   * scene graph propagation handles positioning automatically.
+   * Enable/disable heading-up rotation at runtime (e.g. from a settings flag
+   * read at Enter-AR). When disabled, the map snaps back to the north-up
+   * baseline immediately. Position follows the parent via the scene graph, so
+   * this only governs the in-plane yaw.
    */
-  updatePosition(): void {
-    // No-op
+  setHeadingUpEnabled(enabled: boolean): void {
+    this.headingUp = enabled;
+    if (!enabled) {
+      this.currentHeadingDeg = null;
+      // Restore the north-up baseline tilt (no yaw).
+      this.cssObject?.rotation.set(-Math.PI / 2, 0, 0);
+    }
+  }
+
+  /** Whether heading-up rotation is currently enabled. */
+  isHeadingUpEnabled(): boolean {
+    return this.headingUp;
+  }
+
+  /**
+   * Per-frame update driving the heading-up rotation. Positioning is handled by
+   * Three.js scene-graph propagation (the CSS3DObject is a child of the parent),
+   * so this only sets the in-plane yaw.
+   *
+   * The minimap is world-locked but composited through the **live head-tracked
+   * camera**, so the camera already rotates the map's on-screen appearance as
+   * the user turns. The local yaw must therefore be expressed RELATIVE to the
+   * camera — `headingUpQuat(viewAzimuth − userHeading)` — otherwise the camera's
+   * rotation is double-counted and the GPS↔scene alignment offset leaks in (the
+   * map then only points forward at a single heading). `userHeading` is smoothed
+   * toward the latest ~1 Hz target; `viewAzimuth` is read live from the camera
+   * each frame so the projection cancels exactly (no lag).
+   *
+   * A no-op when heading-up is disabled, the map is not shown, the camera is
+   * absent, or the heading is undefined (the last orientation is held).
+   *
+   * @param dtSeconds Seconds since the previous frame (drives heading smoothing).
+   * @param camera The live render camera (the same one compositing the CSS3D
+   *   overlay). Required for heading-up; omitted callers leave the map as-is.
+   */
+  updatePosition(dtSeconds = 0, camera?: THREE.Camera): void {
+    // `hide()` only detaches the CSS3DObject (`removeCssObject`) — it never nulls
+    // `cssObject` — so `!this.cssObject` alone does not honor the documented
+    // "no-op when the map is not shown" contract. Guard on `visible` too, or a
+    // frame loop that keeps calling this while hidden wastes per-frame work and
+    // rotates a detached object.
+    if (!this.headingUp || !this.visible || !this.cssObject || !camera) {
+      return;
+    }
+    const target = this.targetHeadingDeg;
+    if (target === null) {
+      // Heading undefined (e.g. camera near-vertical / before first solve):
+      // hold the current orientation rather than snapping to north.
+      return;
+    }
+    if (this.currentHeadingDeg === null) {
+      // First sample — snap so the map doesn't spin up from north on show.
+      this.currentHeadingDeg = target;
+    } else {
+      const alpha = clampedAlpha(DEFAULT_LERP_RATE, dtSeconds);
+      this.currentHeadingDeg = lerpAngleDeg(
+        this.currentHeadingDeg,
+        target,
+        alpha
+      );
+    }
+    // Live camera azimuth (raw, not smoothed) so the camera's own on-screen
+    // rotation cancels exactly; the smoothed heading removes the alignment offset.
+    camera.updateMatrixWorld();
+    const viewAz = viewAzimuthDeg(camera.matrixWorld.elements);
+    this.cssObject.quaternion.set(
+      ...headingUpQuat(viewAz - this.currentHeadingDeg)
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -357,6 +477,8 @@ export class LeafletMapOverlay {
     this.latestMapData = null;
     this.trajectoryLayers = [];
     this.namedMarkers = [];
+    this.targetHeadingDeg = null;
+    this.currentHeadingDeg = null;
 
     this.cssObject = null;
 

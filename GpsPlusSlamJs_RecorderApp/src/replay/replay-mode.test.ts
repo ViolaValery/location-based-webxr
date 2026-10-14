@@ -25,6 +25,11 @@ vi.mock('gps-plus-slam-app-framework/ar/replay-scene', () => ({
   initReplayScene: vi.fn(() => ({
     scene: { name: 'mock-scene' },
     arWorldGroup: { name: 'mock-arWorldGroup' },
+    arpose: {
+      name: 'mock-arpose',
+      position: { fromArray: vi.fn() },
+      quaternion: { fromArray: vi.fn() },
+    },
     camera: { name: 'mock-camera' },
     renderer: { name: 'mock-renderer' },
   })),
@@ -43,6 +48,23 @@ vi.mock('gps-plus-slam-app-framework/storage/zip-reader', () => ({
 
 vi.mock('../storage/recording-loader', () => ({
   loadRecording: vi.fn(),
+}));
+
+const { mockWireRefPointMapMarkers, mockRefPointMapMarkerWirer } = vi.hoisted(
+  () => {
+    const mockRefPointMapMarkerWirer = {
+      refresh: vi.fn(),
+      unsubscribe: vi.fn(),
+    };
+    return {
+      mockRefPointMapMarkerWirer,
+      mockWireRefPointMapMarkers: vi.fn(() => mockRefPointMapMarkerWirer),
+    };
+  }
+);
+
+vi.mock('../ui/ref-point-map-markers', () => ({
+  wireRefPointMapMarkers: mockWireRefPointMapMarkers,
 }));
 
 vi.mock('gps-plus-slam-app-framework/state/store-subscribers', () => ({
@@ -69,12 +91,18 @@ vi.mock('gps-plus-slam-app-framework/visualization/gps-event-markers', () => ({
     setZeroRef: vi.fn(),
     addGpsEvent: vi.fn(),
     clearAll: vi.fn(),
+    setSceneSource: vi.fn(),
   },
 }));
 
 vi.mock('gps-plus-slam-app-framework/ar/webxr-session', () => ({
-  getArPose: vi.fn(),
-  nuePositionToWebXR: vi.fn((pos: readonly number[]) => pos),
+  // Live-session getters: the REAL ref-point-visualizer module (not mocked
+  // here) captures getScene as its default scene source at import time.
+  // The NUE→WebXR converters used to be stubbed here too; replay-mode now
+  // calls the library's nueToWebXR / nueQuaternionToWebXR directly, and those
+  // pure swizzles run for real (no test here asserts on the converted values).
+  getScene: vi.fn(() => null),
+  getArWorldGroup: vi.fn(() => null),
 }));
 
 // F3.5c — mock the frame-tile wiring so replay-mode tests don't need a real
@@ -95,8 +123,8 @@ vi.mock('../visualization/frame-tile-visualizer', () => ({
     getCount() {
       return 0;
     }
-    constructor(scene: unknown) {
-      mockFrameTileVisualizerCtor(scene);
+    constructor(scene: unknown, ...options: unknown[]) {
+      mockFrameTileVisualizerCtor(scene, ...options);
     }
   },
 }));
@@ -104,15 +132,65 @@ vi.mock('../visualization/wire-frame-tile-subscribers', () => ({
   wireFrameTileSubscribers: vi.fn(() => mockUnsubscribeFrameTiles),
 }));
 
+// Occupancy-cube wiring: mocked so the replay setup block runs cleanly (the
+// real visualizer would call arWorldGroup.add() on the mock scene node and
+// throw, leaving the block silently caught). Lets us assert Issue A — that
+// the cube-refresh throttle is wired from depth.intervalMs.
+// Shared mutable options object (same pattern as the main.ts wiring tests):
+// per-test mutation + beforeEach reset, because mockReturnValue would leak the
+// override into later tests (clearAllMocks does not reset implementations) and
+// an enabled stats overlay's rAF loop breaks runAllTimers-based tests.
+const { mockReplayRecordingOptions } = vi.hoisted(() => ({
+  mockReplayRecordingOptions: {
+    // 500 ms ≠ the visualizer's hardcoded 1000 ms fallback — proves the
+    // throttle is sourced from depth.intervalMs (2026-06-22 cube
+    // cadence/locality plan §2).
+    depth: { enabled: true, intervalMs: 500 },
+    occupancy: { cellSizeM: 0.15, minConfidence: 3 },
+    frameTileDisplay: { divisor: 2, maxTiles: 100 },
+    // Stats overlay defaults OFF (Step 0 of the 2026-07-03 long-session fps
+    // plan); the dedicated tests below flip it on.
+    visualization: { statsOverlay: false },
+  },
+}));
+vi.mock('../state/recording-options', () => ({
+  loadRecordingOptions: vi.fn(() => mockReplayRecordingOptions),
+}));
+vi.mock('gps-plus-slam-app-framework/visualization/perf-stats-overlay', () => ({
+  createPerfStatsOverlay: vi.fn(() => ({
+    dom: {} as HTMLElement,
+    panelCount: 3,
+    update: vi.fn(),
+    dispose: vi.fn(),
+  })),
+}));
+vi.mock(
+  'gps-plus-slam-app-framework/visualization/occupancy-cubes-visualizer',
+  () => ({
+    // `function` (not arrow) so `new OccupancyCubesVisualizer()` is constructable.
+    OccupancyCubesVisualizer: vi.fn(function () {
+      return { refresh: vi.fn(), clear: vi.fn(), dispose: vi.fn() };
+    }),
+  })
+);
+vi.mock('../visualization/wire-occupancy-grid-subscribers', () => ({
+  wireOccupancyGridSubscribers: vi.fn(() => vi.fn()),
+}));
+
 import { startReplayMode } from './replay-mode.js';
+import { wireOccupancyGridSubscribers } from '../visualization/wire-occupancy-grid-subscribers';
+import { createPerfStatsOverlay } from 'gps-plus-slam-app-framework/visualization/perf-stats-overlay';
 import { loadRecording } from '../storage/recording-loader';
 import { wireStoreSubscribers } from 'gps-plus-slam-app-framework/state/store-subscribers';
 import type { MapData } from 'gps-plus-slam-app-framework/visualization/map-data';
+import type { OccupancyGrid } from 'gps-plus-slam-app-framework/ar/occupancy-grid';
 import { createRecorderStore } from '../state/recorder-store';
 import {
   initReplayScene,
   disposeReplayScene,
 } from 'gps-plus-slam-app-framework/ar/replay-scene';
+import { gpsEventVisualizer } from 'gps-plus-slam-app-framework/visualization/gps-event-markers';
+import { refPointVisualizer } from '../visualization/ref-point-visualizer';
 
 // --- Helpers ---
 
@@ -173,6 +251,10 @@ describe('replay-mode', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    // Stats overlay back to its OFF default (a leaked ON would add a rAF
+    // loop that breaks the runAllTimers-based playback tests below).
+    mockReplayRecordingOptions.visualization.statsOverlay = false;
+    mockReplayRecordingOptions.frameTileDisplay = { divisor: 2, maxTiles: 100 };
     // Default: loadRecording returns our fixture wrapped in the LoadedRecording shape.
     const fixtureEntries = makeMockZipActions();
     vi.mocked(loadRecording).mockResolvedValue({
@@ -213,6 +295,29 @@ describe('replay-mode', () => {
     );
   });
 
+  it('creates the replay store with compass opt-ins disabled (replay-fidelity)', async () => {
+    // Why (PR #128 review): only ENABLED compass opt-ins are persisted as
+    // actions (the framework's listener middleware dispatches them after the
+    // first setZeroPos). A recording captured with cold-start override OFF — e.g.
+    // a §6a field-calibration capture — therefore has NO opt-in action in its
+    // stream. If the replay store re-derives the opt-in from the framework
+    // default (override defaults ON), replay incorrectly ENABLES the override the
+    // session was recorded WITHOUT. Replay's source of truth is the recorded
+    // action stream alone (a recording made WITH the override on already carries
+    // the setColdStartOverrideEnabled(true) action), so the replay store must be
+    // built with the opt-ins disabled to replay both cases faithfully.
+    const config = makeConfig();
+    await startReplayMode(fakeZipData, config);
+
+    expect(createRecorderStore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enableCompassColdStartOverride: false,
+        enableCompassRotationPrior: false,
+        enableCompassWebXRConsistency: false,
+      })
+    );
+  });
+
   // --- Scene initialization ---
 
   it('initializes replay scene with the provided container', async () => {
@@ -222,6 +327,72 @@ describe('replay-mode', () => {
     await startReplayMode(fakeZipData, config);
 
     expect(initReplayScene).toHaveBeenCalledWith(container);
+  });
+
+  it('points the scene-reading visualizers at the replay scene (surface-reduction step 2)', async () => {
+    // Why: replay no longer injects its scene into the webxr-session
+    // singleton (setScene/setArWorldGroup were deleted). The singleton
+    // visualizers must instead be pointed at the replay scene explicitly,
+    // or replayed GPS events / ref points would have no scene to land in.
+    const refSpy = vi.spyOn(refPointVisualizer, 'setSceneSource');
+    const config = makeConfig();
+    await startReplayMode(fakeZipData, config);
+
+    const initResult = vi.mocked(initReplayScene).mock.results[0]!;
+    if (initResult.type !== 'return') {
+      throw new Error('initReplayScene did not return');
+    }
+    const replayScene = initResult.value;
+
+    const gpsSource = vi.mocked(gpsEventVisualizer.setSceneSource).mock
+      .calls[0]![0]!;
+    expect(gpsSource.getScene()).toBe(replayScene.scene);
+    expect(gpsSource.getArWorldGroup()).toBe(replayScene.arWorldGroup);
+
+    const refSource = refSpy.mock.calls[0]![0]!;
+    expect(refSource()).toBe(replayScene.scene);
+  });
+
+  it('dispose restores the live-session scene sources', async () => {
+    // Why: leaving the visualizers pointed at a disposed replay scene would
+    // strand markers of a later LIVE AR session in a dead scene graph.
+    const refSpy = vi.spyOn(refPointVisualizer, 'setSceneSource');
+    const controller = await startReplayMode(fakeZipData, makeConfig());
+
+    controller.dispose();
+
+    expect(gpsEventVisualizer.setSceneSource).toHaveBeenLastCalledWith(null);
+    expect(refSpy).toHaveBeenLastCalledWith(null);
+  });
+
+  // --- Perf stats overlay (2026-07-03 long-session fps plan, Step 0) ---
+
+  it('does NOT mount the stats overlay by default (visualization.statsOverlay off)', async () => {
+    const config = makeConfig();
+    await startReplayMode(fakeZipData, config);
+
+    expect(createPerfStatsOverlay).not.toHaveBeenCalled();
+  });
+
+  it('mounts the stats overlay into the replay container when enabled, and disposes it with the controller', async () => {
+    // Why: statsOverlay is the one visualization toggle that ALSO applies to
+    // replay — replay frame time feeds the same long-session fps
+    // investigation. It must mount into the replay container and must not
+    // outlive dispose() (a leaked rAF loop + panel would survive into the
+    // next replay).
+    mockReplayRecordingOptions.visualization.statsOverlay = true;
+    const container = document.createElement('div');
+    const config = makeConfig({ container });
+    const controller = await startReplayMode(fakeZipData, config);
+
+    expect(createPerfStatsOverlay).toHaveBeenCalledTimes(1);
+    expect(createPerfStatsOverlay).toHaveBeenCalledWith(container);
+
+    const overlay = vi.mocked(createPerfStatsOverlay).mock.results[0]!
+      .value as ReturnType<typeof createPerfStatsOverlay>;
+    expect(overlay.dispose).not.toHaveBeenCalled();
+    controller.dispose();
+    expect(overlay.dispose).toHaveBeenCalledTimes(1);
   });
 
   // --- Store subscriber wiring (R6) ---
@@ -338,24 +509,22 @@ describe('replay-mode', () => {
     expect(mockOverlay.setGpsPosition).not.toHaveBeenCalled();
   });
 
-  it('setMapOverlay proxy forwards render and addCurrentMarker', async () => {
+  it('setMapOverlay proxy forwards render', async () => {
     // Why (Phase 3): The map overlay proxy must forward render (the unified
-    // MapData snapshot) and addCurrentMarker so the store subscriber can push
-    // the trajectory and reference points to the Leaflet map in replay mode.
+    // MapData snapshot) so the store subscriber can push the trajectory to
+    // the Leaflet map in replay mode. (Ref-point markers are no longer a
+    // proxy concern — they are store-driven via wireRefPointMapMarkers.)
     const config = makeConfig();
     const controller = await startReplayMode(fakeZipData, config);
 
     const mockOverlay = {
       setGpsPosition: vi.fn(),
       render: vi.fn<(data: MapData) => void>(),
-      addCurrentMarker: vi.fn(),
     };
     controller.setMapOverlay(mockOverlay);
 
     const deps = vi.mocked(wireStoreSubscribers).mock.calls[0][1];
-    const mapProxy = deps.mapOverlay! as NonNullable<typeof deps.mapOverlay> & {
-      addCurrentMarker: (lat: number, lon: number, name: string) => void;
-    };
+    const mapProxy = deps.mapOverlay!;
 
     const sampleMapData: MapData = {
       userPosition: { lat: 50.1, lng: 8.1 },
@@ -366,13 +535,45 @@ describe('replay-mode', () => {
 
     mapProxy.render!(sampleMapData);
     expect(mockOverlay.render).toHaveBeenCalledWith(sampleMapData);
+  });
 
-    mapProxy.addCurrentMarker(50.3, 8.3, 'bench');
-    expect(mockOverlay.addCurrentMarker).toHaveBeenCalledWith(
-      50.3,
-      8.3,
-      'bench'
-    );
+  it('wires the ref-point map-marker subscriber for the replay map (shared renderer, late binding)', async () => {
+    // Why (2026-07-05 live-map feedback): replay's minimap must render the
+    // refPoints state through the SAME module as the live and summary maps.
+    // The replayed startSession action carries the ORIGINAL session's start
+    // time, so its captures render red and imported points green.
+    const config = makeConfig();
+    const controller = await startReplayMode(fakeZipData, config);
+
+    expect(mockWireRefPointMapMarkers).toHaveBeenCalledTimes(1);
+    const [storeArg, opts] = mockWireRefPointMapMarkers.mock
+      .calls[0] as unknown as [
+      unknown,
+      { getMap: () => unknown; getStartTime: () => number; dotSizePx?: number },
+    ];
+    expect(storeArg).toBe(controller.getStore());
+    expect(opts.dotSizePx).toBe(20);
+
+    // Late binding: null until an overlay with a Leaflet map is set.
+    expect(opts.getMap()).toBeNull();
+    const leafletMap = { _leafletMap: true };
+    controller.setMapOverlay({
+      setGpsPosition: vi.fn(),
+      getLeafletMap: () => leafletMap as unknown as L.Map,
+    });
+    expect(opts.getMap()).toBe(leafletMap);
+
+    // setMapOverlay refreshes so the just-attached map gets the markers.
+    expect(mockRefPointMapMarkerWirer.refresh).toHaveBeenCalled();
+  });
+
+  it('dispose unsubscribes the ref-point map-marker wirer', async () => {
+    const config = makeConfig();
+    const controller = await startReplayMode(fakeZipData, config);
+
+    controller.dispose();
+
+    expect(mockRefPointMapMarkerWirer.unsubscribe).toHaveBeenCalledTimes(1);
   });
 
   // --- Play dispatches actions to the store ---
@@ -459,6 +660,19 @@ describe('replay-mode', () => {
     expect(opts.storeRef.get()).toBe(controller.getStore());
   });
 
+  it('constructs the replay frame-tile visualizer WITHOUT a tile cap (full-path coverage, Step 4)', async () => {
+    // Why (2026-07-03 fps plan, Step 4 — live-only decision): in replay the
+    // tiles audit coverage of the WHOLE recorded path, so the FIFO cap that
+    // bounds live sessions must never reach the replay constructor — no
+    // options argument at all, regardless of the stored maxTiles setting.
+    mockReplayRecordingOptions.frameTileDisplay = { divisor: 2, maxTiles: 5 };
+    const config = makeConfig();
+    await startReplayMode(fakeZipData, config);
+
+    expect(mockFrameTileVisualizerCtor).toHaveBeenCalledTimes(1);
+    expect(mockFrameTileVisualizerCtor.mock.calls[0]).toHaveLength(1);
+  });
+
   it('dispose tears down frame-tile subscribers and visualizer (F3.5c)', async () => {
     // Why: Without per-replay-session teardown the next replay would stack
     // subscribers and leak GPU textures.
@@ -471,6 +685,39 @@ describe('replay-mode', () => {
 
     expect(mockUnsubscribeFrameTiles).toHaveBeenCalledTimes(1);
     expect(mockFrameTileVisualizerDispose).toHaveBeenCalledTimes(1);
+  });
+
+  // --- Occupancy cube refresh cadence (Issue A) ---
+
+  it('wires the occupancy cube refresh throttle from depth.intervalMs (Issue A)', async () => {
+    // Why (2026-06-22 cube cadence/locality plan §2): replay must coalesce the
+    // cube-refresh burst to the user's current depth.intervalMs, not a fixed
+    // 1 s. The mock returns 500 ms (≠ the visualizer's 1000 ms fallback), so a
+    // call site that drops refreshIntervalMs would regress this assertion.
+    const config = makeConfig();
+    await startReplayMode(fakeZipData, config);
+
+    expect(wireOccupancyGridSubscribers).toHaveBeenCalledTimes(1);
+    const opts = vi.mocked(wireOccupancyGridSubscribers).mock.calls[0]?.[0];
+    expect(opts?.refreshIntervalMs).toBe(500);
+  });
+
+  it('builds the replay grid with confidence-guarded carving at the minConfidence floor', async () => {
+    // Why (2026-07-16 synthetic-scene investigation): replay must reconstruct
+    // with the same guard as live — a voxel solid enough to be rendered
+    // (count ≥ occupancy.minConfidence) can no longer be erased by a single
+    // deeper reading (silhouette churn / occluded-background destruction).
+    // The mocked options carry minConfidence 3, so the REAL grid instance
+    // handed to the subscriber wiring must expose that threshold.
+    const config = makeConfig();
+    await startReplayMode(fakeZipData, config);
+
+    const opts = vi.mocked(wireOccupancyGridSubscribers).mock.calls[0]?.[0];
+    // The wiring options type the grid as the narrow sink interface; the
+    // replay path constructs a real OccupancyGrid, whose threshold field is
+    // what this pins.
+    const grid = opts?.grid as OccupancyGrid;
+    expect(grid.carveConfidenceThreshold).toBe(3);
   });
 
   // --- Error handling (R7 wiring) ---

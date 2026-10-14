@@ -7,7 +7,7 @@ genuinely new piece WS-5 needs. Keeps a bounded history of recorded depth sample
 and answers `resolveDepthAt(timestamp)` with the depth context active at that
 detection's timestamp (the sample whose `timestamp` is the latest `≤` the query),
 which is exactly what the derive-on-read size join
-(`gps-plus-slam-app-framework/ar/qr-derived-pose`) needs.
+(`gps-plus-slam-app-framework/ar/qr/qr-derived-pose`) needs.
 
 ## Public API
 
@@ -24,8 +24,8 @@ which is exactly what the derive-on-read size join
 
 - **Clock domain (load-bearing):** depth timestamps are EPOCH ms
   (`DepthSample.timestamp = performance.timeOrigin + frameTs`, `ar/depth-sampler.ts`);
-  the QR producer MUST stamp detections from the same epoch clock (`Date.now()`, plan
-  open topic A) or the `≤` join silently misses every time. (Stamping
+  QR detections MUST carry the same epoch clock (since QR perf plan M4 the
+  frame's capture time, `performance.timeOrigin + xrTime`; plan open topic A) or the `≤` join silently misses every time. (Stamping
   `performance.now()` was the original "no debug cube" bug.)
 - **Live == replay:** `append` is fed every recorded depth sample — live via the
   capture path, replay via the re-dispatched `recordDepthSample` reflected in the
@@ -45,4 +45,4 @@ which is exactly what the derive-on-read size join
 ## Related
 
 - [qr-debug-controller.ts.md](qr-debug-controller.ts.md) — drives `append` + renders.
-- `gps-plus-slam-app-framework/ar/qr-derived-pose` — consumer of `resolveDepthAt`.
+- `gps-plus-slam-app-framework/ar/qr/qr-derived-pose` — consumer of `resolveDepthAt`.

@@ -6,6 +6,16 @@ Leaflet-based 2D map displayed in the session summary panel after a recording en
 
 **User Feedback Reference:** Issue #4 (2026-01-27) - "In the final report screen when I clicked 'Stop' I would like to be able to see the map with the path the user walked."
 
+**The shell lives in the framework since 2026-10-01**
+([summary-map-shell.ts.md](../../../GpsPlusSlamJs_AppFramework/src/visualization/summary-map-shell.ts.md),
+DEC-H3, Tour Viewer authoring plan 2026-09-28-0953 §3.3): the map, the OSM
+basemap, the shared trajectory layers, the fullscreen toggle and the cleanup,
+shared with the Tour Viewer's summary after Finish. This file is the
+recorder's part: its reference-point markers (`drawExtra`), its Tailwind
+classes for the toggle (`fullscreen`), and centring on the final position
+(no `fitPoints`). Behaviour is unchanged by the move; the tests below still
+run against the composed map.
+
 ## Public API
 
 ### `createSummaryMap(container, data): SummaryMapInstance | null`
@@ -60,14 +70,14 @@ interface SummaryMapInstance {
 
 ## Visual Elements
 
-| Element                 | Color                               | Description                                                                                                                                                   |
-| ----------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Raw GPS Polyline        | `#ffff00` (yellow)                  | Raw GPS readings from device                                                                                                                                  |
-| Raw GPS Accuracy Circle | `#ffff00` (yellow, ~12% fill)       | Per-event horizontal accuracy (radius = `latLongAccuracy` in meters); skipped when accuracy is missing or non-positive                                        |
-| Fused Path Polyline     | `#00ffff` (cyan)                    | GPS+SLAM aligned positions                                                                                                                                    |
-| Reference Point Markers | `#ff6b6b` (red) / `#51cf66` (green) | Drawn by the recorder-owned [draw-ref-point-markers.ts](draw-ref-point-markers.ts) helper. Red `📍 current`, green `📌 prior` by `timestamp` vs. `startTime`. |
-| Alignment Snapshots     | `#ff0000` (red)                     | Polyline connecting snapshot positions                                                                                                                        |
-| Tile Layer              | OpenStreetMap                       | Standard map tiles                                                                                                                                            |
+| Element                 | Color                                        | Description                                                                                                                                                                                                                                                                             |
+| ----------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Raw GPS Polyline        | `#ffff00` (yellow)                           | Raw GPS readings from device                                                                                                                                                                                                                                                            |
+| Raw GPS Accuracy Circle | `#ffff00` (yellow, ~12% fill)                | Per-event horizontal accuracy (radius = `latLongAccuracy` in meters); skipped when accuracy is missing or non-positive                                                                                                                                                                  |
+| Fused Path Polyline     | `#00ffff` (cyan)                             | GPS+SLAM aligned positions                                                                                                                                                                                                                                                              |
+| Reference Point Markers | `VIS_COLORS` red `#ff6b6b` / green `#00ff00` | Drawn by the recorder-owned [draw-ref-point-markers.ts](draw-ref-point-markers.ts) helper — the SAME renderer the live/replay minimaps use via [ref-point-map-markers.ts](ref-point-map-markers.ts.md) (2026-07-05). Red `📍 current`, green `📌 prior` by `timestamp` vs. `startTime`. |
+| Alignment Snapshots     | `#ff0000` (red)                              | Polyline connecting snapshot positions                                                                                                                                                                                                                                                  |
+| Tile Layer              | OpenStreetMap                                | Standard map tiles                                                                                                                                                                                                                                                                      |
 
 ## Invariants & Assumptions
 
@@ -148,7 +158,7 @@ npm run test:unit -- src/ui/summary-map.test.ts
 
 - [session-summary.ts](session-summary.ts) - Parent component that hosts the map
 - [index.html](../../index.html) - Contains the `#summary-map-container` element
-- [gps-event-markers.ts](../visualization/gps-event-markers.ts) - 3D visualization using same color scheme
+- [gps-event-markers.ts](../../../GpsPlusSlamJs_AppFramework/src/visualization/gps-event-markers.ts) - 3D visualization using same color scheme
 
 ## Dependencies
 

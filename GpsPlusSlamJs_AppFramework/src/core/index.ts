@@ -5,11 +5,12 @@
  * Apps should import core symbols from here rather than from `gps-plus-slam-js`
  * directly so that:
  *   - Apps need only one direct npm dependency (the framework). The core is
- *     declared as a `peerDependency` of the framework and auto-installed by
- *     pnpm — see 2026-05-01-app-single-package-dep-analysis.md (Option C).
+ *     declared as a regular `dependency` of the framework, so every package
+ *     manager installs it automatically — see
+ *     2026-05-01-app-single-package-dep-analysis.md (Option C).
  *   - The framework can curate which core symbols are part of the public app
  *     surface, providing a real architectural boundary.
- *   - Coordinated releases only need to update the framework's peer-dep range,
+ *   - Coordinated releases only need to update the framework's dependency range,
  *     not pin sites scattered across every app `package.json`.
  *
  * Library-only consumers (no framework) can still depend on `gps-plus-slam-js`
@@ -33,14 +34,34 @@ export {
   calcRelativeCoordsInMeters,
   isIdentityMatrix4,
 
+  // AbsoluteOrientationSensor heading kernels (Phase 1). magneticHeadingFromEnuQuat
+  // returns the same magnetic heading the v3 absolute-compass demo shows — used
+  // for the recorder's live AbsCompass HUD read-out.
+  magneticHeadingFromEnuQuat,
+  arNorthBearingDeg,
+  bearingDeltaDeg,
+
   // Actions
   odometryTrackingRestarted,
+
+  // Live loop-closure handler factory (2026-07-06 recorder wiring): feed raw
+  // WebXR poses per frame; dispatches arLoopClosureDetected on a >1 m jump so
+  // recordings finally capture loop closures. Gated by the operator's
+  // `loopClosureDebug.detectorEnabled` recording option (default OFF).
+  createLoopClosureHandler,
 
   // Store factory (test/integration use)
   createGpsSlamStore,
 
   // License activation (used by app tests that exercise licensed math)
   validateLicenseKey,
+
+  // GPS point provenance: which stored points are device fixes and which are
+  // synthetic QR votes (the Tour Viewer's keep-alive re-votes on device
+  // fixes only)
+  gpsPointSourceOf,
+  GPS_POINT_SOURCE_DEVICE,
+  GPS_POINT_SOURCE_SYNTHETIC_QR,
 } from 'gps-plus-slam-js';
 
 export type {
@@ -57,6 +78,10 @@ export type {
   // Frame-tile payload (used by the recorder's frame-tile visualizer
   // subscriber; see 2026-05-27 collapse-refpoint-and-frame-slices plan).
   ArImageCapture,
+
+  // Live loop-closure handler contract (see createLoopClosureHandler above)
+  LoopClosureHandler,
+  LoopClosureHandlerConfig,
 
   // Library root state (renamed to avoid collision with framework RootState)
   RootState as LibraryRootState,

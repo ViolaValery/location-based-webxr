@@ -10,6 +10,7 @@ import {
   listRefPointIds,
   flattenRefPointsToMarks,
   averageGpsPerRefPoint,
+  REF_POINT_ACCURACY_GATE_M,
   type RefPointDefinition,
   type RefPointObservation,
 } from './ref-point-loader';
@@ -28,7 +29,6 @@ const mockGpsPoint: GpsPoint = {
   altitude: 100,
   latLongAccuracy: 5,
   altitudeAccuracy: 5,
-  deviceRotation: [0, 0, 0, 1],
   coordinates: [0, 0, 0],
   weight: 1,
   timestamp: Date.now(),
@@ -541,6 +541,52 @@ describe('ref-point-loader', () => {
       const updated = await loadRefPoint(scenarioHandle, 'pointA');
       expect(updated!.observations).toHaveLength(2);
       expect(updated!.observations[1]).toEqual(observation);
+    });
+
+    /**
+     * Why this test matters (indoor-loop enablement follow-up, 2026-07-12):
+     * the existing append test mixes two SESSIONS; the loop-recording
+     * protocol appends repeated observations within ONE session (re-marking
+     * the same corner per pass). A dedupe keyed on sessionId — or any
+     * "one observation per session" assumption — would silently collapse
+     * within-recording re-marks, which are the P3/P6 ground truth.
+     */
+    it('appends repeated SAME-session observations (within-recording re-marks)', async () => {
+      const sessionId = 'recording-2026-07-11_12-44-19utc';
+      const obsAt = (timestamp: number): RefPointObservation => ({
+        sessionId,
+        timestamp,
+        arPose: { position: [1, 2, 3], rotation: [0, 0, 0, 1] },
+        gpsPoint: mockGpsPoint,
+      });
+
+      await saveRefPointObservation(
+        scenarioHandle,
+        'cornerA1',
+        'Corner A1',
+        obsAt(1_000)
+      );
+      await saveRefPointObservation(
+        scenarioHandle,
+        'cornerA1',
+        'Corner A1',
+        obsAt(16_000)
+      );
+      await saveRefPointObservation(
+        scenarioHandle,
+        'cornerA1',
+        'Corner A1',
+        obsAt(31_000)
+      );
+
+      const saved = await loadRefPoint(scenarioHandle, 'cornerA1');
+      expect(saved!.observations).toHaveLength(3);
+      expect(saved!.observations.map((o) => o.timestamp)).toEqual([
+        1_000, 16_000, 31_000,
+      ]);
+      for (const o of saved!.observations) {
+        expect(o.sessionId).toBe(sessionId);
+      }
     });
 
     it('should create refPoints directory if it does not exist', async () => {
@@ -1271,5 +1317,113 @@ describe('ref-point-loader', () => {
 
       expect(mockAbort).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// averageGpsPerRefPoint — accuracy gate (D6(a) robust averaging, 2026-07-06)
+// ---------------------------------------------------------------------------
+
+describe('averageGpsPerRefPoint accuracy gate (D6a)', () => {
+  function obsWithAccuracy(
+    lat: number,
+    lon: number,
+    accuracy?: number
+  ): RefPointObservation {
+    return {
+      sessionId: 'session1',
+      timestamp: 1000,
+      arPose: { position: [0, 0, 0], rotation: [0, 0, 0, 1] },
+      gpsPoint: {
+        id: 'g1',
+        zeroRef: { lat, lon },
+        latitude: lat,
+        longitude: lon,
+        coordinates: [0, 0, 0],
+        weight: 1,
+        timestamp: 1000,
+        ...(accuracy !== undefined ? { latLongAccuracy: accuracy } : {}),
+      },
+    };
+  }
+
+  function defOf(observations: RefPointObservation[]): RefPointDefinition {
+    return { id: 'cell-a', name: 'A', createdAt: 1000, observations };
+  }
+
+  // Why: 20 m sits ~2× above the maximum accuracy legitimate ref-point
+  // observations show in recorded-session data — the value is a deliberate,
+  // documented pick and must not drift silently.
+  it('exposes the corpus-justified gate constant', () => {
+    expect(REF_POINT_ACCURACY_GATE_M).toBe(20);
+  });
+
+  // Why: the whole point of D6(a) item 1 — one indoor-poisoned fix must not
+  // drag the displayed position (2026-05-24 poisoning analysis: phantom
+  // fixes sit 51–74 m off with correspondingly bad accuracy).
+  it('excludes observations whose latLongAccuracy exceeds the gate', () => {
+    const result = averageGpsPerRefPoint([
+      defOf([
+        obsWithAccuracy(50.0, 8.0, 5),
+        obsWithAccuracy(50.0002, 8.0, 5),
+        obsWithAccuracy(50.0004, 8.0, 5),
+        // Poisoned: ~50 m off with garbage accuracy — must not shift the mean.
+        obsWithAccuracy(50.0005, 8.0007, 45),
+      ]),
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].lat).toBeCloseTo(50.0002, 6);
+    expect(result[0].lon).toBeCloseTo(8.0, 6);
+  });
+
+  // Why: observations without accuracy (legacy recordings) must be KEPT —
+  // the gate only acts on provably bad fixes.
+  it('keeps observations without latLongAccuracy', () => {
+    const result = averageGpsPerRefPoint([
+      defOf([
+        obsWithAccuracy(50.0, 8.0, 5),
+        obsWithAccuracy(50.0002, 8.0),
+        obsWithAccuracy(50.0004, 8.0, 5),
+      ]),
+    ]);
+    expect(result[0].lat).toBeCloseTo(50.0002, 6);
+  });
+
+  // Why: boundary is inclusive — accuracy exactly at the gate stays.
+  it('keeps an observation with accuracy exactly at the gate', () => {
+    const result = averageGpsPerRefPoint([
+      defOf([
+        obsWithAccuracy(50.0, 8.0, REF_POINT_ACCURACY_GATE_M),
+        obsWithAccuracy(50.0002, 8.0, 5),
+      ]),
+    ]);
+    expect(result[0].lat).toBeCloseTo(50.0001, 6);
+  });
+
+  // Why: starvation guard — when fewer than 3 observations would survive,
+  // a mostly-poisoned definition keeps its full set instead of averaging
+  // over a tiny (possibly unrepresentative) remnant.
+  it('keeps the original set when the gate would leave fewer than 3 observations', () => {
+    const result = averageGpsPerRefPoint([
+      defOf([
+        obsWithAccuracy(50.0, 8.0, 5),
+        obsWithAccuracy(50.0002, 8.0, 5),
+        obsWithAccuracy(50.001, 8.0, 45),
+        obsWithAccuracy(50.002, 8.0, 45),
+      ]),
+    ]);
+    // 2 survivors < 3 → guard keeps all 4: mean lat = (50 + 50.0002 + 50.001 + 50.002)/4
+    expect(result[0].lat).toBeCloseTo(50.0008, 6);
+  });
+
+  // Why: small definitions (1–2 observations) must behave exactly as before
+  // even when their only observation has poor accuracy — min(3, total)
+  // survivors means the guard never empties a definition.
+  it('never drops a single-observation definition regardless of accuracy', () => {
+    const result = averageGpsPerRefPoint([
+      defOf([obsWithAccuracy(50.0, 8.0, 99)]),
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].lat).toBeCloseTo(50.0, 6);
   });
 });

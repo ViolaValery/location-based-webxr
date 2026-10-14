@@ -1,0 +1,653 @@
+/**
+ * Author mode (QR-pose plan M3): the view-model that turns a printed QR into
+ * a mintable GPS anchor. Runs the SAME tracking pipeline viewing will use
+ * (so M5's error numbers are attributable), with the plan's three deltas:
+ *
+ * - **The printed size is an INPUT, not a measurement** (delta #1): the
+ *   author enters the printed side length; no depth, no corner-based sizing.
+ * - **A synthetic local `fetchLevel`** (delta #8): the decoded QR text is a
+ *   printed LAUNCH URL — an HTML page — so a real fetch would fail
+ *   validation and flap the controller status at the detection cadence. The
+ *   synthetic level is GEO-LESS, which makes the controller emit detections
+ *   without ever voting.
+ * - **Minting reads the STABLE fused pose** (delta #2; QR near-frontal
+ *   pose plan §60), never the jittery raw solve: detections land in the
+ *   `qrDetected` slice and the fused pose over them (`createFusedQrPoseSource`)
+ *   gates the mint.
+ *
+ * Frame contract for the mint: the slice's stable pose is in RAW WebXR/odom
+ * space (the controller composes it with each frame's capture pose). The
+ * GPS-world NUE pose the mint needs is `alignment × WEBXR_TO_NUE × pose` —
+ * the same chain a QR-glued object under an aligned `arWorldGroup` carries.
+ * The alignment TARGET matrix is used (not the lerped visual transform):
+ * for minting, the converged solve is the honest frame.
+ */
+
+import {
+  AUTHOR_DEFAULT_SIZE_M,
+  MIN_ALIGNMENT_SAMPLES,
+  type MintAlignmentInfo,
+} from "gps-plus-slam-app-framework/ar/qr/qr-mint-level";
+import type { QrLevel } from "gps-plus-slam-app-framework/ar/qr/qr-level";
+import type {
+  QrDetectionEvent,
+  QrSolvePoseInput,
+  QrTrackingControllerConfig,
+} from "gps-plus-slam-app-framework/ar/qr/qr-tracking-controller";
+import type {
+  CameraIntrinsics,
+  QrPoseSolution,
+} from "gps-plus-slam-app-framework/ar/qr/qr-pose";
+import type {
+  QrFrontEnd,
+  RgbaImage,
+} from "gps-plus-slam-app-framework/ar/qr/qr-frontend";
+import type { QrFusedPose } from "gps-plus-slam-app-framework/ar/qr/qr-fused-pose";
+
+import {
+  downloadSafeName,
+  nameSurvivesDownload,
+} from "./content-disposition.js";
+import type { TourRelation } from "./code-tour.js";
+import { driveFileId } from "gps-plus-slam-app-framework/utils/drive-file-id";
+import type { CodeTourStatus } from "./scan-open.js";
+
+/**
+ * Geo-less until minted (QD-4): `syntheticAccuracyM` is required by the
+ * controller config but unreachable — a geo-less level never votes.
+ */
+const UNREACHABLE_SYNTHETIC_ACCURACY_M = 5;
+
+/** The geo-less level the synthetic local fetch resolves for ANY text. */
+export function syntheticAuthorLevel(sizeM: number): QrLevel {
+  if (!Number.isFinite(sizeM) || sizeM <= 0) {
+    throw new RangeError(
+      `author mode: printed size must be a positive number of metres, got ${String(sizeM)}`,
+    );
+  }
+  return { version: 1, qr: { physicalSizeM: sizeM } };
+}
+
+/** The device/store functions the author pipeline needs — seam-injected. */
+export interface AuthorPipelineDeps {
+  frontEnd: QrFrontEnd;
+  solvePose(input: QrSolvePoseInput): QrPoseSolution | null;
+  getIntrinsics(image: RgbaImage): CameraIntrinsics | null;
+  /** onDetection → the `qrDetected` slice (`recordQrDetection`). */
+  recordDetection(event: QrDetectionEvent): void;
+  /** Controller failures MUST surface (async-UI rule) — a throwing detector
+   *  otherwise leaves the panel saying "point the camera" forever. */
+  onError(message: string): void;
+  /**
+   * Each code's printed size by its decoded text (code book refactor plan
+   * M4c-3): the size the tour stores for it, else the size field. Absent:
+   * every text at the pipeline's size. A rejection, or a size that is not a
+   * positive number, falls back to the pipeline's size - the fetch never
+   * rejects (the controller would flap its status).
+   */
+  sizeFor?(text: string): Promise<number>;
+}
+
+/**
+ * The tracking-controller configuration for authoring. `minIntervalMs: 0`
+ * because the camera-frame source is the single cadence owner (Option A) —
+ * two equal throttles in series drop ~1 frame per cycle.
+ */
+export function buildAuthorControllerConfig(
+  sizeM: number,
+  deps: AuthorPipelineDeps,
+): QrTrackingControllerConfig {
+  const level = syntheticAuthorLevel(sizeM);
+  return {
+    frontEnd: deps.frontEnd,
+    solvePose: (input) => deps.solvePose(input),
+    fetchLevel: (text) =>
+      deps.sizeFor === undefined
+        ? Promise.resolve(level)
+        : deps.sizeFor(text).then(
+            (size) => {
+              try {
+                return syntheticAuthorLevel(size);
+              } catch {
+                return level;
+              }
+            },
+            () => level,
+          ),
+    dispatchVotes: () => {
+      // Unreachable: a geo-less level never produces votes. Kept explicit
+      // so a future schema change fails a test here instead of silently
+      // voting during authoring.
+    },
+    onDetection: (event) => {
+      deps.recordDetection(event);
+    },
+    getIntrinsics: (image) => deps.getIntrinsics(image),
+    onError: (err) => {
+      deps.onError(err instanceof Error ? err.message : String(err));
+    },
+    syntheticAccuracyM: UNREACHABLE_SYNTHETIC_ACCURACY_M,
+    minIntervalMs: 0,
+  };
+}
+
+/**
+ * What became of the code in view once the gate is open (UI round 1, U3):
+ * `measured` - it is the code in hand; `measuring` - its measurement is
+ * in flight, or about to start; `seen` - a sighting only (another stored
+ * code of the tour, or a code the open tour may not take - none open yet,
+ * `autoMeasureAllowed`).
+ */
+export type CodeReadyState = "measured" | "measuring" | "seen";
+
+const READY_TEXT: Readonly<Record<CodeReadyState, string>> = {
+  measured: "Code measured.",
+  measuring: "Measuring the code…",
+  seen: "Code seen.",
+};
+
+/** What the author panel shows, and whether the gate is open (the code
+ *  is then measured on its own, U3). */
+export interface AuthorReadout {
+  text: string;
+  canMint: boolean;
+}
+
+/**
+ * The author's only view into the mint gate: a stable pose AND a live GPS
+ * alignment are both required, and each blocked state names what is missing
+ * (plain-language rule — the author is standing at a poster, not reading a
+ * plan file).
+ */
+export function authorStatusLine(
+  detectedText: string | null,
+  fused: QrFusedPose | null,
+  alignment: MintAlignmentInfo,
+  /** The print-size check has no answer for this code yet (S3a). */
+  sizeCheckPending = false,
+  /** What became of the code once the gate is open (UI round 1, U3: it
+   *  is measured on its own, so "ready" is not "measured"). */
+  ready: CodeReadyState = "measured",
+): AuthorReadout {
+  if (detectedText === null || fused === null || fused.status === "unknown") {
+    return {
+      text: "Hold the phone on the printed code so it fills the screen…",
+      canMint: false,
+    };
+  }
+  if (fused.status !== "stable") {
+    return {
+      text: `Measuring — ${waitingFor(fused.notStableReason)}`,
+      canMint: false,
+    };
+  }
+  if (!alignment.hasMatrix || alignment.sampleCount < MIN_ALIGNMENT_SAMPLES) {
+    return {
+      text:
+        `Pose stable — waiting for GPS alignment ` +
+        `(${String(alignment.sampleCount)} of ${String(MIN_ALIGNMENT_SAMPLES)} fixes). ` +
+        `Walk a few metres with GPS reception.`,
+      canMint: false,
+    };
+  }
+  return {
+    // The print-size check needs a sideways step that nothing else asks for
+    // (QR size consensus plan §12 #3); the mint is not held for it.
+    text: sizeCheckPending
+      ? `${READY_TEXT[ready]} ${SIZE_CHECK_HINT}`
+      : READY_TEXT[ready],
+    canMint: true,
+  };
+}
+
+/** What the ready line adds while the print-size check has no answer. */
+const SIZE_CHECK_HINT = "Take a step sideways to check the print size.";
+
+const cmText = (m: number): string => (m * 100).toFixed(1);
+
+/**
+ * The print-size offer (QR size consensus plan §11-§12, S3a): the measured
+ * size is approximate, the ruler decides, and the field's own unit (metres)
+ * stands beside the centimetres.
+ */
+export function sizeOfferView(
+  measuredM: number,
+  typedM: number,
+): { text: string; useLabel: string; keepLabel: string } {
+  return {
+    text:
+      `Print measures ~${cmText(measuredM)} cm, the size field says ` +
+      `${cmText(typedM)} cm. Check it with a ruler.`,
+    useLabel: `Use ${cmText(measuredM)} cm`,
+    keepLabel: `Keep ${cmText(typedM)} cm`,
+  };
+}
+
+/** The confirmation after adopting a measured size: measuring starts over. */
+export function adoptedSizeNote(sizeM: number): string {
+  return `Now using ${cmText(sizeM)} cm (${String(sizeM)} m) - walk slowly around the code again to measure it at this size.`;
+}
+
+/**
+ * What the fused pose is waiting for, in plain words (QR near-frontal pose
+ * plan §61 #11). Never "hold steady": moving the CAMERA around the code is
+ * what resolves its tilt.
+ */
+export function waitingFor(reason: QrFusedPose["notStableReason"]): string {
+  switch (reason) {
+    case "fit":
+      return "keep moving slowly, still measuring.";
+    case "fallback":
+      return "the views disagree, keep going.";
+    case "motion":
+      // A wall code cannot be held; there this is mostly a false "turning"
+      // from a relabelled frame (milestone review of b4b #11).
+      return "the code seemed to move, keep it in view.";
+    case "order":
+      return "code not read clearly, move closer.";
+    default:
+      return "walk slowly around the code.";
+  }
+}
+
+/** A failed open's cause, in the creator's words - short, unlike
+ *  `describeOpenError`, because it shares the panel with the readout. */
+function openCauseText(cause: CodeTourStatus & { kind: "failed" }): string {
+  switch (cause.cause) {
+    case "missing":
+      return "file not found (not uploaded or shared yet?)";
+    case "cors":
+      return "the host refused the browser access";
+    case "corrupt":
+      return "the file is not a readable tour";
+    case "too-large":
+      return "the file is too large to open here";
+    case "offline":
+      return "this phone is offline";
+    default:
+      return "the link cannot be opened as a tour";
+  }
+}
+
+/** What the panel says about the code in view (scan-to-open plan §9 #9);
+ *  empty when there is nothing to say. */
+export function codeTourLine(status: CodeTourStatus): string {
+  switch (status.kind) {
+    case "quiet":
+      return "";
+    case "opening":
+      return "Opening the tour this code points to…";
+    case "not-a-tour":
+      return "This code does not point to a tour - print one in step 2.";
+    case "added-to-open-tour":
+      return "This code is from another tour - it is added to the open tour as one more code.";
+    case "unknown":
+      return "Cannot tell which tour this code is from - it is added to the open tour.";
+    case "failed":
+      return status.retrying
+        ? `Could not open the tour: ${openCauseText(status)}. Keep the code in view to try again.`
+        : `Could not open the tour: ${openCauseText(status)}. Fix the link, then restart AR.`;
+  }
+}
+
+/**
+ * The first thing the panel says in an AR visit (authoring plan
+ * 2026-09-28-0953 §3.2a, decision D5): look at the tour's code first, until
+ * this visit has seen it. A later visit's notes are corrected through the
+ * code only when the code was seen in that visit (D10b); the owner chose a
+ * hint over a rule, so nothing is blocked while it shows. Empty with no
+ * tour open - there is no "code of this tour" yet.
+ */
+export function entryHint(state: {
+  tourOpen: boolean;
+  codeSeen: boolean;
+}): string {
+  if (!state.tourOpen || state.codeSeen) return "";
+  return "First, point the camera at the code you scanned to open this tour.";
+}
+
+/**
+ * The one line that says a code correction was refused (M2c review #2):
+ * the code seen here is further from its saved position, or turned
+ * further, than two visits' GPS plausibly disagree - a second print or a
+ * moved poster, not GPS - so this visit's notes follow GPS instead.
+ */
+export function correctionRefusedLine(refusal: {
+  horizontalM: number;
+  yawDeg: number;
+  maxHorizontalM: number;
+}): string {
+  const where =
+    refusal.horizontalM > refusal.maxHorizontalM
+      ? `${String(Math.round(refusal.horizontalM))} m`
+      : `turned ${String(Math.round(refusal.yawDeg))}°`;
+  return `Code seen ${where} from its saved position - a second print or a moved poster? Not used; this visit follows GPS`;
+}
+
+/**
+ * Whether the creator's panel may measure the code in view on its own:
+ * every code seen while a tour is open - the tour's own, another tour's, an
+ * unknown link, a QR naming no tour at all (code book refactor plan §11
+ * D5, extended by the owner: "a stray QR code ... provides another anchor
+ * that can stabilize the virtual objects"). Not a code read with no tour
+ * open, nor one still being read. The risk named with the decision: a code
+ * on something that moves; the automatic code-spot rule (code book plan
+ * M6, `code-spots.ts`) is its guard.
+ * (Before M4c-2 only the tour's own code, or the first code of a tour with
+ * none: UI round 1, U3, second plan review #1.)
+ */
+export function autoMeasureAllowed(
+  relation: TourRelation | "resolving",
+): boolean {
+  return relation !== "no-tour-open" && relation !== "resolving";
+}
+
+/** What the setup panel says once the code is measured: the next move. */
+export function setupHint(state: {
+  measured: boolean;
+  tourOpen: boolean;
+  /** What the open tour already carries: this code (its file is then
+   *  replaced - reached only when its saved pose does not read, else the
+   *  pose is kept), other codes only (this one is added beside them), or
+   *  none. */
+  inTour: "this-code" | "other-codes" | "none";
+  /** The level in hand is a stored pose this visit did not measure (a
+   *  hosted or draft level, or an earlier visit's): it is kept, never
+   *  replaced by a new measurement (D10b). */
+  keptStored?: boolean;
+  /** In an AR session: the way out is Done, not the panel's Finish
+   *  (polish round M3, Q-Done). */
+  inAr?: boolean;
+}): string {
+  if (!state.measured) return "";
+  const next =
+    state.inAr === true
+      ? "Place pins and photos; Done saves the tour."
+      : "Place content, or tap Finish to rebuild the zip.";
+  // With no tour open, `codeTourLine` says what is happening to the tour
+  // the code names (scan-to-open plan §9 #9).
+  if (!state.tourOpen) return "Position saved.";
+  if (state.keptStored === true) {
+    return `Saved position kept. ${next}`;
+  }
+  const saved =
+    state.inTour === "this-code"
+      ? "Position saved - it replaces this code's saved position in the tour. "
+      : state.inTour === "other-codes"
+        ? "Position saved - saving adds it to the tour as one more code. "
+        : "Position saved. ";
+  return `${saved}${next}`;
+}
+
+/**
+ * Whether the finish button may run, and if not, why. `hasWork`: there is
+ * something to write (code book refactor plan M4d) - a code to write, a
+ * changed or deleted object, or in AR a code in hand whose settle may
+ * change it; without it the state is `not-measured` ("nothing to write").
+ */
+export function finishReadiness(state: {
+  hasWork: boolean;
+  tourOpen: boolean;
+  manifest: "pending" | "settled" | "broken";
+}):
+  | "ready"
+  | "not-measured"
+  | "no-tour"
+  | "manifest-pending"
+  | "manifest-broken" {
+  if (!state.hasWork) return "not-measured";
+  if (!state.tourOpen) return "no-tour";
+  if (state.manifest === "pending") return "manifest-pending";
+  if (state.manifest === "broken") return "manifest-broken";
+  return "ready";
+}
+
+/** Why the finish button is off, in the creator's words (empty when ready). */
+export function finishBlockedHint(
+  readiness: ReturnType<typeof finishReadiness>,
+): string {
+  switch (readiness) {
+    case "manifest-pending":
+      // Said in AR (Done) and on the page (Finish) - M3 review #5, #12.
+      return "Saving unlocks once the tour's content list has loaded.";
+    case "manifest-broken":
+      return "The hosted zip's tour.json is broken; repair it before saving, or the placement it holds would be lost.";
+    default:
+      return "";
+  }
+}
+
+/** Above this the rebuild is a long whole-file pass on a phone; the copy
+ *  says so before the creator taps. */
+const LARGE_ARCHIVE_BYTES = 200_000_000;
+
+/** What the finish button's surroundings say about the archive's size. */
+export function archiveSizeNote(bytes: number): string {
+  const mb = (bytes / 1_000_000).toFixed(0);
+  return bytes >= LARGE_ARCHIVE_BYTES
+    ? `The hosted zip is ${mb} MB: rebuilding it copies every entry on this phone and can take a while and a lot of memory.`
+    : `The hosted zip is ${mb} MB.`;
+}
+
+/**
+ * What a creator reads when the printed-size field is empty at AR entry.
+ *
+ * The example is DERIVED from the default the field is prefilled with, not
+ * written out: the two drifted apart once already, and an example that is
+ * not the default sends a creator looking for a number the page would have
+ * supplied anyway (second testing session, F2).
+ */
+export const MISSING_SIZE_MESSAGE = `Enter the printed code's side length in centimetres (e.g. ${String(Math.round(AUTHOR_DEFAULT_SIZE_M * 1000) / 10)}) in step 3 before starting.`;
+
+/** The finish step's labels through its async cycle (async-UI rule). */
+export const FINISH_LABELS = {
+  reading: (bytes: number) =>
+    `Finishing - reading the hosted zip (${(bytes / 1_000_000).toFixed(1)} MB)…`,
+  /** The recorded photos' spots, baked once (scan-pass plan S1). */
+  placingPhotos: (done: number, total: number) =>
+    `Finishing - placing the recorded photos (${String(done)} of ${String(total)} steps of the walk)…`,
+  rebuilding: (done: number, total: number) =>
+    `Finishing - rebuilding ${String(done)} of ${String(total)} entries…`,
+  /** The line shown while the Finish saves the rebuilt zip by itself (the
+   *  2026-10-08 field test, F4; owner decision D-F4a): no tap is asked
+   *  for. A Drive tour's repeat-download check ("name (1).zip") is in the
+   *  Drive steps that follow the save. */
+  savingTour: (bytes: number) =>
+    `The tour zip is ready (${(bytes / 1_000_000).toFixed(1)} MB) and is being saved to this phone…`,
+  /** Appended to the ready line when the Finish left the walk out of
+   *  the copy (scan-pass plan S-D10): the hosted file may be the creator's
+   *  only copy of it. */
+  scanLeftOut: (files: number) =>
+    `This copy is for visitors: it leaves out the walk recording (${String(files)} ${files === 1 ? "file" : "files"}). Keep your original zip if you still need the walk.`,
+  /** Appended when the recording's photos could not be placed at this
+   *  Finish (S1 milestone review #2): the walk then stays in the zip, the
+   *  viewer places them itself or rings them, and the creator sees why. */
+  photosNotPlaced: (reason: string) =>
+    `The recorded photos could not be placed (${reason}), so the walk recording stays in the zip.`,
+  failed: (reason: string) => `Finishing failed: ${reason}`,
+  /** The one button left after a Finish: the same save again (owner
+   *  decision D-F4b). */
+  saveAgain: "Save the tour zip again",
+  saving: "Saving…",
+  saved: (filename: string) =>
+    `Saved as ${filename}. Now replace the hosted zip (steps below) - the link and the printed code stay the same.`,
+  /** It cannot know the name the phone gave the file: a repeat download
+   *  is saved as "name (1).zip", which Drive treats as a new file - and
+   *  with the save automatic, there is no moment before it to warn (F4
+   *  milestone review #2). */
+  savedToPhone: (filename: string) =>
+    `Saved to Downloads - check that it is named ${filename}, not "${repeatDownloadName(filename)}" (step 1 below). Then follow the Drive steps - the link and the printed code stay the same.`,
+  notSaved: 'Not saved - tap "Save the tour zip again".',
+  /** The save failed, not the Finish: the zip is made (F4 milestone review
+   *  #9). */
+  saveFailed: (reason: string) =>
+    `The tour zip could not be saved (${reason}) - tap "Save the tour zip again".`,
+} as const;
+
+/**
+ * The Drive steps for putting the rebuilt zip in place of the hosted one
+ * from a phone (Drive replace plan §2, §5): the owner's working flow, in
+ * a new tab so these steps stay on screen (§5 #6), with the checks for the
+ * two ways it silently fails - a repeat download saved as "name (1).zip"
+ * (§5 #1), and a name the phone changes on save (§5 #7, `rename`).
+ */
+export function driveReplaceSteps(
+  name: string,
+  /** False when the host sent no name and `name` is the page's guess: the
+   *  creator must then check the Drive file carries it (plan §4). */
+  nameKnown = true,
+): {
+  /** The name to give the Drive file first, when a phone would not keep
+   *  this one; null when it would. */
+  rename: string | null;
+  steps: string[];
+} {
+  const rename = nameSurvivesDownload(name) ? null : downloadSafeName(name);
+  const saved = rename ?? name;
+  const first: string[] = [];
+  if (rename !== null) {
+    first.push(
+      `First rename the file on Drive to "${rename}" - a phone cannot save "${name}" unchanged, and Drive replaces only a file of the same name.`,
+    );
+  } else if (!nameKnown) {
+    first.push(
+      `Check that the file on Drive is named "${saved}" - Drive replaces only a file of the same name. Rename it on Drive if not.`,
+    );
+  }
+  return {
+    rename,
+    steps: [
+      ...first,
+      // After the save, so a check rather than a warning - and since the
+      // Finish saves by itself, the only guard (field test 2, F4): picking
+      // "name.zip" beside a new "name (1).zip" would upload the OLD zip
+      // over the tour (milestone review #1).
+      `Check the new file in Downloads is named ${saved}. If it is "${repeatDownloadName(saved)}", delete every copy of ${saved}, then tap "${FINISH_LABELS.saveAgain}".`,
+      `Open a new tab in Chrome (or your browser), type drive.google.com, then tick "Desktop site" in the ⋮ menu.`,
+      `Open the folder with your tour, tap New, then File upload, and pick ${saved}.`,
+      `Choose "Replace existing file", then Upload. If Drive does not ask, it uploaded a second copy - delete that copy. Keep the tab open until the upload finishes.`,
+    ],
+  };
+}
+
+/**
+ * The Drive website's address of the file behind a Drive link, or null
+ * (polish round M2, step 6: the button that copies it, so the creator can
+ * open the file on the Drive website and upload over it). Every form a
+ * Drive link takes carries the file id - the share page's path, `?id=`
+ * on the open, download and proxy forms, the API's path - so the address
+ * is rebuilt from it. A relative proxy path resolves against the page.
+ */
+export function driveFileAddress(url: string, base?: string): string | null {
+  const id = driveFileId(
+    url,
+    base ?? (typeof location === "undefined" ? undefined : location.href),
+  );
+  return id === null ? null : `https://drive.google.com/file/d/${id}/view`;
+}
+
+/** The name Chrome gives a download whose name is already taken. */
+function repeatDownloadName(filename: string): string {
+  return `${filename.replace(/\.zip$/i, "")} (1).zip`;
+}
+
+/**
+ * The status line after the Finish's save of the rebuilt zip (owner
+ * decisions D-F4a, D-F4b: always a plain save, never a share): where the
+ * file went and what comes next, or that nothing was saved and which
+ * button saves it. A Drive tour's names Downloads and the Drive steps
+ * (Drive replace plan §5 #5).
+ */
+export function finishSaveStatus(
+  delivered: boolean,
+  filename: string,
+  drive: boolean,
+): string {
+  if (!delivered) return FINISH_LABELS.notSaved;
+  return drive
+    ? FINISH_LABELS.savedToPhone(filename)
+    : FINISH_LABELS.saved(filename);
+}
+
+/**
+ * The warning a creator must see before printing a code whose identity
+ * differs from every measurement their tour already holds - or `null` when
+ * there is nothing to lose.
+ *
+ * **Why this exists, and why it is not a shortener feature.** A printed
+ * code's identity is a hash of the text it carries, and the measured pose
+ * is filed under that identity inside the hosted zip. Change the text -
+ * move the file, swap in a short link, add a tracking parameter - and the
+ * printed code asks for an id the archive does not hold. The visitor's app
+ * reads that as "this code has no level", never says anything is wrong,
+ * and simply waits out the scan gate into a location-only experience. The
+ * creator's walk is gone and nothing tells them.
+ *
+ * Reachable today with no new feature, which is why it is fixed here
+ * rather than waiting on the shortener decision it also blocks. The
+ * trigger, precisely: moving the hosted file breaks the LINK, which is a
+ * LOUD failure - a visitor gets a dead URL. What strands a measurement
+ * quietly is changing the link and then RE-PRINTING, because only then
+ * does the printed text, and with it the identity, change.
+ *
+ * It WARNS rather than refuses. Re-printing under a new link is a
+ * legitimate thing to do - it is the whole point of the shortener - and
+ * the creator is the only one who knows whether the measurement was worth
+ * keeping. What they must not have is silence.
+ */
+export function reprintOrphanWarning(
+  linkCodeIds: readonly string[],
+  measuredCodeIds: readonly string[],
+): string | null {
+  // No measurement means nothing to orphan. This is the common case: every
+  // tour before its first walk, and every tour of a creator who never
+  // measures.
+  if (measuredCodeIds.length === 0) return null;
+  // The question is about the LINK, not about this poster. One tour can
+  // carry several codes - that is what the code number and the multi-code
+  // PDF are for - and each gets a different identity, so a creator who
+  // measured code 2 and is re-printing code 1 has changed nothing. Asking
+  // only about the code in front of them told that creator their link had
+  // changed and offered to put it back, which is advice to undo something
+  // they never did (PR #442 review).
+  //
+  // So: if ANY measurement can still be produced by the current link, at
+  // any of its code numbers, the link is intact and there is nothing to
+  // warn about.
+  if (measuredCodeIds.some((id) => linkCodeIds.includes(id))) return null;
+  return (
+    "Note: this tour's measured codes do not match this link (or this " +
+    "spelling of it). " +
+    "Posters printed from this one are new codes: the old measurement " +
+    "will not be found for them, so hang them and measure them in step 5. " +
+    "To print codes that match the posters already hanging, use the " +
+    "original link they were printed from."
+  );
+}
+
+/** What the panel is about to print, and whether the author's input was
+ *  taken literally. */
+export interface PrintCodeSelection {
+  codeIndex: number;
+  /** True when the typed value was not a usable code number and 1 was used. */
+  coerced: boolean;
+}
+
+/**
+ * Read the "which code of the set" field.
+ *
+ * Blank means the first code — a creator printing one poster should not have
+ * to think about this. Anything else unusable is ALSO treated as the first
+ * code, but reported as coerced: two posters both printed as code 1 share one
+ * identity and one level file, which is a silent mis-placement and exactly
+ * what the per-code token exists to prevent. The panel says so rather than
+ * swallowing it.
+ */
+export function codeIndexFromInput(raw: string): PrintCodeSelection {
+  const trimmed = raw.trim();
+  if (trimmed === "") return { codeIndex: 1, coerced: false };
+  const value = Number(trimmed);
+  return Number.isInteger(value) && value >= 1
+    ? { codeIndex: value, coerced: false }
+    : { codeIndex: 1, coerced: true };
+}

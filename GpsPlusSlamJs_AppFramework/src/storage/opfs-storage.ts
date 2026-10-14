@@ -23,6 +23,8 @@
  */
 
 import { createLogger } from '../utils/logger';
+import { writeFileOrAbort } from './write-file-or-abort.js';
+import { packDepthAction } from './depth-sample-codec';
 import {
   formatTimestamp,
   formatActionFilename,
@@ -217,12 +219,50 @@ export function getAppRootHandle(): FileSystemDirectoryHandle | null {
 // ============================================================================
 
 /**
+ * True when the name `name` is already taken under `dir` (by a session
+ * directory — or by a file, which the follow-up `{ create: true }` call could
+ * not replace either). Used by {@link createSession} to avoid silently reusing
+ * a directory when two recordings start within the same (second-resolution)
+ * timestamp. Rethrows unexpected probe errors (storage failures) so the caller
+ * fails loudly instead of mislabeling the name.
+ */
+async function sessionDirExists(
+  dir: FileSystemDirectoryHandle,
+  name: string
+): Promise<boolean> {
+  try {
+    await dir.getDirectoryHandle(name, { create: false });
+    return true;
+  } catch (err) {
+    // Only NotFoundError means the name is free. A FILE occupying the name
+    // rejects with TypeMismatchError — report it TAKEN so the probe advances
+    // to the next suffix instead of crashing on the follow-up
+    // `{ create: true }` (which also rejects for a file-occupied name).
+    // Anything else (InvalidStateError etc.) is a storage failure, not
+    // knowledge about the name: rethrow ("free" would crash later with a
+    // misleading create-time error; "taken" would loop the probe forever).
+    if (err instanceof DOMException && err.name === 'NotFoundError') {
+      return false;
+    }
+    if (err instanceof DOMException && err.name === 'TypeMismatchError') {
+      return true;
+    }
+    throw err;
+  }
+}
+
+/**
  * Create a new recording session.
  *
  * Creates the directory structure:
  * - /gps-plus-slam/sessions/recording-{timestamp}/
  * - /gps-plus-slam/sessions/recording-{timestamp}/actions/
  * - /gps-plus-slam/sessions/recording-{timestamp}/images/ (legacy: frames/)
+ *
+ * The folder name is `recording-{timestamp}` at whole-second resolution; if a
+ * directory with that name already exists (two recordings started in the same
+ * UTC second), a numeric suffix (`-2`, `-3`, …) is appended so the new session
+ * never silently reuses and corrupts the earlier one's directory.
  *
  * @param timestamp - Session start time (used for folder naming)
  * @param _contextTag - Opaque tag; not used by the flat layout but accepted
@@ -239,19 +279,47 @@ export async function createSession(
       'OPFS storage not initialized. Call initOpfsStorage first.'
     );
   }
+  return createSessionInDirectory(sessionsDir, timestamp);
+}
 
-  const sessionName = `recording-${formatTimestamp(timestamp)}`;
-  currentSessionHandle = await sessionsDir.getDirectoryHandle(sessionName, {
+/**
+ * {@link createSession}'s layout, collision probe and handle hand-off, in a
+ * parent directory the CALLER owns - so an app whose recordings must not
+ * land in the Recorder's `sessions/` folder (the Tour Viewer's, which shares
+ * the origin) reuses the write functions below without re-implementing the
+ * probe. Needs no {@link initOpfsStorage}; the subsequent `writeAction` /
+ * `writeFrame` / `writeSessionMetadata` calls target the new session.
+ *
+ * @param parent - The directory the `recording-{timestamp}` folder goes in.
+ * @param timestamp - Session start time (used for folder naming)
+ */
+export async function createSessionInDirectory(
+  parent: FileSystemDirectoryHandle,
+  timestamp: Date
+): Promise<CreateSessionResult> {
+  // `formatTimestamp` resolves to whole UTC seconds, so two recordings started
+  // within the same second collide on `recording-<ts>/`. Because the handle is
+  // opened with `{ create: true }`, a colliding name silently REUSES the
+  // existing directory and mixes both recordings' session.json/actions/frames.
+  // Probe for a free name and append a numeric suffix on collision so each
+  // session owns a distinct directory (the first keeps the bare timestamp).
+  const baseName = `recording-${formatTimestamp(timestamp)}`;
+  let sessionName = baseName;
+  let suffix = 1;
+  while (await sessionDirExists(parent, sessionName)) {
+    suffix += 1;
+    sessionName = `${baseName}-${suffix}`;
+  }
+  const session = await parent.getDirectoryHandle(sessionName, {
     create: true,
   });
-
-  actionsHandle = await currentSessionHandle.getDirectoryHandle('actions', {
+  const actions = await session.getDirectoryHandle('actions', {
     create: true,
   });
-  framesHandle = await currentSessionHandle.getDirectoryHandle(
-    SESSION_IMAGES_DIR,
-    { create: true }
-  );
+  const frames = await session.getDirectoryHandle(SESSION_IMAGES_DIR, {
+    create: true,
+  });
+  setSessionHandles(session, actions, frames);
 
   log.info('Session created:', sessionName);
 
@@ -292,42 +360,6 @@ export function setSessionHandles(
 // ============================================================================
 
 /**
- * Safely write data to a file handle with proper cleanup.
- *
- * Uses try/finally to ensure the writable stream is always cleaned up,
- * calling abort() on errors to prevent resource leaks and file locks.
- */
-async function safeWriteToFile(
-  fileHandle: FileSystemFileHandle,
-  data: string | Blob
-): Promise<void> {
-  const writable = await fileHandle.createWritable();
-  let writeError: unknown = null;
-  try {
-    await writable.write(data);
-    await writable.close();
-  } catch (error: unknown) {
-    writeError = error;
-  } finally {
-    if (writeError !== null) {
-      try {
-        await writable.abort();
-      } catch {
-        // Intentionally ignored: abort failure should not overwrite writeError
-      }
-    }
-  }
-  if (writeError !== null) {
-    if (writeError instanceof Error) {
-      throw writeError;
-    }
-    const message =
-      typeof writeError === 'string' ? writeError : 'File write failed';
-    throw new Error(message);
-  }
-}
-
-/**
  * Write a Redux action to the current session's actions directory.
  *
  * @param action - The action object to write
@@ -347,8 +379,11 @@ export async function writeAction(
     create: true,
   });
 
-  const json = JSON.stringify(action, null, 2);
-  await safeWriteToFile(fileHandle, json);
+  // Compact, and a depth sample with its grid packed (scan pass S2,
+  // `depth-sample-codec.ts`): the shared parse unpacks it, so every reader
+  // still sees the action as dispatched.
+  const json = JSON.stringify(packDepthAction(action));
+  await writeFileOrAbort(fileHandle, json);
 }
 
 /**
@@ -368,7 +403,7 @@ export async function writeFrame(blob: Blob, index: number): Promise<void> {
     create: true,
   });
 
-  await safeWriteToFile(fileHandle, blob);
+  await writeFileOrAbort(fileHandle, blob);
 }
 
 /**
@@ -389,7 +424,7 @@ export async function writeSessionMetadata(
   });
 
   const json = JSON.stringify(metadata, null, 2);
-  await safeWriteToFile(fileHandle, json);
+  await writeFileOrAbort(fileHandle, json);
 
   log.info('Session metadata written');
 }

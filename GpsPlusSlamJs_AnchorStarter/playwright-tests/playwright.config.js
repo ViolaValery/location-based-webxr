@@ -1,18 +1,23 @@
 // @ts-check
 import { defineConfig, devices } from "@playwright/test";
 
+import { browserLaunchArgs } from "../../scripts/e2e/browser-launch.mjs";
+
 /**
  * Playwright configuration for the persistent-anchor starter example.
  *
- * Scope (Tier 0, see GpsPlusSlamJs_Docs/docs/2026-06-01-anchor-starter-e2e-test-plan.md):
+ * Scope (Tier 0, see GpsPlusSlamJs_Docs/docs/2026-06-01-0447-anchor-starter-e2e-test-plan.md):
  * - The page loads without console errors.
  * - The static start/intro UI renders.
  * - The E1 capability gate fires honestly in a desktop browser that lacks
  *   WebXR (Playwright Chromium has no `navigator.xr`), instead of crashing.
  *
  * Chromium-only because WebXR is Chrome-focused. The dev server runs on the
- * starter's dedicated port 5181 so it can coexist with the minimal example
- * (5180) and the recorder (5173). Clipboard permissions are granted up front
+ * The port is allocated in docs/dev-server-ports.md, which is the ONLY place
+ * that knows the whole set — three packages once shared 5182 while all three
+ * comments named their siblings and asserted distinctness.
+ *
+ * Clipboard permissions are granted up front
  * so the Tier 1 copy-link tests (a later plan tier) can read/write the
  * clipboard without re-prompting.
  */
@@ -20,6 +25,14 @@ const captureArtifacts = process.env.PLAYWRIGHT_CAPTURE === "1";
 
 export default defineConfig({
   testDir: ".",
+  // REFUSE TO RUN AGAINST A DEV SERVER OLDER THAN THE LAST LIBRARY BUILD.
+  // `reuseExistingServer` below asks only whether the URL responds, and a server
+  // that predates a rebuild of a linked workspace library still rewrites imports
+  // to content-hashed files the rebuild renamed away — one 404, no boot, and every
+  // spec that waits for the app times out looking exactly like a code defect.
+  // That cost a session and a mislabelled commit on 2026-08-16.
+  // See scripts/e2e/dev-server-freshness.mjs.md.
+  globalSetup: "../../scripts/e2e/playwright-global-setup.mjs",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -28,6 +41,11 @@ export default defineConfig({
     ? [["github"], ["json", { outputFile: "../test-results/results.json" }]]
     : [["list"], ["html", { open: "never" }]],
   use: {
+    // A browser stage that run-stage lowered below normal priority (Windows)
+    // renders in the browser process, which inherits that priority, instead
+    // of a GPU process Chromium raises itself. See
+    // scripts/e2e/browser-launch.mjs.md.
+    launchOptions: { args: browserLaunchArgs(process.env) },
     baseURL: "http://127.0.0.1:5181",
     trace: captureArtifacts ? "on" : "on-first-retry",
     screenshot: captureArtifacts ? "on" : "only-on-failure",

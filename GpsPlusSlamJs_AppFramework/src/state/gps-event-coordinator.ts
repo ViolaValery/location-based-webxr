@@ -18,14 +18,29 @@
 
 import type { ReducersMapObject } from '@reduxjs/toolkit';
 import type { SlamAppStore } from './create-slam-app-store';
-import type { LatLong, RecordGpsEventPayload } from 'gps-plus-slam-js';
+import type {
+  LatLong,
+  RecordGpsEventPayload,
+  RawAbsoluteOrientation,
+} from 'gps-plus-slam-js';
 import { recordGpsEvent, setZeroPos } from 'gps-plus-slam-js';
 import type { GpsPosition, RawDeviceOrientation } from '../sensors/gps';
+import {
+  getLastDeviceOrientation,
+  resetDeviceOrientationCache,
+} from '../sensors/device-orientation-cache';
+import {
+  ensureAbsoluteOrientationWatch,
+  getLatestAbsoluteOrientation,
+  type AbsoluteOrientationReading,
+  type AbsoluteOrientationStatus,
+} from '../sensors/absolute-orientation';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('RecordingCoordinator');
 import type { ARPose } from '../types/ar-types';
-import type { Vector3, Quaternion, RawGpsPoint } from 'gps-plus-slam-js';
+import { extractOdomPosition, extractOdomRotation } from '../types/ar-types';
+import type { RawGpsPoint } from 'gps-plus-slam-js';
 import { getZeroReference, getOdometryPositions } from 'gps-plus-slam-js';
 
 /** Counter for generating unique GPS point IDs */
@@ -39,29 +54,44 @@ export interface RecordingCoordinatorConfig {
   store: SlamAppStore<ReducersMapObject>;
   /** Function to get current AR pose (from WebXR module) */
   getArPose: () => ARPose | null;
+  /**
+   * Where the built fix goes, instead of `store.dispatch(recordGpsEvent(payload))`
+   * (the default). Called once per recorded fix, after the session zero is
+   * set, with the payload exactly as the default would dispatch it. For an
+   * app that sends other observations WITH the fix in one solve: the Tour
+   * Viewer's code keep-alive dispatches the fix and its ring as one
+   * `recordGpsEventBatch` (authoring plan 2026-09-28-0953, D18). The router
+   * owns the dispatch: it must record the fix (alone or in a batch), or the
+   * fix is lost.
+   */
+  recordFix?: (payload: RecordGpsEventPayload) => void;
+  /**
+   * The compass cold start (owner decision D30, 2026-10-02). `'auto'` (the
+   * default) starts the `AbsoluteOrientationSensor` watch at the first fix
+   * that arrives while recording, so every fix after it carries
+   * `rawAbsoluteOrientation` and the core's cold-start yaw override can act.
+   * It never restarts a watch the app started itself, and it is a reported
+   * no-op wherever the sensor does not exist (iOS, Safari, Firefox, desktop,
+   * headless). `'off'` never starts it; a watch the app starts itself still
+   * feeds the fixes.
+   */
+  absoluteOrientation?: 'auto' | 'off';
+  /**
+   * Status of the watch the `'auto'` default started (`active`,
+   * `unavailable`, `error`). Not called for a watch the app started itself;
+   * that start reports to its own callback. Defaults to a log line.
+   */
+  onAbsoluteOrientationStatus?: (status: AbsoluteOrientationStatus) => void;
 }
 
-/**
- * State for device orientation (captured separately from GPS)
- */
-let lastDeviceOrientation: RawDeviceOrientation | null = null;
-
-/**
- * Update the cached device orientation.
- * Called by orientation watch, used when GPS event arrives.
- */
-export function updateDeviceOrientation(
-  orientation: RawDeviceOrientation
-): void {
-  lastDeviceOrientation = orientation;
-}
-
-/**
- * Get the current cached device orientation.
- */
-export function getLastDeviceOrientation(): RawDeviceOrientation | null {
-  return lastDeviceOrientation;
-}
+// Device-orientation cache moved to `sensors/device-orientation-cache.ts`
+// (quality-review G-8 — it is a sensor concern; ar/webxr-session consumed it
+// through this state module, an ar→state inversion). Re-exported so the
+// published API is unchanged.
+export {
+  updateDeviceOrientation,
+  getLastDeviceOrientation,
+} from '../sensors/device-orientation-cache';
 
 // eulerToQuaternion imported from library; re-export for backward compatibility
 export { eulerToQuaternion } from 'gps-plus-slam-js';
@@ -70,66 +100,68 @@ export { eulerToQuaternion } from 'gps-plus-slam-js';
  * Clear cached state (for testing or session reset)
  */
 export function resetCoordinatorState(): void {
-  lastDeviceOrientation = null;
+  resetDeviceOrientationCache();
   gpsEventCounter = 0;
 }
 
-/**
- * Extract raw odometry position tuple from ARPose.
- *
- * Returns the raw WebXR position without coordinate conversion.
- * The reducer applies the WebXR→NUE transform when storing into state
- * (raw-storage pattern, see docs/2026-04-09-raw-storage-convert-on-read.md).
- *
- * WebXR local-floor frame: X=East, Y=Up, Z=South (toward viewer / backward).
- */
-export function extractOdomPosition(arPose: ARPose): Vector3 {
-  return [arPose.position.x, arPose.position.y, arPose.position.z];
-}
-
-/**
- * Extract odometry rotation tuple from ARPose.
- */
-export function extractOdomRotation(arPose: ARPose): Quaternion {
-  return [
-    arPose.orientation.x,
-    arPose.orientation.y,
-    arPose.orientation.z,
-    arPose.orientation.w,
-  ];
-}
+// Pure ARPose accessors moved next to the type (`types/ar-types.ts`,
+// quality-review G-8). Re-exported so the published API is unchanged.
+export { extractOdomPosition, extractOdomRotation } from '../types/ar-types';
 
 /**
  * Build a RawGpsPoint from GPS position data.
  * Returns only raw sensor fields — no derived fields (coordinates, weight,
- * zeroRef, deviceRotation). Derived fields are computed by the library
- * reducer when the action is dispatched (raw-storage pattern).
+ * zeroRef). Derived fields are computed by the library reducer when the
+ * action is dispatched (raw-storage pattern).
  *
  * @param gpsPosition - GPS position from Geolocation API
- * @param deviceOrientation - Optional device orientation from sensors
+ * @param deviceOrientation - Accepted for signature stability; no longer
+ *   read (the legacy `compassAbsolute` field it fed is no longer recorded)
  * @returns RawGpsPoint ready for the action payload
  */
 export function buildRawGpsPoint(
   gpsPosition: GpsPosition,
   deviceOrientation: RawDeviceOrientation | null
 ): RawGpsPoint {
-  // Preserve DeviceOrientationEvent.absolute flag — indicates whether compass
-  // alpha is relative to magnetic north (true) or arbitrary (false)
-  const compassAbsolute: boolean | undefined = deviceOrientation
-    ? deviceOrientation.absolute
-    : undefined;
-
+  // `deviceOrientation` is still accepted (and consumed by the live
+  // odometry-restart snapshot path elsewhere) but the legacy
+  // `compassAbsolute` field is no longer populated — it was dead data on
+  // recorded GPS events (§5b dead-code removal, 2026-06-28).
+  void deviceOrientation;
   return {
     id: `gps-${++gpsEventCounter}`,
     latitude: gpsPosition.lat,
     longitude: gpsPosition.lon,
-    altitude: gpsPosition.altitude ?? undefined,
+    // OMITTED, not set to `undefined`, when the fix lacked the field.
+    // `RawGpsPoint` marks these optional, and under exactOptionalPropertyTypes
+    // an absent key and a present `undefined` are different types - only the
+    // former survives a JSON round-trip into a recording.
+    ...(gpsPosition.altitude == null ? {} : { altitude: gpsPosition.altitude }),
     latLongAccuracy: gpsPosition.accuracy,
-    altitudeAccuracy: gpsPosition.altitudeAccuracy ?? undefined,
-    heading: gpsPosition.heading ?? undefined,
-    speed: gpsPosition.speed ?? undefined,
-    compassAbsolute,
+    ...(gpsPosition.altitudeAccuracy == null
+      ? {}
+      : { altitudeAccuracy: gpsPosition.altitudeAccuracy }),
+    ...(gpsPosition.heading == null ? {} : { heading: gpsPosition.heading }),
+    ...(gpsPosition.speed == null ? {} : { speed: gpsPosition.speed }),
     timestamp: gpsPosition.timestamp,
+  };
+}
+
+/**
+ * Map a capture-module {@link AbsoluteOrientationReading} to the library's
+ * {@link RawAbsoluteOrientation} payload shape (the only difference is the
+ * timestamp field name: capture `timestamp` → payload `sampleTimestamp`).
+ * Returns `undefined` when the sensor produced no reading (most non-Chrome).
+ */
+export function toRawAbsoluteOrientation(
+  reading: AbsoluteOrientationReading | null
+): RawAbsoluteOrientation | undefined {
+  if (!reading) return undefined;
+  return {
+    quaternion: reading.quaternion,
+    referenceFrame: reading.referenceFrame,
+    screenAngleDeg: reading.screenAngleDeg,
+    sampleTimestamp: reading.timestamp,
   };
 }
 
@@ -138,38 +170,35 @@ export function buildRawGpsPoint(
  * This is a pure function for testability.
  *
  * Stores only raw sensor data in the payload. The library reducer
- * computes derived fields (coordinates, weight, deviceRotation)
- * when the action is processed (raw-storage pattern).
+ * computes derived fields (coordinates, weight) when the action is
+ * processed (raw-storage pattern).
  *
  * @param gpsPosition - GPS position from Geolocation API
  * @param arPose - AR pose from WebXR
  * @param deviceOrientation - Optional device orientation from sensors
+ * @param absoluteOrientation - Optional AbsoluteOrientationSensor reading
  * @returns RecordGpsEventPayload ready for dispatch
  */
 export function buildRecordGpsEventPayload(
   gpsPosition: GpsPosition,
   arPose: ARPose,
-  deviceOrientation: RawDeviceOrientation | null
+  deviceOrientation: RawDeviceOrientation | null,
+  absoluteOrientation: AbsoluteOrientationReading | null = null
 ): RecordGpsEventPayload {
-  // Convert nullable sensor orientation to library's non-nullable type,
-  // only when all Euler angles are available.
-  const rawDeviceOrientation =
-    deviceOrientation?.alpha != null &&
-    deviceOrientation?.beta != null &&
-    deviceOrientation?.gamma != null
-      ? {
-          alpha: deviceOrientation.alpha,
-          beta: deviceOrientation.beta,
-          gamma: deviceOrientation.gamma,
-          absolute: deviceOrientation.absolute,
-        }
-      : undefined;
-
+  // The legacy `rawDeviceOrientation` field is no longer populated on
+  // recorded GPS events — it was dead data (the library derived
+  // `deviceRotation`/`compassAbsolute` from it but nothing consumed them).
+  // The live odometry-restart orientation snapshot reads the cached
+  // orientation via getLastDeviceOrientation instead (§5b dead-code
+  // removal, 2026-06-28).
+  const rawAbsoluteOrientation = toRawAbsoluteOrientation(absoluteOrientation);
   return {
     odomPosition: extractOdomPosition(arPose),
     odomRotation: extractOdomRotation(arPose),
     rawGpsPoint: buildRawGpsPoint(gpsPosition, deviceOrientation),
-    rawDeviceOrientation,
+    // OMITTED when there was no reading, for the same reason as the fields in
+    // `buildRawGpsPoint` above.
+    ...(rawAbsoluteOrientation === undefined ? {} : { rawAbsoluteOrientation }),
   };
 }
 
@@ -188,12 +217,47 @@ export function createGpsPositionHandler(
   config: RecordingCoordinatorConfig
 ): (position: GpsPosition) => void {
   const { store, getArPose } = config;
+  const recordFix =
+    config.recordFix ??
+    ((payload: RecordGpsEventPayload) => {
+      store.dispatch(recordGpsEvent(payload));
+    });
+  const onCompassStatus =
+    config.onAbsoluteOrientationStatus ??
+    ((status: AbsoluteOrientationStatus) => {
+      log.info('Absolute orientation (compass cold start):', status);
+    });
+  const compassMode = config.absoluteOrientation ?? 'auto';
+  // Validated, not coerced: a JS caller's typo ('Off', false) must not
+  // silently start a sensor the app meant to keep off.
+  if (compassMode !== 'auto' && compassMode !== 'off') {
+    throw new TypeError(
+      `createGpsPositionHandler: absoluteOrientation must be 'auto' or 'off', got ${String(compassMode)}`
+    );
+  }
+  // Once per handler, so an app's teardown stop (the Recorder's, OsmDemo's)
+  // is never undone by a late fix of the same handler.
+  let compassStartPending = compassMode === 'auto';
 
   return (position: GpsPosition): void => {
     // Check if we're recording
     const state = store.getState().recording;
     if (!state.isRecording) {
       return; // Don't record if not in recording mode
+    }
+
+    // THE COMPASS COLD START (D30): started here, at the first fix of a
+    // recording, rather than when the handler is created, because two apps
+    // create the handler at page load and fixes flow only inside their AR
+    // session. Fire-and-forget: the first fix never waits on a sensor that
+    // may never arrive, and the start never throws.
+    if (compassStartPending) {
+      compassStartPending = false;
+      void ensureAbsoluteOrientationWatch(onCompassStatus).catch(
+        (err: unknown) => {
+          log.error('Absolute orientation start failed:', err);
+        }
+      );
     }
 
     // Get current AR pose - this is the CRITICAL step
@@ -221,13 +285,16 @@ export function createGpsPositionHandler(
       return;
     }
 
-    // Build and dispatch the library's recordGpsEvent action
+    // Build and dispatch the library's recordGpsEvent action. The absolute
+    // orientation (if the AbsoluteOrientationSensor is active) is snapshotted
+    // here so it pairs exactly with this event's AR pose.
     const payload = buildRecordGpsEventPayload(
       position,
       arPose,
-      lastDeviceOrientation
+      getLastDeviceOrientation(),
+      getLatestAbsoluteOrientation()
     );
-    store.dispatch(recordGpsEvent(payload));
+    recordFix(payload);
 
     // Read state AFTER dispatch to get accurate count (Issue 6: was using stale pre-dispatch state)
     const postDispatchState = store.getState();

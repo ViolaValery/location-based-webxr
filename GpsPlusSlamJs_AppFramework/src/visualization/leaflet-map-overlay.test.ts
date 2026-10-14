@@ -20,6 +20,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import fc from 'fast-check';
 import * as THREE from 'three';
 // Resolves to the mocked leaflet (see `vi.mock('leaflet')` below); used to
 // inspect `divIcon` call args in the F5-A marker-prominence tests.
@@ -262,6 +263,43 @@ describe('LeafletMapOverlay', () => {
     vi.restoreAllMocks();
   });
 
+  describe('F1 viewer-plane invariant (2026-07-04 user feedback)', () => {
+    // Why this test matters: the map plane is parented to the CameraFollower,
+    // which follows the camera POSITION but keeps IDENTITY rotation
+    // (GPS-world-aligned). Two consequences the defaults must respect:
+    //  - DEFAULT_Z_OFFSET displaces the plane in a FIXED WORLD direction,
+    //    not "forward of the user" — any non-zero value helps at one camera
+    //    yaw and hurts at the opposite one, so the yaw-symmetric optimum is 0;
+    //  - in heading-up mode the plane yaws about its own centre each frame,
+    //    sweeping its corners on a radius of worldSize/√2.
+    // CSS3D content that crosses the viewer plane (camera-space z ≥ 0) is cut
+    // off by the browser — an effective near plane at 0 that camera.near
+    // cannot move. A plane point d metres horizontally behind the camera and
+    // |h| below it crosses whenever tan(pitch) < d/|h|, so the achievable
+    // guarantee is: no corner crosses at any camera yaw / heading-up yaw for
+    // pitches ≥ the design pitch θ*. See the F1 spec in
+    // GpsPlusSlamJs_Docs/docs/2026-07-04-1626-ar-clipping-planes-and-lifecycle-plan.md.
+    it('defaults satisfy |zOff| + s/√2 + lag ≤ |h|·tan(θ*) for θ* = 51°', () => {
+      // Follower position-lerp lag while walking (metres, conservative).
+      const LAG_MARGIN_M = 0.5;
+      // Design pitch: at or above this look-down angle the map never clips.
+      const DESIGN_PITCH_DEG = 51;
+
+      const worstBehindDistance =
+        Math.abs(DEFAULT_Z_OFFSET) +
+        DEFAULT_WORLD_SIZE / Math.SQRT2 +
+        LAG_MARGIN_M;
+      const allowed =
+        Math.abs(DEFAULT_HEIGHT_OFFSET) *
+        Math.tan((DESIGN_PITCH_DEG * Math.PI) / 180);
+
+      expect(worstBehindDistance).toBeLessThanOrEqual(allowed);
+      // The offset must stay 0: with a world-yaw-locked parent any forward
+      // offset is a fixed compass direction, not "ahead of the user".
+      expect(DEFAULT_Z_OFFSET).toBe(0);
+    });
+  });
+
   describe('constructor', () => {
     // Why: Ensures defaults are applied when no options are provided
     it('should use default constants when no options are provided', () => {
@@ -483,6 +521,28 @@ describe('LeafletMapOverlay', () => {
       });
       // At least the user position marker
       expect(markerCount).toBeGreaterThanOrEqual(1);
+      overlay.dispose();
+    });
+
+    // Why: Finding 2 (2026-06-28) — the live overlay AND replay both call
+    // render(), which forwards the MapData straight to drawMapData with
+    // showUserPosition: true. A MapData carrying a userHeadingDeg must therefore
+    // produce the rotated view-direction line in the user-position divIcon for
+    // both modes. (Replay re-dispatches recorded odom rotations through the same
+    // store → rebuildMap → render path, so this one assertion covers it.)
+    it('renders the view-direction heading line when MapData carries a userHeadingDeg', () => {
+      const { overlay } = createOverlay();
+      overlay.setGpsPosition(50.0, 8.0);
+      overlay.show();
+
+      vi.mocked(L.divIcon).mockClear();
+      overlay.render({ ...sampleMapData(), userHeadingDeg: 123 });
+
+      const opts = vi.mocked(L.divIcon).mock.calls.at(-1)?.[0] as {
+        html?: string;
+      };
+      expect(String(opts.html)).toContain('map-overlay-user-heading');
+      expect(String(opts.html)).toContain('rotate(123');
       overlay.dispose();
     });
 
@@ -983,6 +1043,264 @@ describe('LeafletMapOverlay', () => {
 
       overlay.dispose();
       document.body.removeChild(customRoot);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 11. Heading-up rotation (2026-06-29 plan)
+  // ---------------------------------------------------------------------------
+
+  describe('heading-up rotation', () => {
+    /**
+     * Azimuth (deg, [0,360)) of the map's north edge (local +Y) in world space,
+     * in the same atan2(x,−z) convention as `viewAzimuthDeg` / `headingUpQuat`.
+     * Tests assert on this so they exercise the real CSS3DObject orientation.
+     * The applied yaw is `headingUpQuat(viewAzimuth − heading)`, so the north
+     * edge azimuth equals `(viewAzimuth − heading) mod 360`.
+     */
+    function northEdgeAzDeg(obj: THREE.Object3D): number {
+      const d = new THREE.Vector3(0, 1, 0).applyQuaternion(obj.quaternion);
+      const deg = (Math.atan2(d.x, -d.z) * 180) / Math.PI;
+      return ((deg % 360) + 360) % 360;
+    }
+
+    /** Point the camera at a horizontal azimuth (atan2(x,−z) convention). */
+    function aimCamera(camera: THREE.Camera, azDeg: number): void {
+      const a = (azDeg * Math.PI) / 180;
+      camera.position.set(0, 0, 0);
+      camera.lookAt(Math.sin(a), 0, -Math.cos(a));
+      camera.updateMatrixWorld(true);
+    }
+
+    function sampleMapData(): MapData {
+      return {
+        userPosition: { lat: 50.0, lng: 8.0 },
+        rawGpsPath: [{ lat: 50.0, lng: 8.0 }],
+        fusedPath: [],
+        alignmentSnapshots: [],
+      };
+    }
+
+    function showOverlayWithParent(headingUp: boolean) {
+      const scene = createScene();
+      const camera = createCamera();
+      const parent = new THREE.Object3D();
+      const overlay = new LeafletMapOverlay(scene, camera, {
+        mapParent: parent,
+        headingUp,
+      });
+      overlay.setGpsPosition(50.0, 8.0);
+      overlay.show();
+      return { overlay, parent, camera };
+    }
+
+    // Why: default is north-up — heading-up must not engage unless opted in, so
+    // the CSS3DObject keeps the baseline tilt regardless of camera / heading.
+    it('stays north-up (azimuth 0) when heading-up is disabled (default)', () => {
+      const { overlay, parent, camera } = showOverlayWithParent(false);
+      aimCamera(camera, 50);
+      overlay.render({ ...sampleMapData(), userHeadingDeg: 90 });
+      overlay.updatePosition(1, camera);
+
+      expect(northEdgeAzDeg(parent.children[0])).toBeCloseTo(0, 3);
+      overlay.dispose();
+    });
+
+    // Why (the bug fix): the applied yaw is camera-RELATIVE. With the camera
+    // looking north (az 0) and heading 90, the north edge azimuth must be
+    // (0 − 90) = 270 — NOT 90. Using the absolute heading was the double-count.
+    it('applies (viewAzimuth − heading): camera north + heading 90 → 270°', () => {
+      const { overlay, parent, camera } = showOverlayWithParent(true);
+      aimCamera(camera, 0);
+      overlay.render({ ...sampleMapData(), userHeadingDeg: 90 });
+      overlay.updatePosition(1, camera); // first sample snaps the heading
+
+      expect(northEdgeAzDeg(parent.children[0])).toBeCloseTo(270, 2);
+      overlay.dispose();
+    });
+
+    // Why (the crux of the fix): when the camera azimuth equals the heading, the
+    // GPS↔scene offset cancels to zero local yaw — the camera alone provides the
+    // heading-up appearance. This is exactly what the old absolute-heading code
+    // could not do (it would have over-rotated to 90°).
+    it('cancels to baseline when camera azimuth equals the heading', () => {
+      const { overlay, parent, camera } = showOverlayWithParent(true);
+      aimCamera(camera, 90);
+      overlay.render({ ...sampleMapData(), userHeadingDeg: 90 });
+      overlay.updatePosition(1, camera);
+
+      expect(northEdgeAzDeg(parent.children[0])).toBeCloseTo(0, 2);
+      overlay.dispose();
+    });
+
+    // Why: for a FIXED heading, turning the head must rotate the map by exactly
+    // the camera delta (the camera term tracks the head live, no lag) — this is
+    // what keeps "forward" up at every heading, not just one.
+    it('tracks the live camera azimuth 1:1 for a fixed heading', () => {
+      const { overlay, parent, camera } = showOverlayWithParent(true);
+      overlay.render({ ...sampleMapData(), userHeadingDeg: 30 });
+
+      aimCamera(camera, 0);
+      overlay.updatePosition(1, camera);
+      const az0 = northEdgeAzDeg(parent.children[0]); // (0 − 30) = 330
+
+      aimCamera(camera, 50);
+      overlay.updatePosition(1, camera);
+      const az1 = northEdgeAzDeg(parent.children[0]); // (50 − 30) = 20
+
+      const delta = ((az1 - az0 + 540) % 360) - 180; // shortest signed delta
+      expect(delta).toBeCloseTo(50, 2); // exactly the camera turn
+      overlay.dispose();
+    });
+
+    // Why: with no camera (e.g. before the render camera exists) heading-up must
+    // be a safe no-op — the map keeps the baseline tilt.
+    it('is a no-op when no camera is provided', () => {
+      const { overlay, parent } = showOverlayWithParent(true);
+      overlay.render({ ...sampleMapData(), userHeadingDeg: 90 });
+      overlay.updatePosition(1); // no camera arg
+
+      expect(northEdgeAzDeg(parent.children[0])).toBeCloseTo(0, 3);
+      overlay.dispose();
+    });
+
+    // Why: `updatePosition` documents itself as "a no-op when ... the map is not
+    // shown", but `hide()` only DETACHES the CSS3DObject (`removeCssObject`) — it
+    // never nulls the field — so the old guard (which checked only `cssObject`)
+    // kept doing per-frame quaternion work while hidden. A consumer that drives
+    // the frame loop without gating on `isVisible()` (the framework is a library)
+    // would waste work and rotate a detached object. Assert the hidden no-op.
+    it('is a no-op when the map is hidden (honors the not-shown contract)', () => {
+      const { overlay, parent, camera } = showOverlayWithParent(true);
+      aimCamera(camera, 0);
+      overlay.render({ ...sampleMapData(), userHeadingDeg: 90 });
+      overlay.updatePosition(1, camera);
+      const css = parent.children[0] as THREE.Object3D; // the CSS3DObject
+      const before = css.quaternion.clone();
+
+      overlay.hide(); // detaches the CSS3DObject but keeps the field non-null
+
+      // Turning the head + updating while hidden must NOT touch the quaternion.
+      aimCamera(camera, 90);
+      overlay.updatePosition(1, camera);
+      expect(css.quaternion.equals(before)).toBe(true);
+      overlay.dispose();
+    });
+
+    // Why: when the heading becomes undefined (camera near-vertical), the map
+    // must HOLD its last orientation, not snap to north.
+    it('holds the last orientation when the target heading becomes null', () => {
+      const { overlay, parent, camera } = showOverlayWithParent(true);
+      aimCamera(camera, 0);
+      overlay.render({ ...sampleMapData(), userHeadingDeg: 90 });
+      overlay.updatePosition(1, camera);
+      const held = northEdgeAzDeg(parent.children[0]);
+
+      overlay.render({ ...sampleMapData(), userHeadingDeg: null });
+      overlay.updatePosition(1, camera);
+
+      expect(northEdgeAzDeg(parent.children[0])).toBeCloseTo(held, 3);
+      overlay.dispose();
+    });
+
+    // Why (PR #131 review): a non-finite heading (NaN/Infinity) must be treated
+    // exactly like `null` — held, never forwarded. Without normalization at the
+    // render() boundary, NaN flows through the heading smoothing into
+    // `cssObject.quaternion.set(...)`, writing a quaternion full of NaN that
+    // corrupts the CSS3D transform instead of degrading gracefully.
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      it(`holds the last orientation (no NaN quaternion) when userHeadingDeg is ${bad}`, () => {
+        const { overlay, parent, camera } = showOverlayWithParent(true);
+        aimCamera(camera, 0);
+        overlay.render({ ...sampleMapData(), userHeadingDeg: 90 });
+        overlay.updatePosition(1, camera);
+        const held = northEdgeAzDeg(parent.children[0]);
+
+        overlay.render({ ...sampleMapData(), userHeadingDeg: bad });
+        overlay.updatePosition(1, camera);
+
+        const cssObject = parent.children[0] as THREE.Object3D;
+        const q = cssObject.quaternion;
+        expect(Number.isFinite(q.x)).toBe(true);
+        expect(Number.isFinite(q.y)).toBe(true);
+        expect(Number.isFinite(q.z)).toBe(true);
+        expect(Number.isFinite(q.w)).toBe(true);
+        expect(northEdgeAzDeg(parent.children[0])).toBeCloseTo(held, 3);
+        overlay.dispose();
+      });
+    }
+
+    // Why: the heading is smoothed — snap on the first sample, then lerp toward
+    // subsequent ~1 Hz targets. With the camera fixed, a small dt must move the
+    // heading only PART of the way (so the north edge moves partway).
+    it('snaps the first heading sample then lerps partway', () => {
+      const { overlay, parent, camera } = showOverlayWithParent(true);
+      aimCamera(camera, 0);
+      overlay.render({ ...sampleMapData(), userHeadingDeg: 0 });
+      overlay.updatePosition(0.001, camera); // snap: (0 − 0) = 0
+      expect(northEdgeAzDeg(parent.children[0])).toBeCloseTo(0, 2);
+
+      overlay.render({ ...sampleMapData(), userHeadingDeg: 90 });
+      overlay.updatePosition(0.016, camera); // heading lerps toward 90
+
+      // north edge azimuth = (0 − partwayHeading); partwayHeading ∈ (0, 90).
+      const az = northEdgeAzDeg(parent.children[0]);
+      expect(az).toBeGreaterThan(270); // = 360 − partway
+      expect(az).toBeLessThan(360);
+      overlay.dispose();
+    });
+
+    // Why (the regression guard for the whole bug class): across the FULL input
+    // space, the applied yaw must be camera-RELATIVE — north-edge azimuth =
+    // (viewAzimuth − heading) — and, crucially, the heading line (drawn at
+    // `heading` inside the divIcon) must land at the camera-forward azimuth so
+    // the live camera projects it to screen-up at EVERY heading. The original bug
+    // (absolute heading) failed this everywhere except one heading; a sign/rate
+    // regression in either the rotation or the line would break the second
+    // assertion. `dt = 1` clamps the lerp alpha to 1, so the heading snaps to the
+    // target each iteration (one reused overlay, no per-run churn).
+    it('property: north-edge = viewAzimuth − heading, and the heading line lands at camera-forward (→ up)', () => {
+      const circDiff = (a: number, b: number): number => {
+        const d = (((a - b) % 360) + 360) % 360;
+        return Math.min(d, 360 - d);
+      };
+      const { overlay, parent, camera } = showOverlayWithParent(true);
+      expect(() =>
+        fc.assert(
+          fc.property(
+            fc.double({ min: 0, max: 359.999, noNaN: true }),
+            fc.double({ min: 0, max: 359.999, noNaN: true }),
+            (viewAz, heading) => {
+              aimCamera(camera, viewAz);
+              overlay.render({ ...sampleMapData(), userHeadingDeg: heading });
+              overlay.updatePosition(1, camera);
+
+              const ne = northEdgeAzDeg(parent.children[0]);
+              const wantNe = (((viewAz - heading) % 360) + 360) % 360;
+              // Tiles: north edge is rotated camera-relative.
+              if (circDiff(ne, wantNe) > 0.5) return false;
+              // Line: north-edge + its DOM angle (= heading) = the camera-forward
+              // azimuth, which the live camera projects to screen-up.
+              return circDiff(ne + heading, viewAz) <= 0.5;
+            }
+          ),
+          { numRuns: 50 }
+        )
+      ).not.toThrow();
+      overlay.dispose();
+    });
+
+    // Why: toggling off mid-session must return the map to north-up immediately.
+    it('snaps back to north-up when disabled at runtime', () => {
+      const { overlay, parent, camera } = showOverlayWithParent(true);
+      aimCamera(camera, 0);
+      overlay.render({ ...sampleMapData(), userHeadingDeg: 90 });
+      overlay.updatePosition(1, camera);
+      expect(northEdgeAzDeg(parent.children[0])).not.toBeCloseTo(0, 1);
+
+      overlay.setHeadingUpEnabled(false);
+      expect(northEdgeAzDeg(parent.children[0])).toBeCloseTo(0, 3);
+      overlay.dispose();
     });
   });
 });

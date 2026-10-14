@@ -1,0 +1,200 @@
+# qr-author-mode.ts
+
+## Purpose
+
+Author mode's view-model (QR-pose plan M3): the tracking-controller
+configuration for authoring against a printed code, the mint gate readout,
+and the mint itself — raw-WebXR stable pose → GPS-world NUE →
+`QrGeoPose` → exportable `qr/<id>.json`.
+
+## Public API
+
+- `AUTHOR_DEFAULT_SIZE_M` (re-exported from the framework, **0.16 m**) —
+  what `creator-setup.ts` writes into the printed-size input at wiring
+  time, on every load. It is essentially the A4 ceiling, not a taste
+  choice: the footprint is the side times `QR_PRINT_FOOTPRINT_FACTOR` (the
+  quiet zone on both edges, stated once in the framework's
+  `qr-quiet-zone.ts`), so anything much larger is clipped and does not
+  scan. The
+  `value` attribute in `index.html` must carry the SAME number - it is
+  overwritten by the assignment above, so a differing one is dead text
+  that reads like a decision (`printed-size-default.test.ts`). See
+  `GpsPlusSlamJs_Docs/docs/2026-09-08-tour-viewer-improvements/2026-09-09-0740-printed-code-size-ceiling-followup.md`.
+- `syntheticAuthorLevel(sizeM): QrLevel` — `{version:1, qr:{physicalSizeM}}`;
+  throws on a non-positive/non-finite size.
+- `buildAuthorControllerConfig(sizeM, deps: AuthorPipelineDeps)` — deps:
+  `{ frontEnd, solvePose, getIntrinsics, recordDetection }`. No pose reader:
+  the controller solves each frame against its own capture pose
+  (`CapturedCameraFrame.cameraPose`, QR perf plan 2026-09-23 M4).
+- `MIN_ALIGNMENT_SAMPLES = 3` — the mint gate's alignment floor. A non-null
+  matrix is VACUOUS (the store ships an identity matrix from the first GPS
+  fix), so the gate counts solved-in fixes (milestone review #1).
+- `authorStatusLine(detectedText, fused: QrFusedPose | null, alignment: AuthorAlignmentInfo)`
+  → `{ text; canMint }` — the mint gate's only UI; each blocked state names
+  what is missing, including the fix count. Since QR near-frontal pose plan
+  §60 it reads the FUSED pose: while it is not stable the line names what it
+  waits for, in plain words per `notStableReason` ("walk slowly around the
+  code", "keep moving slowly", "the views disagree", "the code seemed to move, keep it in view",
+  "code not read clearly, move closer"), never the view threshold and never
+  "hold steady" - moving the camera is what resolves the tilt (§61 #11). The copy is the creator
+  setup's guidance since the guided-setup plan M3 ("Hold the phone on the
+  printed code…"; since UI round 1 U3 the ready line is "Code measured." - it is measured on its own).
+- `entryHint({ tourOpen, codeSeen })` - the AR visit's first hint (authoring
+  plan 2026-09-28-0953 §3.2a, decision D5): "First, point the camera at the
+  code you scanned to open this tour." while a tour is open and the code in
+  hand has not been seen stable in this visit; empty otherwise. It blocks
+  nothing: a later visit's notes are corrected through the code only when
+  the code was seen (D10b), and the owner chose a hint over a rule.
+- `correctionRefusedLine({ horizontalM, yawDeg, maxHorizontalM })` - the one
+  line that says a code correction was refused (M2c review #2): "Code seen
+  N m from its saved position" (or "turned N°" when only the yaw broke the
+  bound) "- a second print or a moved poster? Not used; this visit follows
+  GPS".
+- `buildAuthorControllerConfig(sizeM, deps)`'s optional `deps.sizeFor(text)`
+  (code book plan M4c-3) - each code's printed size: `fetchLevel(text)`
+  resolves the geo-less level at that size; a rejection or a size that is
+  not positive falls back to `sizeM`, and the fetch never rejects.
+- `autoMeasureAllowed(relation)` (code book plan §11 D5, extended by the owner; M4c-2) - whether the creator panel measures the code in view on its own: every code seen while a tour is open (`this-tour`, `other-tour`, `unknown`, `not-a-tour` - a stray QR is "another anchor"); never `no-tour-open` or `resolving`. The risk named with the decision: a code on something that moves; the automatic code-spot rule (code book plan M6, `code-spots.ts`) guards it. Before M4c-2 only the tour's own code, or the first code of a tour with none (UI round 1, U3).
+- `CodeReadyState` and `authorStatusLine(..., ready)` (U3) - the ready line says what became of the code once the gate is open: "Code measured." (`measured`, the default), "Measuring the code…", or "Code seen." (also for a code read with no tour open: the measuring policy, `autoMeasureAllowed`); the print-size hint follows any of them. The gate being open is no longer "measured".
+- `setupHint({ measured, tourOpen, inTour, keptStored? })` - what the
+  panel says once measured: "Position saved." when no tour is open
+  (`codeTourLine` then says what is happening to the code's tour;
+  scan-to-open plan §9 #9); "Saved position kept." when the level in hand
+  is a stored pose this visit did not measure (D10b: a new measurement only
+  corrects the visit, M2c review #5); with `inTour` "this-code" that the
+  measurement replaces this code's saved position (reached only when its
+  saved pose does not read), with "other-codes" that Finish adds it as one
+  more code (it said "replaces" until the code book plan review #13); then
+  place content or finish.
+- `codeTourLine(status: CodeTourStatus): string` - the scan-to-open status
+  of the code in view (`scan-open.ts`) in plain words: opening, does not
+  point to a tour, could not open (a short cause, and either "keep the
+  code in view" or "fix the link, then restart AR"), the level in hand was
+  measured for another tour (named), another tour's code is added to the
+  open tour (plan §13), cannot tell; "" when
+  quiet. At most 110 characters: it shares the panel with the readout.
+- `finishReadiness({ hasWork, tourOpen, manifest })` → `"ready" |
+"not-measured" | "no-tour" | "manifest-pending" | "manifest-broken"` - the
+  finish button's gate. `hasWork`
+  (code book plan M4d): there is something to write - a code to write, a
+  changed or deleted object, or in AR a code in hand; without it the state
+  is `not-measured`.
+- `MISSING_SIZE_MESSAGE` - what a creator reads when the printed-size
+  field is empty at AR entry. The example inside it is interpolated from
+  `AUTHOR_DEFAULT_SIZE_M`, so the two cannot drift.
+- `reprintOrphanWarning(linkCodeIds, measuredCodeIds)` - the warning shown
+  before printing when NO code number the current link can produce reaches
+  any measurement the open tour already holds, or `null` when nothing would
+  be lost. Worded since the r820 feedback (R4) as a note in three parts -
+  the codes came from another link, the old measurement will not be found
+  for the new posters (measure them in step 5), the original link prints
+  matching codes - with no code "above" (there has been none since M0b).
+  A different SPELLING of the same Drive file no longer reaches it: the
+  panel prints in the spelling of record (`print-link.ts`).
+  - **The question is about the LINK, not the poster.** One tour can carry
+    several codes and each has its own identity, so asking only about the
+    code in front of the creator told anyone re-printing poster 1 of a tour
+    measured on poster 2 that their link had changed - advice to undo
+    something they never did.
+  - **The failure it makes visible is silent and expensive.** A printed
+    code's identity is a hash of its text, and the measured pose is filed
+    under that identity in the hosted zip. Change the text - re-print after
+    moving the file,
+    swap in a short link, add a tracking parameter - and the code asks for
+    an id the archive does not hold. The visitor's app reads that as "this
+    code has no level", says nothing, and waits out the scan gate into a
+    location-only experience. The creator's walk is gone with no signal
+    anywhere.
+  - **It warns rather than refuses**, because re-printing under a new link
+    is legitimate and only the creator knows whether the measurement was
+    worth keeping. What they must not have is silence.
+- `FINISH_LABELS` - the finish step's copy through its async cycle
+  (reading, placing photos, rebuilding N of M, failed) and the save's
+  (`savingTour(bytes)` while the Finish saves the zip by itself, the button's
+  `saveAgain` and `saving`, `saved`, `savedToPhone`, `notSaved`,
+  `saveFailed(reason)`). Since the
+  2026-10-08 field test (F4; owner decisions D-F4a, D-F4b) the Finish saves
+  the rebuilt zip itself and the one button saves it again the same way:
+  no share route, no "press the button" ready line. `saved` and
+  `savedToPhone` promise that the link and the printed code stay the same,
+  which holds for a save over the hosted file. `savedToPhone` names
+  Downloads and asks to check the file is not "name (1).zip" before the
+  Drive steps (F4 milestone review #2: the page cannot know the name the
+  phone gave it). `saveFailed` says the save, not the Finish, failed
+  (review #9).
+- `driveFileAddress(url, base?)` - the Drive website's address of the file
+  behind any Drive form a link takes (`/file/d/<id>/` on drive.google.com,
+  `?id=` on the open, download and proxy forms, the API's path), or null:
+  another host, no id, or an id outside Drive's alphabet (letters, digits, `_` and `-`).
+  The id comes from the framework's `utils/drive-file-id.ts`, the one
+  Drive-link parser. Step 6's
+  copy button (polish round M2) hands it to the Drive website.
+- `driveReplaceSteps(name, nameKnown)` - the numbered Drive steps shown
+  after the save: an optional rename/check-the-name step, then a check that
+  the saved file is not "name (1).zip" (if it is: delete every copy, tap
+  "Save the tour zip again" - picking "name.zip" beside it would upload the
+  OLD zip), the new tab with "Desktop site", the folder upload, "Replace
+  existing file". With the save automatic, this check is the only guard
+  against a repeat download's name (the warning that once came before the
+  tap has no moment left to be read).
+- `finishSaveStatus(delivered, filename, drive)` - the status line after a
+  save: where it went, or that nothing was saved and which button saves it.
+- `buildAuthorControllerConfig` wires `onError` too — a throwing detector
+  must surface, not leave the panel saying "point the camera" forever.
+
+## Invariants & assumptions
+
+- **The synthetic level is GEO-LESS and local** (plan deltas #1/#8): the
+  decoded QR text is a printed launch URL (an HTML page); a real fetch
+  would fail validation and flap the status at the detection cadence. A
+  geo-less level makes the controller emit detections without voting, and
+  the printed size is an INPUT — no depth, no corner-based sizing.
+- **`minIntervalMs: 0`**: the camera-frame source is the single cadence
+  owner (Option A); two equal throttles in series drop ~1 frame per cycle.
+- **Minting reads the STABLE fused pose** (delta #2; plan §60) in RAW WebXR/odom space (the
+  frame the controller composes with each frame's capture pose); the conversion is
+  `alignment × WEBXR_TO_NUE × pose`, using the alignment TARGET matrix
+  (`selectAlignmentMatrix`), not the lerped visual transform — for a mint,
+  the converged solve is the honest frame.
+- **The mint refuses without alignment or zero** in plain words — minting
+  earlier would stamp a garbage anchor into the printed code forever.
+- The geodesy is licence-gated; production activates via the app's
+  `createSlamAppStore` at boot (tests do the same).
+
+## Examples
+
+```ts
+const config = buildAuthorControllerConfig(0.2, {
+  frontEnd,
+  solvePose,
+  getIntrinsics,
+  recordDetection: (e) => store.dispatch(recordQrDetection(e)),
+});
+// … detections accumulate; once the fused pose (createFusedQrPoseSource) is 'stable':
+const result = mintQrLevel({
+  odomPose: stablePose,
+  alignmentMatrix,
+  zero,
+  alignment,
+  sizeM,
+  nowIso,
+}); // from the framework — see qr-mint-level.ts.md
+```
+
+- `waitingFor(reason)` is exported: the visitor hint
+  (`qr-debug-readout.ts`) reads the same copy (plan §66, DEC-H3).
+
+- `authorStatusLine(..., sizeCheckPending?)` adds "Take a step sideways to
+  check the print size." to the ready line while the print-size check has no
+  answer; `sizeOfferView(measuredM, typedM)` and `adoptedSizeNote(sizeM)`
+  are the offer's copy (QR size consensus plan S3a): approximate, the ruler
+  as arbiter, the field's unit (metres) beside the centimetres.
+
+## Tests
+
+`qr-author-mode.test.ts` — the geo-less/local fetch pins, the cadence pin,
+the frame-conversion round-trips (identity and translation+yaw alignments,
+hand-computed), the parser round-trip of the export, the mint-gate table,
+and the plain-language refusals. The composed flow (real controller, slice,
+stability, alignment solve, mint, export) is proven by
+`playwright-tests/ar-mode.spec.js`'s author spec.

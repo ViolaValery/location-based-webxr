@@ -1,0 +1,64 @@
+# main.ts
+
+## Purpose
+
+The physics demo's entry point and DOM glue. Detects WebXR support, and on the
+desktop wires the "load a recording → replay it" flow: the file input drives
+`loadAndStartReplay` (which starts a framework `startReplaySession` scene inside
+`#app`), then play/pause + speed controls drive the returned controller. Logic
+lives in the tested `mode-detection` / `replay-launch` modules; this file is glue.
+
+## Behaviour
+
+- On load, `detectArSupport()` reveals the "Start AR" button only on a
+  WebXR-capable device; clicking it inits Rapier then calls `startArMode`
+  (`ar-mode.ts`, given the tap and physics-ready times for the start
+  timings, the `#diagnostics` element, `?rebuild=0` parsed by
+  `rebuildEnabledFromSearch`, and the page's hidden count, observed from
+  page load because a permission prompt can hide the page before the
+  session exists; the replay gets `#diagnostics` too) for a genuine live-AR physics session (the play/pause/speed row is
+  hidden in AR — it is replay-only). The desktop-replay path is always available.
+- Selecting a recording moves the UI through the async-feedback states:
+  `#capability-message` → "Loading recording…" (input disabled) → on success the
+  mode screen hides and `#replay-panel` appears with a status + play/pause + speed;
+  on failure the message reverts to the error and the input re-enables.
+- Play/pause toggles `controller.pause()`/`resume()` and its label; the speed
+  slider calls `controller.setSpeed()` and updates the `N×` readout. `main()`
+  first installs the framework's page-wide
+  [`guardSlidersIn(document)`](../../GpsPlusSlamJs_AppFramework/src/utils/slider-scroll-guard.ts.md)
+  (capture phase, so listener order does not matter; held to it by the root
+  `slider-pages-load-the-guard` repo-config test). On touch, the speed changes
+  only on an explicit horizontal drag or a short tap; swiping past the panel
+  scrolls the page (paired with `touch-action: pan-y` in `index.html`, pinned
+  by `slider-touch-gesture.test.ts`).
+- `?shadows=0` (or `off` / `false`) starts the AR shadows switched off in
+  both modes (`shadowsEnabledFromSearch`); they are on otherwise (W4 AR
+  shadows plan 2026-09-26-0549 §11). The panel's Shadows switch
+  (`#shadows-toggle`, the design system's `.switch`) turns them on and off
+  in either mode (round-2 plan 2026-09-26-2055 M1).
+- AR gets the controls panel (`#mesh-controls`) as `panel`, so a tap on the
+  switch or a dropdown does not also shoot a ball.
+- `?shadowProbe=1` exposes the shadow pixel probe's test hook in the replay
+  (`shadow-probe.ts`); off in normal use.
+- Once Rapier's WASM is ready (loaded lazily on first replay) it calls
+  `startReplayPhysics` (`replay-physics.ts`), which owns the occupancy view (occlusion
+  AND collider), the shared physics runtime, the rAF step loop, the mesh/shader
+  dropdown wiring and click-to-shoot — and returns a disposer. `main.ts` keeps that
+  disposer plus the controller in `disposePreviousReplay`, called on every `onReady`
+  so a **reload** tears the previous replay down first (no stacked rAF loops /
+  physics worlds / WebGL contexts — PR #197). A reload that races the WASM load is
+  guarded: physics only wires if the controller is still the active one.
+
+## Invariants & assumptions
+
+- `#overlay` is nested inside `#app` (the scene mount) per the DOM-Overlay stacking
+  convention.
+- `requireEl` throws on a missing element (fail fast on an HTML/JS drift).
+- No unit test — this is DOM wiring; covered by `playwright-tests/smoke.spec.js`
+  and the unit-tested modules it composes.
+
+## Tests
+
+- `playwright-tests/smoke.spec.js` — page loads without console errors, the mode
+  screen + recording input render, and (no `navigator.xr` in Playwright) the
+  desktop-replay path is offered with the AR button hidden.

@@ -19,7 +19,6 @@ import type {
 import type { ARPose } from 'gps-plus-slam-app-framework/types/ar-types';
 import type * as StoreModule from '../state/recorder-store';
 import type { RecorderStore } from '../state/recorder-store';
-import type { ImportedRefPoint } from '../storage/ref-point-importer';
 import type {
   RefPointObservation,
   RefPointMark,
@@ -35,7 +34,6 @@ const {
   mockSaveRefPointObservation,
   mockExtractOdomPosition,
   mockExtractOdomRotation,
-  mockRefPointVisualizer,
   mockShowError,
   mockUpdateStatus,
   mockShowToast,
@@ -65,9 +63,6 @@ const {
   mockExtractOdomRotation: vi
     .fn<(pose: ARPose) => Quaternion>()
     .mockReturnValue([0, 0, 0, 1] as Quaternion),
-  mockRefPointVisualizer: {
-    addCurrentRefPoint: vi.fn(),
-  },
   mockShowError: vi.fn(),
   mockUpdateStatus: vi.fn(),
   mockShowToast: vi.fn(),
@@ -127,10 +122,6 @@ vi.mock('../ui/toast', () => ({
   TOAST_DURATION_ERROR: 8000,
 }));
 
-vi.mock('gps-plus-slam-app-framework/visualization/reference-points', () => ({
-  refPointVisualizer: mockRefPointVisualizer,
-}));
-
 vi.mock('gps-plus-slam-app-framework/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
@@ -179,6 +170,20 @@ function seedImportedRefPoints(refPoints: ImportedRefPoint[]): void {
   lastTestStore.dispatch(setImportedRefPointEntries(entries));
 }
 
+/**
+ * The seed shape the removed `storage/ref-point-importer.ts` used to produce
+ * (deleted 2026-09-04: zero production callers). Kept local to the tests that
+ * still seed the V2 slice with it.
+ */
+interface ImportedRefPoint {
+  readonly id: string;
+  readonly name: string;
+  readonly lat: number;
+  readonly lon: number;
+  readonly alt?: number;
+  readonly sourceZipName: string;
+}
+
 function importedToEntry(rp: ImportedRefPoint, ts: number): RefPointEntry {
   return {
     id: gpsToH3(rp.lat, rp.lon),
@@ -194,14 +199,29 @@ function importedToEntry(rp: ImportedRefPoint, ts: number): RefPointEntry {
   };
 }
 
+/**
+ * Flip the `recording.isRecording` flag of the store created by the most
+ * recent `createMockStore()` call — lets async mocks (e.g. the picker)
+ * simulate the recording ending MID-flow (the stop-window race).
+ */
+let setLastStoreRecordingActive: (active: boolean) => void = () => {};
+
 function createMockStore(
   gpsPositions: GpsPoint[] = [],
-  options?: { alignmentMatrix?: number[] }
+  options?: { alignmentMatrix?: number[]; isRecording?: boolean }
 ): RecorderStore {
   let refPointsState = refPointsReducer(undefined, { type: '@@INIT' });
+  // Production state always carries the recording slice; the persistence
+  // middleware (and the handler's stop-window guard) read
+  // `recording.isRecording`, so the mock must model it.
+  let isRecordingFlag = options?.isRecording ?? true;
+  setLastStoreRecordingActive = (active) => {
+    isRecordingFlag = active;
+  };
 
   const store = {
     getState: vi.fn().mockImplementation(() => ({
+      recording: { isRecording: isRecordingFlag },
       gpsData: {
         zero: { lat: 49.0, lng: 8.0 },
         gpsEvents: {
@@ -338,11 +358,9 @@ function getDispatchedCurrentMark(store: RecorderStore): RefPointMark {
     );
   }
   const position = mockExtractOdomPosition.mock.results.at(-1)?.value as
-    | Vector3
-    | undefined;
+    Vector3 | undefined;
   const rotation = mockExtractOdomRotation.mock.results.at(-1)?.value as
-    | Quaternion
-    | undefined;
+    Quaternion | undefined;
   const fused = payload.gpsPoint ?? payload.rawGpsPoint;
   return {
     id: payload.id,
@@ -521,7 +539,7 @@ describe('handleMarkRefPoint — picker integration', () => {
 
   // Why: When imported refs are far from GPS (no nearby match), the picker
   // should show with empty suggestions (IDs are now H3 hex, meaningless to users).
-  it('should show picker with empty suggestions when no nearby match', async () => {
+  it('should open the name prompt when no nearby match', async () => {
     const handle = createMockScenarioHandle();
     mockGetCurrentScenarioHandle.mockReturnValue(handle);
     mockListRefPointIds.mockResolvedValue(['scenarioPoint']);
@@ -548,13 +566,12 @@ describe('handleMarkRefPoint — picker integration', () => {
     await handlers.handleMarkRefPoint();
 
     expect(mockShowRefPointPicker).toHaveBeenCalled();
-    const passedIds = mockShowRefPointPicker.mock.calls[0][0];
-    // No suggestions — scenario IDs are H3 hex, imported names are for distant locations
-    expect(passedIds).toEqual([]);
+    // The prompt takes no arguments: it asks for a name, nothing else.
+    expect(mockShowRefPointPicker).toHaveBeenCalledWith();
   });
 
   // Why: Even with no scenario handle, picker gets empty suggestions for new refs.
-  it('should show picker with empty suggestions when no scenario handle and no nearby match', async () => {
+  it('should open the name prompt when no scenario handle and no nearby match', async () => {
     mockGetCurrentScenarioHandle.mockReturnValue(null);
     mockShowRefPointPicker.mockResolvedValue({ id: 'NewRef', isNew: true });
     seedImportedRefPoints([
@@ -570,8 +587,7 @@ describe('handleMarkRefPoint — picker integration', () => {
     await handlers.handleMarkRefPoint();
 
     expect(mockShowRefPointPicker).toHaveBeenCalled();
-    const passedIds = mockShowRefPointPicker.mock.calls[0][0];
-    expect(passedIds).toEqual([]);
+    expect(mockShowRefPointPicker).toHaveBeenCalledWith();
   });
 
   // Why: When an imported ref point is near the current GPS position, the
@@ -662,7 +678,7 @@ describe('handleMarkRefPoint — picker integration', () => {
   // Why: For new ref points (no nearby match), the picker should receive
   // an empty suggestion list since scenario IDs are now H3 hex strings
   // that are meaningless to users. The picker becomes a simple name input.
-  it('should pass empty suggestions to picker for new ref points', async () => {
+  it('should open the name prompt for new ref points', async () => {
     const handle = createMockScenarioHandle();
     mockGetCurrentScenarioHandle.mockReturnValue(handle);
     mockListRefPointIds.mockResolvedValue(['8b1f1a5c2e3d4f1']);
@@ -682,8 +698,7 @@ describe('handleMarkRefPoint — picker integration', () => {
     await handlers.handleMarkRefPoint();
 
     expect(mockShowRefPointPicker).toHaveBeenCalled();
-    const passedIds = mockShowRefPointPicker.mock.calls[0][0];
-    expect(passedIds).toEqual([]);
+    expect(mockShowRefPointPicker).toHaveBeenCalledWith();
   });
 });
 
@@ -887,6 +902,126 @@ describe('handleMarkRefPoint — full flow', () => {
 
     const payload = getLastV2Payload(mockStore);
     expect(payload?.gpsPoint).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// handleMarkRefPoint — recording ends mid-flow (stop-window race)
+// ============================================================================
+
+describe('handleMarkRefPoint — recording ends mid-flow (stop-window race)', () => {
+  // Why these tests matter: root cause of the 2026-07-11 zip-1 lost "A3"
+  // action (indoor-loop enablement, sidecar cross-check §3.5 of the
+  // implementation summary). The new-point picker can stay open across
+  // Stop (user stop or system session end); the persistence middleware
+  // gates `actions/` writes on `recording.isRecording`, so a post-stop
+  // dispatch silently never reaches the recording while the ungated OPFS
+  // sidecar write succeeds and the toast claimed plain success. The
+  // handler must detect the ended recording, skip the dead dispatch, keep
+  // the durable scenario-level observation, and tell the truth in the
+  // toast (UI-feedback rule: the final state must reflect the durable end
+  // state — which here is "scenario only, not in the recording").
+  let handlers: RefPointHandlers;
+  let mockStore: RecorderStore;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsRefPointPickerVisible.mockReturnValue(false);
+    mockGetCurrentArPose.mockReturnValue(createMockArPose());
+    mockGetCurrentScenarioHandle.mockReturnValue(createMockScenarioHandle());
+    mockListRefPointIds.mockResolvedValue([]);
+    mockExtractOdomPosition.mockReturnValue([1, 2, 3] as Vector3);
+    mockExtractOdomRotation.mockReturnValue([0, 0, 0, 1] as Quaternion);
+    mockStore = createMockStore([createMockGpsPoint()]);
+    handlers = createRefPointHandlers(
+      createDefaultDeps({ getStore: () => mockStore })
+    );
+  });
+
+  it('new-point path: recording stops while the picker is open → no dispatch, sidecar kept, honest warning toast', async () => {
+    mockShowRefPointPicker.mockImplementation(() => {
+      setLastStoreRecordingActive(false); // Stop happened while picker open
+      return Promise.resolve({ id: 'A3', isNew: true });
+    });
+
+    await handlers.handleMarkRefPoint();
+
+    // The action can never reach the stopped recording — dispatching it
+    // would only feign success; it must be skipped.
+    expectMarkDispatchedTimes(mockStore, 0);
+    // The scenario-level observation is durable, session-independent data
+    // (zip-1's lost A3 became the cross-session anchor) — it must be kept.
+    expect(mockSaveRefPointObservation).toHaveBeenCalledTimes(1);
+    // The final toast must name the partial outcome, not claim plain success.
+    const lastToast = mockShowToast.mock.calls.at(-1)!;
+    expect(lastToast[0]).toContain('A3');
+    expect(lastToast[0]).toMatch(/recording/i);
+    expect(lastToast[0]).not.toBe('Marked "A3"');
+    expect(lastToast[1]).toMatchObject({ severity: 'warning' });
+  });
+
+  it('re-observe path: recording already ended at tap time → no dispatch, sidecar kept, honest warning toast', async () => {
+    // Known anchor at the GPS position ⇒ single-tap re-observe (no picker).
+    seedImportedRefPoints([
+      {
+        id: 'A1',
+        name: 'A1',
+        lat: 49.0,
+        lon: 8.0,
+        alt: 100,
+        sourceZipName: 'earlier-session.zip',
+      },
+    ]);
+    setLastStoreRecordingActive(false);
+
+    await handlers.handleMarkRefPoint();
+
+    expectMarkDispatchedTimes(mockStore, 0);
+    expect(mockSaveRefPointObservation).toHaveBeenCalledTimes(1);
+    const lastToast = mockShowToast.mock.calls.at(-1)!;
+    expect(lastToast[0]).toMatch(/^Re-observed "A1"/);
+    expect(lastToast[0]).toMatch(/recording/i);
+    expect(lastToast[1]).toMatchObject({ severity: 'warning' });
+  });
+
+  // WHY (DEC-AFK24-6, follow-up 2026-09-24-1130): Stop flushes, then exports
+  // the zip for seconds, and only then ends the session, so
+  // `recording.isRecording` is still true while the zip is being written.
+  // A ref point confirmed in that window passed the old guard and was
+  // dispatched after the export had listed `actions/`: missing from the
+  // zip, with a plain success toast. The stop window counts as ended.
+  it('stop in progress: the recording is still flagged, but the point goes to the scenario only, with the warning', async () => {
+    let stopping = false;
+    const stopHandlers = createRefPointHandlers(
+      createDefaultDeps({
+        getStore: () => mockStore,
+        isStopInProgress: () => stopping,
+      })
+    );
+    mockShowRefPointPicker.mockImplementation(() => {
+      stopping = true; // Stop pressed while the picker was open
+      return Promise.resolve({ id: 'S1', isNew: true });
+    });
+
+    await stopHandlers.handleMarkRefPoint();
+
+    expectMarkDispatchedTimes(mockStore, 0);
+    expect(mockSaveRefPointObservation).toHaveBeenCalledTimes(1);
+    const lastToast = mockShowToast.mock.calls.at(-1)!;
+    expect(lastToast[0]).toContain('S1');
+    expect(lastToast[0]).toMatch(/recording/i);
+    expect(lastToast[1]).toMatchObject({ severity: 'warning' });
+  });
+
+  it('regression: while recording, the plain success toast and the dispatch are unchanged', async () => {
+    mockShowRefPointPicker.mockResolvedValue({ id: 'bench', isNew: true });
+
+    await handlers.handleMarkRefPoint();
+
+    expectMarkDispatchedTimes(mockStore, 1);
+    const lastToast = mockShowToast.mock.calls.at(-1)!;
+    expect(lastToast[0]).toBe('Marked "bench"');
+    expect(lastToast[1]).toMatchObject({ severity: 'info' });
   });
 });
 
@@ -2125,5 +2260,87 @@ describe('handleMarkRefPoint — refPoints dispatch (Step 5.2 / 5.7)', () => {
     const v2 = findV2Dispatch(store);
     const v2Payload = v2!.payload as { name?: string };
     expect(v2Payload.name).toBe('Bank');
+  });
+});
+
+// ============================================================================
+// D5 (2026-07-05 folder-import feedback, Finding 5): neighbor-cell
+// re-observations must append to the MATCHED definition, not create a sibling.
+//
+// Why these tests matter: the proximity matcher deliberately tolerates
+// gridDisk neighbor cells, but the persist path used the user's CURRENT cell
+// as the id — so a re-observation made a few metres off the original spot
+// landed in a different refPoints/{id}.json, splitting one physical point's
+// observation history into sibling definitions (two anchors/spheres, and
+// fragmented data for averaging and the import gap-fill).
+// ============================================================================
+
+describe('handleMarkRefPoint — neighbor-cell re-observation routing (D5)', () => {
+  const anchorLat = 49.0;
+  const anchorLon = 8.0;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsRefPointPickerVisible.mockReturnValue(false);
+    mockGetCurrentArPose.mockReturnValue(createMockArPose());
+    mockGetCurrentScenarioHandle.mockReturnValue(createMockScenarioHandle());
+    mockExtractOdomPosition.mockReturnValue([1, 2, 3] as Vector3);
+    mockExtractOdomRotation.mockReturnValue([0, 0, 0, 1] as Quaternion);
+  });
+
+  it('persists a neighbor-cell re-observation under the matched anchor id (no sibling definition)', async () => {
+    // ~33m north of the anchor — a neighbor cell at H3 res-11 (~25m edge),
+    // still inside the gridDisk(1) match zone (same geometry as the
+    // isNeighborCell tests above).
+    const gps = createMockGpsPoint({ latitude: 49.0003, longitude: 8.0 });
+    const store = createMockStore([gps]);
+    const handlers = createRefPointHandlers(
+      createDefaultDeps({ getStore: () => store })
+    );
+    populateKnownAnchor(store, {
+      name: 'Bench Corner',
+      lat: anchorLat,
+      lon: anchorLon,
+    });
+
+    const anchorCell = gpsToH3(anchorLat, anchorLon);
+    const currentCell = gpsToH3(49.0003, 8.0);
+    // Sanity: this really is the neighbor-cell case, not same-cell.
+    expect(currentCell).not.toBe(anchorCell);
+
+    await handlers.handleMarkRefPoint();
+
+    // Re-observation path (no picker), appended to the MATCHED definition.
+    expect(mockShowRefPointPicker).not.toHaveBeenCalled();
+    expect(mockSaveRefPointObservation).toHaveBeenCalledTimes(1);
+    const [, persistedId, persistedName] =
+      mockSaveRefPointObservation.mock.calls[0];
+    expect(persistedId).toBe(anchorCell);
+    expect(persistedName).toBe('Bench Corner');
+
+    // The store entry (visualizer/matcher source) uses the matched id too —
+    // one anchor, one sphere.
+    expect(getLastV2Payload(store)?.id).toBe(anchorCell);
+  });
+
+  it('same-cell re-observation keeps the (identical) matched id — regression pin', async () => {
+    const gps = createMockGpsPoint({
+      latitude: anchorLat,
+      longitude: anchorLon,
+    });
+    const store = createMockStore([gps]);
+    const handlers = createRefPointHandlers(
+      createDefaultDeps({ getStore: () => store })
+    );
+    populateKnownAnchor(store, {
+      name: 'Bench Corner',
+      lat: anchorLat,
+      lon: anchorLon,
+    });
+
+    await handlers.handleMarkRefPoint();
+
+    const [, persistedId] = mockSaveRefPointObservation.mock.calls[0];
+    expect(persistedId).toBe(gpsToH3(anchorLat, anchorLon));
   });
 });

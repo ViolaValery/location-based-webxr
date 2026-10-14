@@ -15,7 +15,7 @@ when to commit the new pose using a configurable mode flag.
 
 See the alignment-frame bug doc for why the inverse is required and how
 the regression was found:
-[2026-05-31-gps-anchor-alignment-frame-bug.md](../../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-31-gps-anchor-alignment-frame-bug.md).
+[2026-05-31-gps-anchor-alignment-frame-bug.md](../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-31-gps-anchor-alignment-frame-bug.md).
 
 This is the JS port of the C# `GpsAnchor` / `GpsAnchorForNonEcsGos`
 sibling pair, merged into one component because in the JS scene-graph
@@ -23,7 +23,7 @@ world they only differ by the steady-state commit policy.
 
 For the design rationale, state machine, threshold formulas, and
 parenting rules see the dedicated port plan:
-[2026-05-13-gps-anchor-port-plan.md](../../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-13-gps-anchor-port-plan.md).
+[2026-05-13-gps-anchor-port-plan.md](../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-13-gps-anchor-port-plan.md).
 
 ## Status
 
@@ -31,28 +31,57 @@ This file currently implements **sub-steps 2 (bootstrap phase),
 3 (steady-state `'snap-every-tick'` + distance-scaled threshold gate),
 4 (`'snap-when-offscreen'` mode gate, with a one-time initial-placement
 exemption for `skipBootstrap` anchors), and 5 (re-bootstrap on external
-move)** of the port plan. Floor-Y correction (sub-step 6) is deferred
-until the depth raycaster (Item 6 in the C# survey) lands; the
-`floorY?: () => number | null` constructor seam is reserved but not yet
-consulted.
+move)** of the port plan. Floor-Y correction (sub-step 6) is not
+implemented. The `floorY`, `angleThresholdInDegrees` and
+`heightAboveGround` options that used to be accepted for it were never read
+and were removed 2026-09-04 (simplify loop; a MAJOR by semver, shipped in 1.24.0 - a MINOR by
+owner decision, in lock-step with `gps-plus-slam-js` 1.24.0): an accepted-but-ignored option is a promise the code does not
+keep, and no consumer passed any of the three.
 
 ## Public API
 
 - `type GpsAnchorMode = 'snap-when-offscreen' | 'snap-every-tick'` —
   steady-state commit policy. Default `'snap-when-offscreen'`.
 - `type GpsAnchorPhase = 'bootstrap' | 'anchored'`.
+- `type GpsAnchorStartup = 'median' | 'mature-alignment'` - how the point is
+  first fixed (the `'bootstrap'` phase). Default `'median'` (unchanged for
+  every app; making the other the default is a later owner decision):
+  - `'median'` - the per-coordinate median of `secondsToAccumulateGpsPose`
+    1 Hz samples, as below.
+  - `'mature-alignment'` (owner decision D33, 2026-10-03) - the object's
+    position in `arWorldGroup`'s frame (raw odometry NUE, whatever the
+    group's lerped matrix is) through the FIRST MATURE alignment at or after
+    the placement: the first whose session GPS extent (`getGpsExtentM`)
+    reaches `matureGpsExtentM` (default 40 m, the shared
+    `../state/alignment-maturity.ts`). An object placed after the session
+    matured is fixed through the alignment read when the anchor is CREATED
+    (its placement), not a later one. While it waits the object is never
+    touched, so it stays rigid where it was placed. `settleNow()` is the
+    fallback when the session ends first.
 - `type GpsAnchorSamplePoint = LatLong | LatLongAlt`.
 - `interface GpsAnchorOptions` — required: `object3D`, `arWorldGroup`,
   `camera`, `gpsPoint`, `getAlignmentMatrix`, `getGpsZeroRef`,
   `getCurrentGpsPoint`. Optional: `skipBootstrap`, `onBootstrapComplete`,
-  `mode`, `floorY`,
-  `distanceThreshold` (default 2 m), `angleThresholdInDegrees`
-  (default 15°), `targetPosRefreshRateInSec` (default 3 s),
+  `mode`,
+  `distanceThreshold` (default 2 m),
   `secondsToAccumulateGpsPose` (default 7 samples at 1 Hz),
-  `settlingSeconds` (default 0), `heightAboveGround`.
+  `settlingSeconds` (default 0), `startup` (default `'median'`),
+  `getGpsExtentM` (required by `'mature-alignment'`; null = unknown, never
+  mature), `matureGpsExtentM` (default 40).
+  (The declared-but-never-wired `targetPosRefreshRateInSec` option was
+  removed 2026-07-10, quality-review E-3 — the steady-state target is now
+  cached on the `(zeroRef, alignmentMatrix, gpsPoint)` reference identities,
+  so the geo trig + inversion run only when an input actually changes,
+  with no refresh timer needed.)
 - `createGpsAnchor(options) → GpsAnchor` — the factory.
 - `interface GpsAnchor` — `phase`, `isFullyAnchored`, `gpsPoint`,
-  `markMovedExternally()`, `setGpsPoint(point)`, `dispose()`.
+  `markMovedExternally()`, `setGpsPoint(point)`, `settleNow()`,
+  `dispose()`.
+  - `settleNow()` - `'mature-alignment'` only: fix the point NOW through
+    the latest usable alignment followed since the placement (the session
+    is ending before maturity). Returns the committed point, or null when
+    nothing was committed (already fixed, `'median'` start-up, or no usable
+    alignment ever seen). Fires `onBootstrapComplete`.
 
 The `__tickForTests(dt, elapsed)` method is exposed on the returned
 object as an `@internal` testing seam in lieu of pumping the global
@@ -87,7 +116,15 @@ object as an `@internal` testing seam in lieu of pumping the global
 - **`getCurrentGpsPoint` returning null is a non-error**: the tick is
   silently skipped (no sample pushed, `lastSampleAtElapsed` not
   updated, so the next tick will retry). Mirrors "no fix yet".
-- **`onBootstrapComplete` fires from the median commit only**: invoked with the
+- **`'mature-alignment'` refuses what it cannot honour**: no
+  `getGpsExtentM`, `skipBootstrap: true` together with it, or a floor that
+  is not positive and finite throw at construction, before the object is
+  registered. `markMovedExternally()` re-opens the pick at the move (a move
+  is a new placement). A waiting anchor re-reads its inputs only when the
+  alignment or zero reference or the extent changed, and copies the matrix
+  it keeps.
+- **`onBootstrapComplete` fires from the median commit (or the
+  `'mature-alignment'` fix and `settleNow()`) only**: invoked with the
   exact committed `gpsPoint` whenever the bootstrap median is committed — once
   after the initial bootstrap and again after every re-bootstrap
   (`markMovedExternally` → re-accumulate → commit). It never fires when
@@ -109,7 +146,7 @@ object as an `@internal` testing seam in lieu of pumping the global
   (instantly). A previous per-anchor lerp (`lerpCorrections` /
   `correctionLerpRate`, D1′) was removed once alignment was lerped at
   `arWorldGroup` — see
-  `gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-05-gps-anchor-frame-architecture-bug-and-plan.md`.
+  `gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-05-0650-gps-anchor-frame-architecture-bug-and-plan.md`.
 - **`snap-when-offscreen` corrections fire only off-screen — except the first
   placement**: a correction is suppressed while the object is inside the camera
   frustum, so the user never sees a jump. The lone exception is the **one-time
@@ -123,7 +160,7 @@ object as an `@internal` testing seam in lieu of pumping the global
   that the whole frame rides one lerped `arWorldGroup.matrix`, a large jump is
   absorbed smoothly for the entire view, so a per-anchor on-screen snap only
   manufactured the AnchorStarter cache-hit hard-jump — see
-  `gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-06-anchor-starter-cachehit-jump-investigation.md`.
+  `gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-06-1210-anchor-starter-cachehit-jump-investigation.md`.
 
 ## Examples
 
@@ -147,7 +184,14 @@ anchor.markMovedExternally();
 
 ## Tests
 
-See [gps-anchor.test.ts](gps-anchor.test.ts). Coverage:
+See [gps-anchor.test.ts](gps-anchor.test.ts) and, for the `'mature-alignment'`
+start-up, [gps-anchor.mature-alignment.test.ts](gps-anchor.mature-alignment.test.ts)
+(waits untouched, then fixes through the first mature alignment and never
+moves again; fixed through the alignment at creation when already mature;
+`settleNow` through the latest usable alignment and null without one;
+re-opened by an external move; the refused configurations; `'median'`
+unchanged; a property test over random alignment and extent sequences).
+Coverage of `gps-anchor.test.ts`:
 
 - Bootstrap (sub-step 2):
   - Initial phase + `isFullyAnchored`.
@@ -203,12 +247,12 @@ See [gps-anchor.test.ts](gps-anchor.test.ts). Coverage:
 
 ## Related docs
 
-- [port plan](../../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-13-gps-anchor-port-plan.md) —
+- [port plan](../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-05-13-gps-anchor-port-plan.md) —
   full design, sub-step list, test matrix.
 - [`frustum-visibility.ts`](frustum-visibility.ts.md) — supplies
   `isObjectInCameraFrustum` for the upcoming `'snap-when-offscreen'`
   steady state.
 - [`ar/frame-loop.ts`](../ar/frame-loop.ts.md) — the registry the
   anchor self-registers with.
-- [`sync-gps-anchored-meshes.ts`](../../../../GpsPlusSlamJs_RecorderApp/src/visualization/sync-gps-anchored-meshes.ts.md) —
+- [`sync-gps-anchored-meshes.ts`](../../../GpsPlusSlamJs_RecorderApp/src/visualization/sync-gps-anchored-meshes.ts.md) —
   the bulk counterpart for many-spheres-one-geometry use cases.

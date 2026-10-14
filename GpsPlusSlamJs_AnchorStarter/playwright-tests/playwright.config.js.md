@@ -3,10 +3,11 @@
 - **Purpose:** Playwright runner config for the persistent-anchor starter's
   end-to-end tests. Currently scopes the **Tier 0** smoke + capability-gate
   suite (see
-  [2026-06-01-anchor-starter-e2e-test-plan.md](../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-01-anchor-starter-e2e-test-plan.md)).
+  [2026-06-01-0447-anchor-starter-e2e-test-plan.md](../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-01-0447-anchor-starter-e2e-test-plan.md)).
 - **Key settings:**
   - `testDir: '.'` — specs live next to this config in `playwright-tests/`.
   - **Chromium only** — WebXR is Chrome-focused; other engines add no signal.
+  - Chromium is launched with `browserLaunchArgs(process.env)` from `scripts/e2e/browser-launch.mjs`: `--in-process-gpu` when run-stage lowered the browser stage (Windows), so the WebGL work inherits the lowered priority; nothing otherwise.
   - `baseURL: http://127.0.0.1:5181` — the starter's dedicated dev port, kept
     distinct from the minimal example (5180) and recorder (5173).
   - `webServer.command: pnpm run dev -- --port 5181` with

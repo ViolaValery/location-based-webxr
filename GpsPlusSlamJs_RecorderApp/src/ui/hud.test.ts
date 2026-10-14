@@ -21,16 +21,14 @@ import {
   showRecordingControls,
   setStopButtonBusy,
   setPermissionsReady,
-  setFolderSelected,
   setSaveLocationSelected,
   setFolderImportExpanded,
+  setFolderImportProgress,
   updateFolderStatus,
   updateSaveStatus,
   updateRefPointButtonLabel,
   setNewRefPointButtonVisible,
   updatePermissionStatus,
-  updateTrackingQuality,
-  hideTrackingQuality,
   showUnsupportedPlatformNotice,
   updateRefPointHint,
   type UICallbacks,
@@ -58,6 +56,13 @@ function setupMinimalDOM(): void {
     <button id="btn-choose-save"></button>
     <details id="folder-import-section">
       <p id="folder-import-hint" class="hidden"></p>
+      <p id="folder-status"></p>
+      <div id="folder-import-progress" class="hidden" role="progressbar"
+        aria-valuemin="0" aria-valuemax="100"
+        aria-labelledby="folder-import-progress-text">
+        <p id="folder-import-progress-text"></p>
+        <div><div id="folder-import-progress-bar" style="width: 0%"></div></div>
+      </div>
     </details>
     <div id="setup-modal"></div>
     <div id="new-scenario-section" class="hidden"></div>
@@ -66,17 +71,6 @@ function setupMinimalDOM(): void {
     <div id="gps-info" class="hidden"><span id="gps-accuracy"></span></div>
     <div id="ar-info" class="hidden"><span id="ar-tracking"></span></div>
     <div id="frame-count-info" class="hidden"><span id="frame-count">0</span></div>
-    <div id="tracking-quality" class="hidden">
-      <div id="tracking-quality-badge"><span id="tq-state"></span> <span id="tq-confidence"></span></div>
-      <div id="tracking-quality-details" class="hidden">
-        <div id="tq-convergence"></div>
-        <div id="tq-sum-rot"></div>
-        <div id="tq-sum-pos"></div>
-        <div id="tq-residual"></div>
-        <div id="tq-gps-accuracy"></div>
-        <div id="tq-coverage"></div>
-      </div>
-    </div>
     <textarea id="session-notes" disabled></textarea>
     <div id="recording-indicator" class="hidden"></div>
     <p id="enter-ar-hint"></p>
@@ -312,7 +306,6 @@ describe('validateEnterButton', () => {
   it('shows permission hint when permissions not ready', () => {
     setupMinimalDOM();
     initUI(createMockCallbacks());
-    setFolderSelected(true); // Storage setup complete
     setSaveLocationSelected(true);
     setPermissionsReady(false);
 
@@ -335,7 +328,6 @@ describe('validateEnterButton', () => {
   it('enables button when a scenario is selected', () => {
     setupMinimalDOM();
     initUI(createMockCallbacks());
-    setFolderSelected(true); // Storage setup complete
     setSaveLocationSelected(true);
     setPermissionsReady(true); // Permissions must be ready for scenario checks
 
@@ -365,7 +357,6 @@ describe('validateEnterButton', () => {
   it('disables button when __new__ is selected without a name', () => {
     setupMinimalDOM();
     initUI(createMockCallbacks());
-    setFolderSelected(true); // Storage setup complete
     setSaveLocationSelected(true);
     setPermissionsReady(true); // Permissions must be ready for scenario checks
 
@@ -398,7 +389,6 @@ describe('validateEnterButton', () => {
   it('enables button when __new__ is selected with a name', () => {
     setupMinimalDOM();
     initUI(createMockCallbacks());
-    setFolderSelected(true); // Storage setup complete
     setSaveLocationSelected(true);
     setPermissionsReady(true); // Permissions must be ready for scenario checks
 
@@ -433,7 +423,6 @@ describe('validateEnterButton', () => {
   it('does not require a folder — Enter AR enables without a folder when save+permissions+scenario are ready', () => {
     setupMinimalDOM();
     initUI(createMockCallbacks());
-    setFolderSelected(false); // No folder opened
     setSaveLocationSelected(true); // Save location chosen (the real requirement)
     setPermissionsReady(true);
 
@@ -461,7 +450,6 @@ describe('validateEnterButton', () => {
   it('shows save location hint when save location not chosen', () => {
     setupMinimalDOM();
     initUI(createMockCallbacks());
-    setFolderSelected(false); // Folder is optional and irrelevant to the gate
     setSaveLocationSelected(false); // No save location
     setPermissionsReady(true);
 
@@ -480,7 +468,6 @@ describe('validateEnterButton', () => {
   it('shows scenario name hint when __new__ selected without name', () => {
     setupMinimalDOM();
     initUI(createMockCallbacks());
-    setFolderSelected(true); // Storage setup complete
     setSaveLocationSelected(true);
     setPermissionsReady(true); // Permissions must be ready for scenario name hint
 
@@ -515,7 +502,6 @@ describe('validateEnterButton', () => {
   it('hides hint when button is enabled', () => {
     setupMinimalDOM();
     initUI(createMockCallbacks());
-    setFolderSelected(true); // Storage setup complete
     setSaveLocationSelected(true);
     setPermissionsReady(true); // Permissions must be ready for button to enable
 
@@ -579,9 +565,180 @@ describe('setFolderImportExpanded', () => {
     expect(hint.textContent).toBe('');
   });
 
+  it('keeps the hint hidden when called collapsed WITH a hint (hint is gated on expanded — PR #63 review)', () => {
+    // Why this test matters: a hint line under a collapsed section is
+    // internally inconsistent state — the hint exists to explain WHY the
+    // section auto-expanded, so it must only show alongside expansion.
+    setupMinimalDOM();
+    initUI(createMockCallbacks());
+
+    setFolderImportExpanded(false, 'should not be visible');
+
+    const hint = document.getElementById('folder-import-hint') as HTMLElement;
+    expect(hint.classList.contains('hidden')).toBe(true);
+    expect(hint.textContent).toBe('');
+  });
+
   it('does not throw when the folder-import elements are absent (graceful)', () => {
     document.body.innerHTML = '';
     expect(() => setFolderImportExpanded(true, 'x')).not.toThrow();
+  });
+});
+
+/**
+ * D2 (2026-07-05 folder-import feedback): a determinate progress bar with a
+ * text label above it, inside the folder-import section, visualizing the
+ * eager ref-point indexing pass. Per the CLAUDE.md async-UX rule the bar must
+ * show a transitional state (in-progress) AND a durable end state (✓ summary
+ * that lingers, then hides); failures reset it via `null` (the error itself
+ * goes through the toast/error channel).
+ */
+describe('setFolderImportProgress', () => {
+  function getEls() {
+    return {
+      container: document.getElementById('folder-import-progress')!,
+      text: document.getElementById('folder-import-progress-text')!,
+      bar: document.getElementById('folder-import-progress-bar') as HTMLElement,
+    };
+  }
+
+  beforeEach(() => {
+    setupMinimalDOM();
+  });
+
+  it('is hidden by default', () => {
+    const { container } = getEls();
+    expect(container.classList.contains('hidden')).toBe(true);
+  });
+
+  it('shows text and a proportional bar width while in progress', () => {
+    setFolderImportProgress({ kind: 'progress', done: 1, total: 3 });
+
+    const { container, text, bar } = getEls();
+    expect(container.classList.contains('hidden')).toBe(false);
+    expect(text.textContent).toBe(
+      'Recovering reference points… 1 / 3 recordings'
+    );
+    expect(bar.style.width).toBe('33%');
+  });
+
+  it('stays hidden for an empty folder (total 0)', () => {
+    setFolderImportProgress({ kind: 'progress', done: 0, total: 0 });
+
+    const { container } = getEls();
+    expect(container.classList.contains('hidden')).toBe(true);
+  });
+
+  it('drives aria-valuenow so screen readers can announce progress (PR #168 a11y)', () => {
+    // Why: the visual bar is a plain styled div — without progressbar
+    // semantics assistive tech gets ZERO feedback about the indexing pass.
+    // The static role/aria-valuemin/aria-valuemax live in index.html
+    // (asserted by the setup-modal e2e against the real markup); hud.ts owns
+    // the dynamic aria-valuenow, which must track the completion percentage
+    // and be removed again when the bar hides.
+    vi.useFakeTimers();
+    try {
+      const { container } = getEls();
+
+      setFolderImportProgress({ kind: 'progress', done: 1, total: 3 });
+      expect(container.getAttribute('aria-valuenow')).toBe('33');
+
+      setFolderImportProgress({
+        kind: 'done',
+        refPointsWritten: 5,
+        zipFilesTotal: 3,
+      });
+      expect(container.getAttribute('aria-valuenow')).toBe('100');
+
+      setFolderImportProgress(null);
+      expect(container.getAttribute('aria-valuenow')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows the durable ✓ end state at 100%, lingers, then hides', () => {
+    vi.useFakeTimers();
+    try {
+      setFolderImportProgress({ kind: 'progress', done: 2, total: 3 });
+      setFolderImportProgress({
+        kind: 'done',
+        refPointsWritten: 5,
+        zipFilesTotal: 3,
+      });
+
+      const { container, text, bar } = getEls();
+      expect(container.classList.contains('hidden')).toBe(false);
+      expect(bar.style.width).toBe('100%');
+      expect(text.textContent).toBe(
+        '✓ 5 reference points recovered from 3 recordings'
+      );
+
+      // Durable end state lingers, then the bar hides on its own.
+      vi.advanceTimersByTime(10_000);
+      expect(container.classList.contains('hidden')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows an "already up to date" end state when nothing was written', () => {
+    setFolderImportProgress({
+      kind: 'done',
+      refPointsWritten: 0,
+      zipFilesTotal: 4,
+    });
+
+    const { text } = getEls();
+    expect(text.textContent).toBe(
+      '✓ Reference points already up to date (4 recordings scanned)'
+    );
+  });
+
+  it('uses singular wording for one ref point from one recording', () => {
+    setFolderImportProgress({
+      kind: 'done',
+      refPointsWritten: 1,
+      zipFilesTotal: 1,
+    });
+
+    const { text } = getEls();
+    expect(text.textContent).toBe(
+      '✓ 1 reference point recovered from 1 recording'
+    );
+  });
+
+  it('hides immediately and resets the bar on null (failure/abort reset path)', () => {
+    vi.useFakeTimers();
+    try {
+      setFolderImportProgress({ kind: 'progress', done: 1, total: 2 });
+
+      setFolderImportProgress(null);
+
+      const { container, bar } = getEls();
+      expect(container.classList.contains('hidden')).toBe(true);
+      expect(bar.style.width).toBe('0%');
+
+      // A pending linger timer from an earlier done-state must not resurface
+      // the bar after a reset.
+      setFolderImportProgress({
+        kind: 'done',
+        refPointsWritten: 1,
+        zipFilesTotal: 1,
+      });
+      setFolderImportProgress(null);
+      vi.advanceTimersByTime(10_000);
+      expect(container.classList.contains('hidden')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not throw when the progress elements are absent (graceful)', () => {
+    document.body.innerHTML = '';
+    expect(() =>
+      setFolderImportProgress({ kind: 'progress', done: 1, total: 2 })
+    ).not.toThrow();
   });
 });
 
@@ -724,7 +881,6 @@ describe('populateScenarios', () => {
     initUI(createMockCallbacks());
 
     // Satisfy the other gating conditions so validateEnterButton can flip.
-    setFolderSelected(true);
     setSaveLocationSelected(true);
     setPermissionsReady(true);
 
@@ -1686,184 +1842,6 @@ describe('showArReadyControls', () => {
   });
 });
 
-describe('updateSyncStatus', () => {
-  /**
-   * Helper to set up DOM with sync status elements.
-   */
-  function setupDOMWithSyncStatus(): void {
-    setupMinimalDOM();
-    // Add sync status elements
-    const hud = document.createElement('div');
-    hud.innerHTML = `
-      <div id="sync-info" class="hidden">
-        <span id="sync-status">--</span>
-      </div>
-    `;
-    document.body.appendChild(hud);
-  }
-
-  /**
-   * Why this test matters:
-   * When sync is active and working, the user should see last sync time.
-   */
-  it('displays last sync time when sync is successful', async () => {
-    vi.resetModules();
-    setupDOMWithSyncStatus();
-
-    const { initUI: freshInitUI, updateSyncStatus } = await import('./hud.js');
-    freshInitUI(createMockCallbacks());
-
-    updateSyncStatus({
-      state: 'active',
-      lastSyncTime: Date.now() - 30_000, // 30 seconds ago
-      lastError: null,
-    });
-
-    const syncInfo = document.getElementById('sync-info')!;
-    const syncStatus = document.getElementById('sync-status')!;
-
-    expect(syncInfo.classList.contains('hidden')).toBe(false);
-    expect(syncStatus.textContent).toContain('30s ago');
-    expect(syncStatus.classList.contains('text-green-400')).toBe(true);
-  });
-
-  /**
-   * Why this test matters:
-   * When sync fails, the user should see an error indicator.
-   */
-  it('displays error message when sync fails', async () => {
-    vi.resetModules();
-    setupDOMWithSyncStatus();
-
-    const { initUI: freshInitUI, updateSyncStatus } = await import('./hud.js');
-    freshInitUI(createMockCallbacks());
-
-    updateSyncStatus({
-      state: 'active',
-      lastSyncTime: Date.now() - 60_000,
-      lastError: 'Write failed',
-    });
-
-    const syncStatus = document.getElementById('sync-status')!;
-
-    expect(syncStatus.textContent).toContain('⚠️');
-    expect(syncStatus.classList.contains('text-yellow-400')).toBe(true);
-  });
-
-  /**
-   * Why this test matters:
-   * When sync is idle, the UI should be hidden.
-   */
-  it('hides sync info when state is idle', async () => {
-    vi.resetModules();
-    setupDOMWithSyncStatus();
-
-    const { initUI: freshInitUI, updateSyncStatus } = await import('./hud.js');
-    freshInitUI(createMockCallbacks());
-
-    // First show it
-    updateSyncStatus({
-      state: 'active',
-      lastSyncTime: Date.now(),
-      lastError: null,
-    });
-
-    // Then set to idle
-    updateSyncStatus({
-      state: 'idle',
-      lastSyncTime: null,
-      lastError: null,
-    });
-
-    const syncInfo = document.getElementById('sync-info')!;
-    expect(syncInfo.classList.contains('hidden')).toBe(true);
-  });
-
-  /**
-   * Why this test matters:
-   * When never synced, should show pending indicator.
-   */
-  it('shows pending when active but never synced', async () => {
-    vi.resetModules();
-    setupDOMWithSyncStatus();
-
-    const { initUI: freshInitUI, updateSyncStatus } = await import('./hud.js');
-    freshInitUI(createMockCallbacks());
-
-    updateSyncStatus({
-      state: 'active',
-      lastSyncTime: null,
-      lastError: null,
-    });
-
-    const syncInfo = document.getElementById('sync-info')!;
-    const syncStatus = document.getElementById('sync-status')!;
-
-    expect(syncInfo.classList.contains('hidden')).toBe(false);
-    expect(syncStatus.textContent).toContain('pending');
-  });
-
-  // Bug 3 (SPA audit): The relative time display ("30s ago") must tick forward
-  // even without new sync events. Currently it freezes at the value computed
-  // when updateSyncStatus was last called.
-  it('should refresh relative time periodically without new sync calls', async () => {
-    vi.resetModules();
-    vi.useFakeTimers();
-    setupDOMWithSyncStatus();
-
-    const { initUI: freshInitUI, updateSyncStatus } = await import('./hud.js');
-    freshInitUI(createMockCallbacks());
-
-    const syncTime = Date.now();
-    updateSyncStatus({
-      state: 'active',
-      lastSyncTime: syncTime,
-      lastError: null,
-    });
-
-    const syncStatus = document.getElementById('sync-status')!;
-    expect(syncStatus.textContent).toBe('0s ago');
-
-    // Advance 30 seconds (3 refresh intervals) — no new sync event fires
-    vi.advanceTimersByTime(30_000);
-
-    expect(syncStatus.textContent).toBe('30s ago');
-
-    vi.useRealTimers();
-  });
-
-  // Bug 3: Timer must be cleaned up when sync becomes idle
-  it('should stop relative time refresh when state is idle', async () => {
-    vi.resetModules();
-    vi.useFakeTimers();
-    setupDOMWithSyncStatus();
-
-    const { initUI: freshInitUI, updateSyncStatus } = await import('./hud.js');
-    freshInitUI(createMockCallbacks());
-
-    updateSyncStatus({
-      state: 'active',
-      lastSyncTime: Date.now(),
-      lastError: null,
-    });
-
-    // Go idle — should stop the timer
-    updateSyncStatus({
-      state: 'idle',
-      lastSyncTime: null,
-      lastError: null,
-    });
-
-    // Advance time — should not throw or cause issues
-    vi.advanceTimersByTime(30_000);
-
-    const syncInfo = document.getElementById('sync-info')!;
-    expect(syncInfo.classList.contains('hidden')).toBe(true);
-
-    vi.useRealTimers();
-  });
-});
-
 // ============================================================================
 // showSetupModal Tests (Issue 4 — soft reset for new recording)
 // ============================================================================
@@ -1909,52 +1887,27 @@ describe('showSetupModal', () => {
 
 describe('resetUIForNewRecording', () => {
   // Why this test matters: On soft reset, save location must be cleared
-  // (new recording = new ZIP), but folder selection is kept if read handle persists.
-  it('clears saveLocationSelected but preserves folderSelected when keepFolder=true', async () => {
+  // (new recording = new ZIP). (The parallel write-only folderSelected flag
+  // was removed 2026-07-10, quality-review D-3 — keepFolder now only gates
+  // the folder-status text clearing.)
+  it('clears saveLocationSelected on soft reset regardless of keepFolder', async () => {
     vi.resetModules();
     setupMinimalDOM();
 
     const {
       initUI: freshInitUI,
-      setFolderSelected: freshSetFolder,
       setSaveLocationSelected: freshSetSave,
-      getFolderSelected: freshGetFolder,
       getSaveLocationSelected: freshGetSave,
       resetUIForNewRecording,
     } = await import('./hud.js');
     freshInitUI(createMockCallbacks());
 
-    freshSetFolder(true);
     freshSetSave(true);
-
     resetUIForNewRecording({ keepFolder: true });
-
-    expect(freshGetFolder()).toBe(true);
     expect(freshGetSave()).toBe(false);
-  });
 
-  // Why this test matters: If the read folder handle is no longer valid,
-  // both folder and save location must be reset.
-  it('clears both folderSelected and saveLocationSelected when keepFolder=false', async () => {
-    vi.resetModules();
-    setupMinimalDOM();
-
-    const {
-      initUI: freshInitUI,
-      setFolderSelected: freshSetFolder,
-      setSaveLocationSelected: freshSetSave,
-      getFolderSelected: freshGetFolder,
-      getSaveLocationSelected: freshGetSave,
-      resetUIForNewRecording,
-    } = await import('./hud.js');
-    freshInitUI(createMockCallbacks());
-
-    freshSetFolder(true);
     freshSetSave(true);
-
     resetUIForNewRecording({ keepFolder: false });
-
-    expect(freshGetFolder()).toBe(false);
     expect(freshGetSave()).toBe(false);
   });
 
@@ -2641,259 +2594,6 @@ describe('updatePermissionStatus — Grant Permissions button visibility', () =>
     expect(document.getElementById('perm-webxr-status')!.textContent).toMatch(
       /ready/i
     );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tracking Quality indicator
-// ---------------------------------------------------------------------------
-
-import type { TrackingQualityReport } from 'gps-plus-slam-app-framework';
-
-function makeReport(
-  overrides: Partial<TrackingQualityReport> = {}
-): TrackingQualityReport {
-  return {
-    state: 'ok',
-    confidence: 0.85,
-    subScores: {
-      convergence: 0.9,
-      residualConsensus: 0.85,
-      compassAgreement: 0.95,
-      gpsAccuracy: 0.88,
-      coverage: 1.0,
-    },
-    diagnostics: {
-      recentSumRotationDeltaDeg: 1.2,
-      recentSumTranslationDeltaM: 0.5,
-      medianResidualM: 2.3,
-      medianRecentGpsAccuracyM: 6.0,
-      walkedDistanceM: 42,
-      directionSpreadDeg: 120,
-      headingDeltaDeg: 5.0,
-      compassDriftDetected: false,
-      observationsSeen: 25,
-      gpsVsFusedMaxDivergenceM: 3.1,
-    },
-    ...overrides,
-  };
-}
-
-describe('updateTrackingQuality', () => {
-  beforeEach(() => {
-    setupMinimalDOM();
-    initUI(createMockCallbacks());
-  });
-
-  // Why: the indicator must become visible once tracking quality data arrives.
-  it('unhides the tracking quality container', () => {
-    updateTrackingQuality(makeReport());
-
-    const container = document.getElementById('tracking-quality')!;
-    expect(container.classList.contains('hidden')).toBe(false);
-  });
-
-  // Why: the state badge is the primary at-a-glance signal for the user.
-  it('displays the state label', () => {
-    updateTrackingQuality(makeReport({ state: 'ok' }));
-    expect(document.getElementById('tq-state')!.textContent).toBe('OK');
-  });
-
-  // Why: numeric confidence gives users a sense of progression (0→1).
-  it('displays confidence as a percentage', () => {
-    updateTrackingQuality(makeReport({ confidence: 0.73 }));
-    expect(document.getElementById('tq-confidence')!.textContent).toBe('73%');
-  });
-
-  // Why: color coding must match tracking state for instant recognition.
-  it('applies green color for ok state', () => {
-    updateTrackingQuality(makeReport({ state: 'ok' }));
-    const badge = document.getElementById('tracking-quality-badge')!;
-    expect(badge.className).toContain('text-green-400');
-  });
-
-  it('applies yellow color for degraded state', () => {
-    updateTrackingQuality(makeReport({ state: 'degraded' }));
-    const badge = document.getElementById('tracking-quality-badge')!;
-    expect(badge.className).toContain('text-yellow-400');
-  });
-
-  it('applies gray color for warming-up state', () => {
-    updateTrackingQuality(makeReport({ state: 'warming-up' }));
-    const badge = document.getElementById('tracking-quality-badge')!;
-    expect(badge.className).toContain('text-gray-400');
-  });
-
-  it('applies red color for ar-lost state', () => {
-    updateTrackingQuality(makeReport({ state: 'ar-lost' }));
-    const badge = document.getElementById('tracking-quality-badge')!;
-    expect(badge.className).toContain('text-red-400');
-  });
-
-  // Why: the badge must toggle only its state-color class, not overwrite
-  // className wholesale. A wholesale overwrite would silently drop any
-  // layout/padding/font classes (and the static `cursor-pointer`) declared
-  // on the element in index.html. This guards against regressing to
-  // `badge.className = ...`.
-  it('preserves unrelated classes when updating state color', () => {
-    const badge = document.getElementById('tracking-quality-badge')!;
-    // Simulate classes that index.html may add now or in the future.
-    badge.classList.add('cursor-pointer', 'px-2', 'font-bold');
-
-    updateTrackingQuality(makeReport({ state: 'ok' }));
-
-    expect(badge.classList.contains('cursor-pointer')).toBe(true);
-    expect(badge.classList.contains('px-2')).toBe(true);
-    expect(badge.classList.contains('font-bold')).toBe(true);
-    expect(badge.classList.contains('text-green-400')).toBe(true);
-  });
-
-  // Why: switching state must remove the previous state color, otherwise
-  // stale color classes accumulate and the displayed color is undefined.
-  it('removes the previous state color when state changes', () => {
-    const badge = document.getElementById('tracking-quality-badge')!;
-
-    updateTrackingQuality(makeReport({ state: 'ok' }));
-    expect(badge.classList.contains('text-green-400')).toBe(true);
-
-    updateTrackingQuality(makeReport({ state: 'ar-lost' }));
-    expect(badge.classList.contains('text-green-400')).toBe(false);
-    expect(badge.classList.contains('text-red-400')).toBe(true);
-  });
-
-  // Why: sub-scores must be visible in the expanded detail view.
-  it('populates sub-score values in detail panel', () => {
-    // Why: confirms the four sub-scores that survived the 2026-05-23
-    // field-test pruning (Findings 2, 3, 5) still render. compass /
-    // headingDelta / obs / walked were intentionally removed from the
-    // HUD; they remain on the report for background metrics + tests but
-    // are no longer in the detail panel.
-    updateTrackingQuality(
-      makeReport({
-        subScores: {
-          convergence: 0.91,
-          residualConsensus: 0.72,
-          compassAgreement: 0.88,
-          gpsAccuracy: 0.65,
-          coverage: 1.0,
-        },
-      })
-    );
-
-    expect(document.getElementById('tq-convergence')!.textContent).toContain(
-      '91%'
-    );
-    expect(document.getElementById('tq-residual')!.textContent).toContain(
-      '72%'
-    );
-    expect(document.getElementById('tq-gps-accuracy')!.textContent).toContain(
-      '65%'
-    );
-    expect(document.getElementById('tq-coverage')!.textContent).toContain(
-      '100%'
-    );
-  });
-
-  // Why: Findings 2 & 3 removed compass / heading / obs / walked from the
-  // HUD. Guard the deletion so a careless re-add is caught.
-  it('does not render compass, heading, obs, or walked elements', () => {
-    updateTrackingQuality(makeReport());
-    expect(document.getElementById('tq-compass')).toBeNull();
-    expect(document.getElementById('tq-heading-delta')).toBeNull();
-    expect(document.getElementById('tq-compass-drift')).toBeNull();
-    expect(document.getElementById('tq-obs-count')).toBeNull();
-    expect(document.getElementById('tq-walked')).toBeNull();
-  });
-
-  // Why: Finding 6 — the two raw alignment-motion sums sit next to
-  // `Conv:` in the HUD so the user can see *how much* and *on which
-  // axis* the alignment is moving when the smoothed convergence score
-  // looks suspicious. The values come straight from
-  // `diagnostics.recentSum…` (no rounding to %), with 2 decimal places
-  // and the °/m suffixes the user expects in the field.
-  it('renders ΣΔrot and ΣΔpos sums from diagnostics (Finding 6)', () => {
-    updateTrackingQuality(
-      makeReport({
-        diagnostics: {
-          recentSumRotationDeltaDeg: 3.456,
-          recentSumTranslationDeltaM: 0.789,
-          medianResidualM: 2.0,
-          medianRecentGpsAccuracyM: 5.0,
-          walkedDistanceM: 42,
-          directionSpreadDeg: 120,
-          headingDeltaDeg: null,
-          compassDriftDetected: false,
-          observationsSeen: 25,
-          gpsVsFusedMaxDivergenceM: 3.1,
-        },
-      })
-    );
-    expect(document.getElementById('tq-sum-rot')!.textContent).toContain(
-      'ΣΔrot: 3.46°'
-    );
-    expect(document.getElementById('tq-sum-pos')!.textContent).toContain(
-      'ΣΔpos: 0.79m'
-    );
-  });
-});
-
-describe('tracking quality badge tap to expand/collapse', () => {
-  beforeEach(() => {
-    setupMinimalDOM();
-    initUI(createMockCallbacks());
-  });
-
-  // Why: details panel starts collapsed — users see the badge first.
-  it('starts with details panel hidden', () => {
-    updateTrackingQuality(makeReport());
-    const details = document.getElementById('tracking-quality-details')!;
-    expect(details.classList.contains('hidden')).toBe(true);
-  });
-
-  // Why: tapping the badge toggles the detail panel open.
-  it('expands details on badge click', () => {
-    updateTrackingQuality(makeReport());
-    const badge = document.getElementById('tracking-quality-badge')!;
-    badge.click();
-    const details = document.getElementById('tracking-quality-details')!;
-    expect(details.classList.contains('hidden')).toBe(false);
-  });
-
-  // Why: tapping again collapses the detail panel.
-  it('collapses details on second badge click', () => {
-    updateTrackingQuality(makeReport());
-    const badge = document.getElementById('tracking-quality-badge')!;
-    badge.click(); // expand
-    badge.click(); // collapse
-    const details = document.getElementById('tracking-quality-details')!;
-    expect(details.classList.contains('hidden')).toBe(true);
-  });
-});
-
-describe('hideTrackingQuality', () => {
-  beforeEach(() => {
-    setupMinimalDOM();
-    initUI(createMockCallbacks());
-  });
-
-  // Why: tracking quality indicator should hide when recording ends
-  // or when the session resets.
-  it('hides the tracking quality container', () => {
-    updateTrackingQuality(makeReport());
-    hideTrackingQuality();
-    const container = document.getElementById('tracking-quality')!;
-    expect(container.classList.contains('hidden')).toBe(true);
-  });
-
-  // Why: re-showing after hide should reset expanded state.
-  it('collapses details when hidden then re-shown', () => {
-    updateTrackingQuality(makeReport());
-    const badge = document.getElementById('tracking-quality-badge')!;
-    badge.click(); // expand
-    hideTrackingQuality();
-    updateTrackingQuality(makeReport());
-    const details = document.getElementById('tracking-quality-details')!;
-    expect(details.classList.contains('hidden')).toBe(true);
   });
 });
 

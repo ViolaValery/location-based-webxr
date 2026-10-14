@@ -12,7 +12,10 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ReplayModeController } from './replay-mode';
-import type { SessionEntry, ScenarioSessionMap } from '../ui/session-browser';
+import type {
+  SessionEntry,
+  ScenarioSessionMap,
+} from '../storage/recording-discovery';
 import type { RecorderStore } from '../state/recorder-store';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────
@@ -56,7 +59,7 @@ vi.mock('../storage/external-file-storage', () => ({
   getReadFolderHandle: vi.fn().mockReturnValue(null),
 }));
 
-vi.mock('../ui/session-browser', () => ({
+vi.mock('../storage/recording-discovery', () => ({
   listSessionZipsInScenario: vi.fn().mockResolvedValue([]),
   discoverScenariosFromZipMetadata: vi.fn().mockResolvedValue({
     scenarioSessions: new Map(),
@@ -105,10 +108,6 @@ const { mockMapOverlay, MockMapOverlayConstructor } = vi.hoisted(() => {
   return { mockMapOverlay: overlay, MockMapOverlayConstructor: MockMapOverlay };
 });
 
-vi.mock('gps-plus-slam-app-framework/visualization/map-overlay', () => ({
-  MapOverlay: MockMapOverlayConstructor,
-}));
-
 vi.mock(
   'gps-plus-slam-app-framework/visualization/leaflet-map-overlay',
   () => ({
@@ -156,7 +155,7 @@ vi.mock('gps-plus-slam-app-framework/utils/logger', () => ({
 
 import { createReplayHandlers, type ReplayHandlers } from './replay-handlers';
 import { getReadFolderHandle } from '../storage/external-file-storage';
-import { listSessionZipsInScenario } from '../ui/session-browser';
+import { listSessionZipsInScenario } from '../storage/recording-discovery';
 import {
   populateReplaySessions,
   showReplayControls,

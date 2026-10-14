@@ -31,12 +31,8 @@ import { selectFrameTilesInWebXR } from 'gps-plus-slam-app-framework/state';
 import type { ArImageCapture } from 'gps-plus-slam-app-framework/core';
 import type { RecorderStore } from '../state/recorder-store';
 import type { StoreRef } from '../state/store-ref';
+import { followStore } from '../state/store-ref';
 
-/**
- * Default minimum byte threshold below which a frame blob is treated
- * as broken/empty and skipped. Initial heuristic — the F3.6 corpus
- * test calibrates this against the field-recording fixture.
- */
 /**
  * Default minimum byte threshold below which a frame blob is treated
  * as broken/empty and skipped. Internal default — F3.5 wirers may
@@ -82,6 +78,10 @@ export function wireFrameTileSubscribers(
   let disposed = false;
 
   const attach = (store: RecorderStore): (() => void) => {
+    // Swap reset at attach start (followStore contract, quality-review
+    // G-11): a no-op on the initial attachment, and exactly the old
+    // detach → clear → re-attach order on every store swap.
+    visualizer.clear();
     const processed = new Set<string>();
     let lastFrames: readonly FrameTile[] = selectFrameTilesInWebXR(
       store.getState()
@@ -144,16 +144,11 @@ export function wireFrameTileSubscribers(
     });
   };
 
-  let detach = attach(storeRef.get());
-  const unsubscribeSwap = storeRef.subscribe((nextStore) => {
-    detach();
-    visualizer.clear();
-    detach = attach(nextStore);
-  });
+  // Store-swap following via the shared helper (quality-review G-11).
+  const stopFollowing = followStore(storeRef, attach);
 
   return () => {
     disposed = true;
-    detach();
-    unsubscribeSwap();
+    stopFollowing();
   };
 }

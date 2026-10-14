@@ -1,0 +1,122 @@
+# moved-code-check.ts
+
+## Purpose
+
+The viewer's per-AR-entry moved-code check (Tour Viewer authoring plan
+2026-09-28-0953 §3.6, decision D20, milestone M5c): each scanned code is
+pinned at its first voted lock and judged on every new device fix of the
+store's GPS history with `moved-code-rule.ts` `judgeCodeMove` (handing
+it the folded fixes' median accuracy, the turn check's evidence gate since
+polish round C5), until it
+reads `moved` (reported once, with the detector's inputs) or its horizon
+(`MOVED_CODE_HORIZON_S`, 300 s) passes. Pure of the page: the caller
+(`viewer-placement.ts`) hands in the history and the page clock, and acts on
+a verdict (the veto). No compass reading is taken (owner, 2026-10-02).
+
+## Public API
+
+`createMovedCodeChecks(): MovedCodeChecks`
+
+- `pin({ text, levelId, level, qrPoseWorld, atMs, zero })` - start checking
+  `levelId` from the stable pose (raw WebXR) its first voted lock was built
+  from, onto the level's geo through `zero`. No-op for a level already
+  checked in this frame, a level without geo, no zero, a non-finite time,
+  or a pose pair with no yaw.
+- `update({ gpsPositions, odometryPositions, zero }, nowMs)` - fold the
+  history's new device fixes into every live check and judge it; returns
+  the codes that read `moved` now (`{ text, levelId, evidence }`), each
+  once. A check past its horizon ends silently - except a vetoed code's,
+  which goes on until a consistent verdict on at least
+  `RESTORE_SPREAD_FACTOR` (2) times the spread it was vetoed on lifts the
+  veto: `createMovedCodeChecks({ onRestored })` is called with a
+  `RestoredCode` (`{ text, levelId, evidence }`: |D|, yaw, span, spread, the
+  veto's spread, the accuracy median, seconds since the pin) and the check
+  ends (polish round C5, owner decision Q-C5). A code that really moved
+  never reads consistent and stays vetoed.
+- `frameChanged(storedCount)` - the odometry frame changed: every check
+  ends - a vetoed code's too - and later pins fold only the history from
+  `storedCount` on. A vetoed code is re-judged afterwards through a
+  probation check: `pin({ ..., vetoSpreadM })` starts a check already
+  vetoed at that spread, which can only lift the veto (the M0a review #1;
+  `viewer-placement.ts` pins one on an ignored code's lock).
+  - **A probation fit is pinned less precisely than the veto's** (PR #583
+    review): the veto's check was pinned on the fused stable pose, the
+    probation check on the lock's raw single-frame detection pose (no fused
+    pose exists for an ignored code - `isIgnored` is read before it is
+    computed). The lift's TRIGGER compares like with like (the spread is
+    the pinned odometry's own RMS, and a pin is a rigid map); its VERDICT
+    (`magnitudeM`, `yawDeg`) carries that pose's larger error, so the
+    numbers in a `codeRestored` log are not on the same basis as the
+    `codeIgnored` ones. Deferring the probation pin until a fused pose
+    exists is filed (polish-round plan, M0a follow-ups).
+- `clear()` - end every check (a tour switch).
+- `snapshot()` - the live checks (`MovedCodeCheckView`), for the `?debug=1`
+  readout, the station guide and tests.
+
+`checkHadItsWindow(view)` - whether a live check has had the rule's
+evidence (`CODE_MOVE_RULE` `minSpanS` 60 s and `minSpreadM` 2 m) to read a
+move; below it every verdict is `undecided`. The station guide holds a code
+lock the visitor's own GPS disagrees with until this, a veto, or its
+maximum hold (tour kit K4 review R1). The fit counts device fixes of the
+300 s before the pin, so a visitor who walked a minute before scanning gets
+it at the first fix after the pin.
+
+`MovedCodeEvidence` (the `tourViewing/codeIgnored` payload's `evidence`):
+`ruleVersion`, `decidedBy` (`position` or `turn`), `turnChecked`, `boundM`, `displacementM`,
+`magnitudeM`, `yawDeg`, `spanS`, `spreadM`, `deviceFixes`,
+`deviceAccuracyMedianM`, `storedAccuracyM`, `alignmentSampleCount`,
+`settled`, `sinceScanS`.
+
+## Invariants
+
+- **Device fixes only** (§7j #3): the history goes through
+  `displacementSamples` (`deviceSamples`). The code's own votes agree with
+  its pin by construction and would dilute a move towards zero; a test and a
+  property pin that votes in the history change nothing.
+- **Incremental, slicing-invariant**: each check remembers how much of the
+  history it folded and folds only the rest (O(1) per fix); however the
+  growth is sliced the estimate is the same (property). A history that
+  SHRANK (a reset, e.g. the veto's own recovery) is folded again from its
+  start, so no fix counts twice - unless an odometry frame change came
+  first (M5c review M4): the re-fed history then holds both frames, so every
+  check ends and later pins fold only what is stored after the reset. The
+  solve itself still blends frames after a WebXR origin reset, because the
+  viewer never dispatches `odometryTrackingRestarted`: filed as
+  `../docs/2026-10-02-1929-viewer-odometry-restart-not-dispatched-followup.md`.
+- **A bounded fit window** (M5c review H2): only the device fixes stamped at
+  most `MOVED_CODE_FIT_WINDOW_S` (300 s, `moved-code-rule.ts`) before the
+  pin fold, and every one after it; a frame change cuts the history too.
+  The window compares a fix's Geolocation stamp with the pin's page clock
+  (`Date.now` in the viewer): both epoch milliseconds, as the measurement
+  compared them. The real-walk visits were short (median 2.7 min), so the
+  measured behaviour is the whole-visit fit; the window keeps a long session
+  inside it.
+- **No compass**: a code's turn is its rigid-fit yaw in GPS world space,
+  read only for a settled save (`moved-code-rule.ts`).
+- Accuracies are the folded device fixes' reported ones (median by sorted
+  insert); the saved level's are read from `mintQuality`.
+
+## Example
+
+```ts
+const checks = createMovedCodeChecks();
+checks.pin({ text, levelId, level, qrPoseWorld, atMs: lockMs, zero });
+// on every store change that grew the GPS history:
+for (const v of checks.update(
+  { gpsPositions, odometryPositions, zero },
+  Date.now(),
+)) {
+  veto(v); // viewer-placement: ignore, retract the votes, log
+}
+```
+
+## Tests
+
+`moved-code-check.test.ts` (a 40 m move read once after 60 s; an unmoved
+code never; the horizon; the 300 s fit window, and old far-off fixes
+that no longer veto; votes in the history change nothing; the settled
+yaw; no turn check for an unsettled save; no compass input; a frame
+change; a reset; a reset after a frame change; the evidence; one pin per code; `clear()`;
+`checkHadItsWindow` at the gate, and after a walk at the first fix),
+`moved-code-check.property.test.ts` (slicing and vote-interleaving
+invariance). The wired veto: `viewer-moved-code.test.ts`.

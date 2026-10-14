@@ -1,0 +1,953 @@
+/*
+ * The desktop editor's look (M6 E1): the chosen prototype's
+ * (`public/prototypes/editor-1-left-rail/`) paper tokens, panels, rail,
+ * markers, card and open modal. Its own tokens, not `design.css`, whose
+ * zeroed paragraph and list margins broke the L5 port (root CLAUDE.md,
+ * "Throwaway UX prototypes").
+ */
+:root {
+  --ink: #1b1b20;
+  --ink-dim: #5a5a63;
+  --ink-faint: #8a8a93;
+  --paper: #f2f1ed;
+  --panel: rgb(250 249 246 / 94%);
+  --panel-solid: #faf9f6;
+  --panel-lo: #efede7;
+  --hairline: rgb(27 27 32 / 12%);
+  --accent: #f2971f;
+  --accent-ink: #8a4b00;
+  --accent-soft: rgb(242 151 31 / 16%);
+  --danger: #c8322b;
+  --code: #23324a;
+  --station: #2f6b5b;
+  --shadow: 0 1px 2px rgb(27 27 32 / 8%), 0 8px 28px rgb(27 27 32 / 14%);
+  --shadow-big: 0 2px 4px rgb(27 27 32 / 8%), 0 18px 60px rgb(27 27 32 / 24%);
+  --radius: 14px;
+  --radius-small: 10px;
+  --serif:
+    "Iowan Old Style", "Palatino Linotype", palatino, "Book Antiqua", georgia,
+    serif;
+  --sans:
+    system-ui, -apple-system, "Segoe UI", roboto, "Helvetica Neue", arial,
+    sans-serif;
+  --rail-w: 304px;
+  --top-h: 56px;
+  --gap: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 14px/1.45 var(--sans);
+  overflow: hidden;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--serif);
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: 0.005em;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#map {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: #e8e6df;
+}
+
+/* A muted, paper-toned base map, so the tour's own markers carry the colour. */
+.leaflet-tile-pane {
+  filter: saturate(0.35) sepia(0.12) brightness(1.03) contrast(0.95);
+}
+
+.leaflet-container {
+  font-family: var(--sans);
+}
+
+.leaflet-top.leaflet-right {
+  top: calc(var(--top-h) + var(--gap) + 4px);
+}
+
+.leaflet-bar {
+  border: none !important;
+  box-shadow: var(--shadow) !important;
+  border-radius: var(--radius-small) !important;
+  overflow: hidden;
+}
+
+.leaflet-bar a {
+  background: var(--panel-solid) !important;
+  color: var(--ink) !important;
+  border-bottom-color: var(--hairline) !important;
+}
+
+.leaflet-control-attribution {
+  background: rgb(250 249 246 / 82%) !important;
+  border-top-left-radius: 8px;
+}
+
+.panel {
+  background: var(--panel);
+  backdrop-filter: blur(10px) saturate(1.1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--hairline);
+  background: #fff;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: #f6f4ef;
+  border-color: rgb(27 27 32 / 22%);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #000;
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn.small {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  min-height: 0;
+  border-radius: 8px;
+}
+
+.tiny {
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+/* The top bar. */
+#topbar {
+  position: fixed;
+  z-index: 900;
+  top: var(--gap);
+  left: var(--gap);
+  right: var(--gap);
+  height: var(--top-h);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 10px 0 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex: none;
+  background: var(--ink);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-family: var(--serif);
+  font-weight: 700;
+}
+
+.brand-text {
+  min-width: 0;
+}
+
+.tour-name {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.15;
+}
+
+.tour-file {
+  font-size: 12px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-spacer {
+  flex: 1;
+}
+
+/* The left rail. */
+#rail {
+  position: fixed;
+  z-index: 800;
+  top: calc(var(--top-h) + var(--gap) * 2);
+  left: var(--gap);
+  bottom: var(--gap);
+  width: var(--rail-w);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 10px 8px 16px;
+}
+
+.rail-head h2 {
+  font-size: 17px;
+  flex: 1;
+  white-space: nowrap;
+}
+
+.rail-search {
+  margin: 0 12px 8px;
+  position: relative;
+}
+
+.rail-search svg {
+  position: absolute;
+  left: 9px;
+  top: 9px;
+  color: var(--ink-faint);
+}
+
+.rail-search input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px 0 30px;
+  border-radius: 9px;
+  border: 1px solid var(--hairline);
+  background: #fff;
+  font: inherit;
+}
+
+.rail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+.group {
+  margin-top: 10px;
+}
+
+.group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+.group-head .count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+}
+
+.row:hover,
+.row.hover {
+  background: rgb(27 27 32 / 5%);
+}
+
+.row.sel {
+  background: var(--accent-soft);
+  border-color: rgb(242 151 31 / 55%);
+}
+
+.row-icon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+}
+
+.row-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.row-title,
+.row-meta {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-meta {
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.mini-code {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: var(--code);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+}
+
+.mini-station {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--station);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+}
+
+.mini-note {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 15%);
+}
+
+.mini-photo {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #fff;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 15%);
+}
+
+.rail-hint,
+.empty-filter {
+  margin: 4px 8px 0;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.empty-filter {
+  padding: 16px 0;
+  font-size: 13px;
+}
+
+/* The collapsed rail. */
+#rail.collapsed {
+  width: 58px;
+}
+
+#rail.collapsed .rail-head h2,
+#rail.collapsed .rail-search,
+#rail.collapsed .rail-body {
+  display: none;
+}
+
+#rail.collapsed .rail-head {
+  padding: 12px 0;
+  justify-content: center;
+}
+
+.rail-mini {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+#rail.collapsed .rail-mini {
+  display: flex;
+}
+
+.rail-mini button {
+  width: 44px;
+  padding: 6px 0;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+/* Markers. */
+.mk-wrap {
+  background: none;
+  border: none;
+}
+
+.mk-code {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--code);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 35%);
+  transition: transform 120ms;
+}
+
+.mk-station {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--station);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 35%);
+  transition: transform 120ms;
+}
+
+.mk-wrap.sel .mk-station {
+  transform: scale(1.2);
+  box-shadow:
+    0 0 0 4px var(--accent),
+    0 3px 10px rgb(0 0 0 / 40%);
+}
+
+.mk-note {
+  position: relative;
+  width: 34px;
+  height: 42px;
+  transition: transform 120ms;
+  transform-origin: 50% 100%;
+}
+
+.mk-bubble {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2.5px solid #fff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 35%);
+  display: grid;
+  place-items: center;
+}
+
+.mk-glyph {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1b1b20;
+}
+
+.mk-photo .mk-bubble {
+  background: #fff;
+  border-color: var(--accent);
+}
+
+.mk-photo .mk-glyph {
+  width: 14px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.mk-tail {
+  position: absolute;
+  left: 13px;
+  top: 30px;
+  width: 8px;
+  height: 10px;
+  background: #fff;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.mk-wrap.hover .mk-code,
+.mk-wrap.hover .mk-note {
+  transform: scale(1.12);
+}
+
+.mk-wrap.sel .mk-code {
+  transform: scale(1.2);
+  box-shadow:
+    0 0 0 4px var(--accent),
+    0 3px 10px rgb(0 0 0 / 40%);
+}
+
+.mk-wrap.sel .mk-note {
+  transform: scale(1.2);
+}
+
+.mk-wrap.sel .mk-bubble {
+  box-shadow:
+    0 0 0 4px var(--ink),
+    0 3px 10px rgb(0 0 0 / 40%);
+}
+
+/* The card beside the selected marker. */
+#card {
+  position: fixed;
+  z-index: 850;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  padding: 14px 16px 12px;
+  box-shadow: var(--shadow-big);
+  background: var(--panel-solid);
+}
+
+/* Never taller than the window under the top bar: the content scrolls
+ * inside, the arrow (outside the card's edge) is not clipped. */
+#card-inner {
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+}
+
+#card .arrow {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: var(--panel-solid);
+  border: 1px solid var(--hairline);
+  transform: rotate(45deg);
+}
+
+#card[data-side="right"] .arrow {
+  left: -8px;
+  border-top: none;
+  border-right: none;
+}
+
+#card[data-side="left"] .arrow {
+  right: -8px;
+  border-bottom: none;
+  border-left: none;
+}
+
+#card[data-side="none"] .arrow {
+  display: none;
+}
+
+#card[data-side="below"] .arrow {
+  top: -8px;
+  border-bottom: none;
+  border-right: none;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.kind-chip {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--ink-dim);
+  flex: 1;
+}
+
+.card-title {
+  font-size: 17px;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.card-photo {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  background: var(--panel-lo);
+}
+
+.card-text {
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-line {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+}
+
+.note-line.error {
+  color: var(--danger);
+}
+
+.card-foot {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+kbd {
+  font: 11px var(--sans);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--hairline);
+  background: #fff;
+  color: var(--ink-dim);
+}
+
+#offscreen-chip {
+  position: fixed;
+  z-index: 850;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 14px;
+}
+
+/* Toasts. */
+#toasts {
+  position: fixed;
+  z-index: 1200;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgb(27 27 32 / 92%);
+  color: #fff;
+  box-shadow: var(--shadow-big);
+  max-width: calc(100vw - 32px);
+}
+
+/* The open modal. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgb(242 241 237 / 55%);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--panel-solid);
+  border-radius: 18px;
+  box-shadow: var(--shadow-big);
+  border: 1px solid var(--hairline);
+  padding: 28px 30px 24px;
+}
+
+.modal h1 {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.modal .lede {
+  color: var(--ink-dim);
+  margin: 0 0 20px;
+  font-size: 15px;
+}
+
+.drop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1.5px dashed rgb(27 27 32 / 25%);
+  background: #fff;
+  cursor: pointer;
+}
+
+.drop.over {
+  border-color: var(--accent);
+  background: #fffaf2;
+}
+
+.drop-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.drop-title {
+  display: block;
+  font-weight: 600;
+}
+
+.drop-sub {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+#open-status {
+  min-height: 20px;
+  margin: 12px 4px 0;
+  color: var(--ink-dim);
+}
+
+#open-error {
+  margin: 12px 4px 0;
+  color: var(--danger);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+
+.fineprint {
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--ink-dim);
+  line-height: 1.5;
+}
+
+@media (width <= 980px) {
+  :root {
+    --rail-w: 252px;
+  }
+
+  .tour-file {
+    display: none;
+  }
+}
+
+/* Editing (M6 E2a), as the prototype's card. */
+.btn.danger {
+  color: var(--danger);
+}
+
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  margin-bottom: 4px;
+}
+
+#card textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--hairline);
+  background: #fff;
+  font: 14px/1.45 var(--sans);
+  color: var(--ink);
+}
+
+#card textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.note-line.warn {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  padding: 8px 10px;
+  border-radius: 9px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.card-actions .grow {
+  flex: 1;
+}
+
+.move-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+#save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--panel-lo);
+  font-size: 13px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+#save-status[data-state="error"] {
+  background: rgb(200 50 43 / 12%);
+  color: var(--danger);
+}
+
+#save-status[data-state="pending"],
+#save-status[data-state="saving"] {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.keep-walk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.toast .btn {
+  background: transparent;
+  color: var(--accent);
+  border-color: rgb(255 255 255 / 18%);
+  min-height: 30px;
+}
+
+/* A phone: the top bar keeps every control inside the window (E2a review
+ * #11) - the status line shortens, "Open another tour" says "Open". */
+.label-short {
+  display: none;
+}
+
+@media (width <= 720px) {
+  #save-status {
+    min-width: 0;
+    max-width: 32vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .label-long {
+    display: none;
+  }
+
+  .label-short {
+    display: inline;
+  }
+}

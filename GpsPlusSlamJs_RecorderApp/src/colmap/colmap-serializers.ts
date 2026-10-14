@@ -2,18 +2,20 @@
  * COLMAP `sparse/0/` Text Serializers
  *
  * Pure string builders for the three COLMAP model files (export plan Iter 2,
- * gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-13-colmap-export-plan.md §5):
+ * gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-06-13-1205-colmap-export-plan.md §5):
  *  - `cameras.txt` — one shared `PINHOLE` camera.
  *  - `images.txt`  — two lines per image: the world-to-camera pose, then an
  *    EMPTY keypoint line (we have no 2D feature detections — plan Q1/§2.2).
  *  - `points3D.txt`— one line per occupancy-grid voxel center (XYZ + RGB),
  *    with an EMPTY track (no 2D↔3D correspondences exist).
  *
- * Coordinate frame: COLMAP's world frame IS the raw-WebXR world frame (the
- * Iter-1 pose conversion applies the camera-frame basis change in camera space
- * only, leaving the world frame unchanged). So `points3D` XYZ are passed in raw
- * WebXR world coords with NO further transform — they are already registered
- * with the camera extrinsics. See colmap-serializers.ts.md.
+ * Coordinate frame: these serializers are pure string builders — they write
+ * whatever XYZ/extrinsics they are handed, untouched. The world basis change
+ * that makes the export load upright (follow-up Item B: COLMAP/3DGS viewers want
+ * Y-down gravity, our world is WebXR Y-up) is applied UPSTREAM and identically
+ * to both — `webxrToColmapWorldPoint` for `points3D` and `webxrToColmapPose` for
+ * the camera extrinsics — so the values arriving here are already in the COLMAP
+ * world frame and stay registered. See colmap-conversions.ts(.md).
  *
  * The emitted files target 3DGS-initialization loaders (gsplat / Nerfstudio /
  * Inria), which read only intrinsics + extrinsics + seed XYZ/RGB and ignore the
@@ -43,7 +45,11 @@ export interface ColmapImageRecord {
 /** One row of `points3D.txt` (the track is always emitted empty). */
 export interface ColmapPoint3DRecord {
   readonly pointId: number;
-  /** Point position in the COLMAP world frame (== raw WebXR world). */
+  /**
+   * Point position already in the COLMAP world frame (raw WebXR run through the
+   * `webxrToColmapWorldPoint` basis change — negated Y,Z — so it stays
+   * registered with the camera extrinsics and loads upright).
+   */
   readonly xyz: Vector3;
   readonly rgb: Rgb;
   /** Reprojection error placeholder (no real tracks → a constant). */
@@ -140,5 +146,8 @@ function fmtInt(n: number): string {
 
 /** Round + clamp a color channel to an integer 0–255. */
 function clampByte(n: number): number {
+  // Math.round(NaN) is NaN and min/max propagate it, so a non-finite channel
+  // used to reach the file as the text "NaN" (simplify loop, 2026-09-04).
+  if (!Number.isFinite(n)) return n > 0 ? 255 : 0;
   return Math.min(255, Math.max(0, Math.round(n)));
 }

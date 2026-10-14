@@ -1,0 +1,71 @@
+# occupancy-view.ts
+
+## Purpose
+
+The demo's single reconstructed mesh, used for BOTH the visual occlusion AND the
+physics collider (user feedback: same framework building block). Owns an
+`OccupancyGrid` fed by a store's `recordDepthSample` stream (via the framework's
+`subscribeReplayOccupancy`) driving ONE `OcclusionMesh`. Used by both the desktop
+(with `startReplaySession`'s own occupancy disabled) and live-AR paths.
+
+## Public API
+
+- **`createOccupancyView(arWorldGroup, store, options?): OccupancyView`** —
+  `options` = `{ cellSizeM=DEFAULT_OCCUPANCY_CELL_SIZE_M (0.16),
+minObservations=DEFAULT_OCCUPANCY_MIN_OBSERVATIONS (2), meshMode='smooth',
+debugStyle='depth-shaded-wireframe' }`. The voxel size + noise floor come from the
+  framework constants so the demo shares the RecorderApp's tuning. Both come from
+  the 2026-07-16 EVENING on-device pass, which superseded the same-day corpus
+  sweep's 0.18/3: the sweep's floater argument for floor 3 was measured under
+  LEGACY carving, and the decay carve guard largely closes that gap. Floaters
+  matter more here than in the Recorder — a floater is a phantom COLLIDER, not
+  just a stray voxel — so if the floor is ever revisited, this demo is the
+  sharper test case.
+- **`OccupancyView`**:
+  - `getMesh(): THREE.Mesh` — the CURRENT occluder's mesh (a stable handle across
+    `setMeshMode` recreation), whose trimesh feeds the physics collider.
+  - `setMeshMode(mode)` — `MeshMode` (`'smooth'` Surface nets / `'greedy'` Cubes /
+    `'corner-fit'`). Since the mode is an `OcclusionMesh` CONSTRUCTION option, this
+    **recreates** the occluder and re-meshes from the persisted grid.
+  - `getOcclusionMesh(): OcclusionMesh` — the CURRENT occluder itself, for the
+    AR shadows, which give it their receiver every frame (a new one after
+    `setMeshMode`).
+  - `setDebugStyle(style)` — live `OccluderDebugStyle` skin switch.
+  - `remesh()` - re-mesh the CURRENT occluder from the grid now, the call a
+    depth refresh makes, without adding a sample. For the shadow probe: the
+    paused replay has no depth stream, and a skin switch reaches the
+    receiver's geometry only through a re-mesh (round 3, 2026-09-27).
+  - `rebuild()` - the Mesh dropdown's path without a mode change: dispose the
+    occluder, build a new one in the same mode and skin (so the shadows give
+    it a new receiver on their next update), and re-mesh it from the grid at
+    once. `setMeshMode` uses it. For the first-visit rebuild (r753 report).
+  - `depthStats()` - `{ samples, lastSampleAtMs }`: the depth samples folded
+    into the grid so far and when the last one arrived (`options.now`,
+    default `performance.now`), for the status line's diagnostics. Neither a
+    mesh-mode nor a skin change touches the grid or the depth stream: they
+    re-mesh or restyle only.
+  - `dispose()`.
+
+## Invariants & assumptions
+
+- **One occluder = occlusion + physics.** The depth-only occluder always writes
+  depth (occlusion is on in every shader, incl. `'off'`); its geometry buffer
+  (raw-WebXR) is the physics trimesh — so the two never diverge.
+- **Confidence-guarded carving at the noise floor** (2026-07-16 synthetic-scene
+  investigation): the grid is built with
+  `carveConfidenceThreshold = minObservations`, so any voxel solid enough to be
+  meshed can no longer be erased by a single deeper depth reading — the
+  collider/occluder stays stable instead of churning at silhouette edges.
+- **Grid persists across mode changes** — `setMeshMode` disposes/rebuilds only the
+  occluder and re-meshes from the existing grid, so no depth data is lost.
+- No cube visualizer — "Cubes (blocky)" is the `'greedy'` mesher mode of the
+  occluder, not a separate instanced mesh.
+
+## Tests
+
+- `occupancy-view.test.ts` (real framework objects + fake store) — each depth
+  sample folds into the grid and re-meshes the occluder; defaults to Surface nets +
+  the combined shader; `setDebugStyle` switches live; `setMeshMode` yields a NEW
+  `getMesh()` handle and re-meshes; `remesh` re-meshes the current occluder and
+  adds no sample; the confidence guard keeps an established
+  cell against a deeper reading (identity-projection rays); dispose detaches.

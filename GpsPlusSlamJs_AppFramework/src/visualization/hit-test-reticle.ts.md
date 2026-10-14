@@ -9,9 +9,11 @@ pose (a column-major 4×4 transform) or `null`, it drives a Three.js mesh's
 visibility + transform.
 
 The per-frame XR plumbing (requesting the hit-test source, reading
-`frame.getHitTestResults(...)`) lives in each app's WebXR glue; only the logic
-here is unit-tested because it is what a porting developer is most likely to get
-subtly wrong.
+`frame.getHitTestResults(...)`) lives in the framework's shared driver,
+[ar/hit-test-reticle-driver](../ar/hit-test-reticle-driver.ts.md)
+(`startHitTestReticle`, promoted 2026-07-18 from the app-local copies); the
+logic here is unit-tested because it is what a porting developer is most likely
+to get subtly wrong.
 
 ## Public API
 
@@ -83,3 +85,12 @@ regression.
 
 - `GpsPlusSlamJs_MinimalExample/src/main.ts` — tap-to-place reticle.
 - `GpsPlusSlamJs_AnchorStarter/src/main.ts` — cache-miss placement reticle.
+
+## updateReticleAtSurface (Tour Viewer polish round M5c)
+
+`updateReticleAtSurface(reticle, worldPosition, worldNormal)` puts the reticle on a surface
+point given in WORLD coordinates (a raycast against the occluder mesh), lying flat to the
+surface: the point is brought into the parent's frame through the parent's current
+`matrixWorld`, and the reticle's up axis (the ring's normal, local +Y) is turned onto the
+normal in that frame. Makes the reticle visible. Tested in `hit-test-reticle.test.ts`
+(identity and a moved, turned parent).

@@ -21,7 +21,7 @@ await initOpfsStorage();
 
 **Note:** `odomCoordVersion` in session metadata was expanded to support values `2 | 3 | 4 | 5` reflecting the evolution from NUE-baked actions (era 2), to raw-WebXR positions (era 3), to raw-WebXR + RawGpsPoint (era 4), to state-side quaternion conversion (era 5). Optional `build` and sanitized `pageUrl` (origin + pathname only) fields were added for debugging — older ZIPs without them remain valid.
 
-**Coverage index:** Optional `h3Cells` (deduped H3 cells the GPS path crossed) and `h3Resolution` (the H3 resolution used, currently 11) were added to power the map-centric recording browser — it reads them straight from `session.json` to place a tour and answer "which tours cross this tile?" without unzipping GPS data. The recorder computes `h3Cells` at recording stop via `gpsPathToCoverageCells` (see `geo/h3-proximity.ts` and `GpsPlusSlamJs_Docs/docs/2026-06-14-map-centric-recording-browser-and-h3-index-user-feedback.md`, D1/D2). Both fields are optional — legacy recordings without them remain valid and are backfilled in memory from their GPS path on demand.
+**Coverage index:** Optional `h3Cells` (deduped H3 cells the GPS path crossed) and `h3Resolution` (the H3 resolution used, currently 11) were added to power the map-centric recording browser — it reads them straight from `session.json` to place a tour and answer "which tours cross this tile?" without unzipping GPS data. The recorder computes `h3Cells` at recording stop via `gpsPathToCoverageCells` (see `geo/h3-proximity.ts` and `GpsPlusSlamJs_Docs/docs/2026-06-14-1048-map-centric-recording-browser-and-h3-index-user-feedback.md`, D1/D2). Both fields are optional — legacy recordings without them remain valid and are backfilled in memory from their GPS path on demand.
 
 ### Session Management
 
@@ -56,6 +56,11 @@ await writeSessionMetadata({
   userAgent: navigator.userAgent,
 });
 ```
+
+- `createSessionInDirectory(parent, timestamp)` - the same session layout and
+  same-second name probe in a parent directory the caller owns (a second
+  app's recordings, outside the Recorder's `sessions/`); the write functions
+  above then target it. See Invariants.
 
 ### Listing
 
@@ -102,9 +107,17 @@ const { available, used } = await checkStorageQuota();
 1. `initOpfsStorage()` must be called before any other operations
 2. `createSession()` must be called before `writeAction()`/`writeFrame()`
 3. Action indices are 1-based and zero-padded to 6 digits (000001.json)
+   - Each action file is compact JSON (since scan pass S2, 2026-10-08; it
+     was indented before), and a `recording/recordDepthSample` whose grid
+     the packed form holds exactly is written packed (`depth-sample-codec.ts`:
+     `points: []` plus a base64url float32 `grid`). The in-memory action is
+     never changed; `zip-reader.ts`' shared parse unpacks it, so every reader
+     of a recording sees the action as it was dispatched.
 4. Frame filenames follow the pattern `frame-{index}.jpg`
-5. Session folders are named `recording-{ISO-timestamp}utc`
-6. All write operations use `safeWriteToFile()` helper which guarantees `FileSystemWritableFileStream` cleanup. On write/close errors, it captures the original error, attempts `writable.abort()` in a separate try/catch (so abort failures cannot mask the original error), and then rethrows the original error.
+5. Session folders are named `recording-YYYY-MM-DD_HH-MM-SSutc` (an underscore/dash-separated UTC stamp, NOT ISO 8601 — colons are illegal in directory names). The timestamp is whole-second resolution, so `createSession()` probes for an existing directory and appends a numeric suffix (`-2`, `-3`, …) on collision — two recordings started within the same UTC second get distinct directories instead of silently reusing and mixing one. The first session in a given second keeps the bare timestamp name.
+   - The probe distinguishes error names (PR #158 review): `NotFoundError` → name free; `TypeMismatchError` (a **file** occupies the name — `{ create: true }` could not replace it either) → name taken, probe advances to the next suffix; any other error (`InvalidStateError`, …) is a storage failure and is **rethrown** so `createSession` fails loudly — treating it as "taken" would loop the suffix probe forever, treating it as "free" would crash later with a misleading create-time error.
+   - **`createSessionInDirectory(parent, timestamp)`** (2026-09-28) is the same layout, probe and handle hand-off in a parent directory the caller owns; `createSession()` is now that call on `sessions/`. It needs no `initOpfsStorage()`. The Tour Viewer's troubleshooting recording uses it for `gps-plus-slam/tour-viewer/`, because it shares the origin with the Recorder and must not land in the Recorder's `sessions/` folder ([authoring recording plan](../../../../gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-09-28-0953-tour-viewer-authoring-recording-anchoring-and-editing-plan.md) review finding 16).
+6. All write operations go through the framework helper `writeFileOrAbort()` (`./write-file-or-abort.ts`), which guarantees `FileSystemWritableFileStream` cleanup: on write/close errors it aborts the stream (never closes it, which would commit a partial write), swallows an abort failure so it cannot mask the cause, and rethrows the original error. It lived here as a private `safeWriteToFile` until 2026-07-27, when three hand-rolled copies in the recorder — one already missing its abort guard — made it worth sharing.
 
 ## Error Modes
 
@@ -123,6 +136,6 @@ Write failures (e.g., disk full, quota exceeded) will propagate the error to the
 
 ## Tests
 
-- Unit tests: `opfs-storage.test.ts`
+- Unit tests: `opfs-storage.test.ts` (including `createSessionInDirectory`: the layout and writes land under the given parent with no `sessions/` folder created, and the same-second probe works there too)
 - All tests use `MockOPFSDirectoryHandle` from `browser-mocks.ts`
-- Resource cleanup tests verify `writable.abort()` is called on write errors
+- Resource cleanup tests verify `writable.abort()` is called on write errors (the helper itself is covered directly by `write-file-or-abort.test.ts`)

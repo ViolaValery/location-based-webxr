@@ -22,14 +22,15 @@
  *
  * @see ./map-browser-index.ts
  * @see ./recording-index.ts
- * @see GpsPlusSlamJs_Docs/docs/2026-06-14-map-centric-recording-browser-and-h3-index-user-feedback.md (D3/D3a/D5)
+ * @see GpsPlusSlamJs_Docs/docs/2026-06-14-1048-map-centric-recording-browser-and-h3-index-user-feedback.md (D3/D3a/D5)
  */
 
 import L from 'leaflet';
 import { cellToBoundary } from 'h3-js';
 import { createLogger } from 'gps-plus-slam-app-framework/utils/logger';
 import { VIS_COLORS } from 'gps-plus-slam-app-framework/visualization/vis-colors';
-import { addOsmTileLayer, FIT_BOUNDS_PADDING } from './map-osm-base';
+import { addOsmTileLayer } from 'gps-plus-slam-app-framework/visualization/osm-tile-layer';
+import { FIT_BOUNDS_PADDING } from './map-osm-base';
 import type { RecordingCoverage } from './recording-index';
 import type { BackfillResult } from '../storage/coverage-backfill';
 import {

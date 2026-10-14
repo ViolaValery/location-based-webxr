@@ -1,6 +1,6 @@
 /**
  * `qrDetected` Redux slice — Note 3 of the QR-tracking follow-up plan
- * (docs `2026-06-15-followup-qr-tracking-generalization-overlay-and-north.md`).
+ * (docs `2026-06-15-1219-qr-tracking-generalization-overlay-and-north-followup.md`).
  *
  * A detection-agnostic, framework-level store of "what was detected, where, in
  * 3D" that overlay / trigger / anchor consumers subscribe to INDEPENDENTLY of
@@ -26,37 +26,46 @@
  * { qrDetected: qrDetectedReducer } })`. It is not a built-in of the store
  * factory, so framework consumers that never detect anything pay nothing.
  *
- * @see ../ar/qr-tracking-controller.ts — the producer (dispatches `recordQrDetection`).
- * @see ../ar/qr-pose.ts — `Pose` / `QrPoseSolution` (the per-detection geometry).
+ * @see ../ar/qr/qr-tracking-controller.ts — the producer (dispatches `recordQrDetection`).
+ * @see ../ar/qr/qr-pose.ts — `Pose` / `QrPoseSolution` (the per-detection geometry).
  */
 
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { Matrix4, Vector3 } from 'gps-plus-slam-js';
-import type { Point2, Pose } from '../ar/qr-pose.js';
-import type { QrSizeEstimate } from '../ar/qr-size-from-depth.js';
+import type { CameraIntrinsics, Point2, Pose } from '../ar/qr/qr-pose.js';
+import { intrinsicsFromProjection } from '../ar/qr/qr-pose.js';
+import type { QrFusedEntry } from '../ar/qr/qr-fused-window.js';
+import type { CornerOrderSource } from '../ar/qr/qr-corner-order.js';
+import type { QrSizeEstimate } from '../ar/qr/qr-size-from-depth.js';
 import {
   evaluateQrPoseStability,
   type QrPoseStability,
   type QrPoseStabilityOptions,
-} from '../ar/qr-pose-aggregation.js';
+} from '../ar/qr/qr-pose-aggregation.js';
 import {
   deriveSolvedQrPose,
   deriveQrPlacement,
   type DeriveQrPoseDeps,
   type DerivedQrPlacement,
   type RawQrObservation,
-} from '../ar/qr-derived-pose.js';
+} from '../ar/qr/qr-derived-pose.js';
+import { lowerMedian } from '../utils/median.js';
+import { isSegmentingActionType } from './segmenting-actions.js';
+import { clearLastRestartedPayload } from './tracking-slice.js';
 
 // Re-exported so consumers of the slice keep importing the size lifecycle types
-// from one place. They are DEFINED in `ar/qr-size-from-depth.ts` (where size is
+// from one place. They are DEFINED in `ar/qr/qr-size-from-depth.ts` (where size is
 // measured) so this slice can use them without `ar` ever importing `state`.
-export type { QrSizeStatus, QrSizeEstimate } from '../ar/qr-size-from-depth.js';
-// Same pattern for the pose-stability lifecycle (defined in `ar/qr-pose-aggregation.ts`).
+export type {
+  QrSizeStatus,
+  QrSizeEstimate,
+} from '../ar/qr/qr-size-from-depth.js';
+// Same pattern for the pose-stability lifecycle (defined in `ar/qr/qr-pose-aggregation.ts`).
 export type {
   QrPoseStabilityStatus,
   QrPoseStability,
   QrPoseStabilityOptions,
-} from '../ar/qr-pose-aggregation.js';
+} from '../ar/qr/qr-pose-aggregation.js';
 
 /**
  * Default ring-buffer cap per marker. Bounded so an overlay that never prunes
@@ -77,10 +86,11 @@ export interface QrDetectionEntry {
   text: string;
   /**
    * Detection time in the producer's injected clock. For the RAW recorder path
-   * this MUST be **EPOCH ms** (`Date.now()`), because the depth stream it joins
+   * this MUST be **EPOCH ms** (since QR perf plan M4: the frame's capture time,
+   * `performance.timeOrigin + xrTime`), because the depth stream it joins
    * against is epoch (`DepthSample.timestamp = performance.timeOrigin + frameTs`,
    * `ar/depth-sampler.ts`) and the size as-of join pairs this with the depth
-   * sample whose timestamp is `≤` this one (`ar/qr-derived-pose`). A relative
+   * sample whose timestamp is `≤` this one (`ar/qr/qr-derived-pose`). A relative
    * `performance.now()` stamp (~1e5) never satisfies that join, so the size — and
    * the debug cube — never resolve. See the recorder live-QR plan open topic A.
    */
@@ -88,7 +98,7 @@ export interface QrDetectionEntry {
 
   // --- RAW detector output (decision D-A, recorder live-QR plan) -----------
   // The authoritative, algorithm-agnostic shape: size + solved pose are DERIVED
-  // from these on read (see `selectSolvedQrPose` → `ar/qr-derived-pose.ts`). A
+  // from these on read (see `selectSolvedQrPose` → `ar/qr/qr-derived-pose.ts`). A
   // RAW producer (the Recorder) records ONLY these — the recording stays
   // algorithm-agnostic / re-testable. OPTIONAL because the legacy geo/demo
   // producer still records the solved pose below instead. See plan §3 / D-A.
@@ -102,6 +112,12 @@ export interface QrDetectionEntry {
   imageWidth?: number;
   /** Detector-buffer height in pixels. */
   imageHeight?: number;
+  /**
+   * Intrinsics of the detector buffer, when the producer had them (the
+   * tracking controller's events do, M3b b3). A raw entry derives them from
+   * `projectionMatrix` + the image size instead.
+   */
+  intrinsics?: CameraIntrinsics;
 
   // --- SOLVED pose (legacy geo/demo producer) ------------------------------
   // OPTIONAL now (D-A): a RAW producer omits these and derives the pose on read.
@@ -114,6 +130,19 @@ export interface QrDetectionEntry {
   qrPoseInCamera?: Pose;
   /** RMS reprojection error in pixels (lower = better fit). */
   reprojectionErrorPx?: number;
+
+  /**
+   * The tracking-frame epoch the detection arrived in (M3b b2). STAMPED BY
+   * THE REDUCER from {@link QrDetectedState.frameEpoch}; a value in the
+   * payload is ignored, so a replay always reproduces the live partition.
+   */
+  frameEpoch?: number;
+  /**
+   * Where the corner order came from (`QrDetection.orderSource`), when the
+   * producer says; the fused window ignores a `native` entry of a code
+   * whose order is known (QR near-frontal pose plan §54-§55).
+   */
+  orderSource?: CornerOrderSource;
 }
 
 /** Per-marker state: a bounded detection history + the size lifecycle. */
@@ -127,6 +156,14 @@ export interface QrMarkerState {
 export interface QrDetectedState {
   /** Ring-buffer cap applied per marker on `recordQrDetection`. */
   maxHistory: number;
+  /**
+   * The current tracking-frame epoch: 0 at start, one more after every
+   * odometry restart or loop closure (see {@link isQrFrameChangeAction}).
+   * Detections from different epochs live in different coordinate frames
+   * and must not be combined (QR near-frontal pose plan §16 #4). Absent
+   * (state built or persisted before M3b b2) reads as 0.
+   */
+  frameEpoch?: number;
   /** Markers keyed by decoded payload. */
   markers: Record<string, QrMarkerState>;
 }
@@ -140,8 +177,35 @@ const initialSize = (): QrSizeEstimate => ({
 
 const initialState: QrDetectedState = {
   maxHistory: DEFAULT_QR_MAX_HISTORY,
+  frameEpoch: 0,
   markers: {},
 };
+
+/**
+ * Whether an action means the odometry frame moved: the recorded gpsData
+ * restart / loop-closure actions (so recordings that CONTAIN them replay
+ * it), the session's own restart bookkeeping (`clearLastRestartedPayload`,
+ * dispatched after a restart into the store the session's phase
+ * subscription watches), or this slice's own `qrFrameChanged`.
+ *
+ * Which apps deliver a signal (QR near-frontal pose plan §22, §24): the
+ * TourViewer does (its AR store is the tracking store); the recorder does
+ * since the rebind fix (the session's phase subscription moves with a
+ * store rebind, plan §24); the QR demo dispatches `qrFrameChanged` from its
+ * `onFrameChanged` hook (b5).
+ *
+ * One restart can arrive as two of these in the same store; the epoch then
+ * moves twice with no detection in between, which partitions the detections
+ * the same way - but epoch NUMBERS are not comparable between a live run
+ * and its replay (which lacks the tracking actions).
+ */
+export function isQrFrameChangeAction(type: string): boolean {
+  return (
+    isSegmentingActionType(type) ||
+    type === clearLastRestartedPayload.type ||
+    type === QR_FRAME_CHANGED_TYPE
+  );
+}
 
 /** Trim a detection list to at most `cap`, dropping the oldest. */
 function capDetections(
@@ -166,7 +230,10 @@ const qrDetectedSlice = createSlice({
      * reason `tracking-slice.originReset` returns new state).
      */
     recordQrDetection(state, action: PayloadAction<QrDetectionEntry>) {
-      const entry = action.payload;
+      const entry: QrDetectionEntry = {
+        ...action.payload,
+        frameEpoch: state.frameEpoch ?? 0,
+      };
       const existing = state.markers[entry.text] as QrMarkerState | undefined;
       const detections = capDetections(
         existing ? [...existing.detections, entry] : [entry],
@@ -194,9 +261,11 @@ const qrDetectedSlice = createSlice({
     ) {
       const { text, estimate } = action.payload;
       const existing = state.markers[text] as QrMarkerState | undefined;
+      // The SAME detections array: a size does not change the detections,
+      // and a new identity would make every fused-window reader re-solve.
       const marker: QrMarkerState = {
         text,
-        detections: existing ? existing.detections.slice() : [],
+        detections: existing ? existing.detections : [],
         size: estimate,
       };
       return { ...state, markers: { ...state.markers, [text]: marker } };
@@ -247,6 +316,22 @@ const qrDetectedSlice = createSlice({
       }
       return { ...state, maxHistory: next, markers };
     },
+
+    /**
+     * The odometry frame moved (restart, loop closure) in an app that
+     * dispatches neither the gpsData actions nor the tracking slice's
+     * restart bookkeeping. Handled by the frame-change matcher below.
+     */
+    qrFrameChanged() {
+      // Intentionally empty: the matcher in extraReducers bumps the epoch,
+      // so this action and the external ones share one code path.
+    },
+  },
+  extraReducers: (builder) => {
+    builder.addMatcher(
+      (action: { type: string }) => isQrFrameChangeAction(action.type),
+      (state) => ({ ...state, frameEpoch: (state.frameEpoch ?? 0) + 1 })
+    );
   },
 });
 
@@ -257,9 +342,13 @@ export const {
   clearQrMarker,
   clearAllQrMarkers,
   setQrMaxHistory,
+  qrFrameChanged,
 } = qrDetectedSlice.actions;
 
 export const qrDetectedReducer = qrDetectedSlice.reducer;
+
+/** The type of {@link qrFrameChanged}; read lazily by the matcher above. */
+const QR_FRAME_CHANGED_TYPE = qrFrameChanged.type;
 
 // --- Selectors ---------------------------------------------------------
 
@@ -330,13 +419,6 @@ export function selectResolvedQrSizeM(
 
 // --- Derived helpers ---------------------------------------------------
 
-/** Per-axis median of a numeric list (returns the lower-middle for even n). */
-function medianOf(values: readonly number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor((sorted.length - 1) / 2);
-  return sorted[mid] as number;
-}
-
 /**
  * Robust per-axis median of the world positions across a marker's detection
  * window — the "running estimate" the bounded buffer enables (Note 3). Outliers
@@ -354,7 +436,7 @@ export function medianQrPosition(
   const xs = poses.map((p) => p.position[0]);
   const ys = poses.map((p) => p.position[1]);
   const zs = poses.map((p) => p.position[2]);
-  return [medianOf(xs), medianOf(ys), medianOf(zs)];
+  return [lowerMedian(xs), lowerMedian(ys), lowerMedian(zs)];
 }
 
 /**
@@ -362,7 +444,7 @@ export function medianQrPosition(
  * buffer (NOT stored separately — the detections are the source of truth, unlike
  * the depth-measured size which is accumulated outside the buffer). Mirrors the
  * size lifecycle's `unknown → measuring → stable` shape so the HUD can show
- * "converging…" vs "stable". See `ar/qr-pose-aggregation.ts`.
+ * "converging…" vs "stable". See `ar/qr/qr-pose-aggregation.ts`.
  */
 export function selectQrPoseStability(
   state: RootWithQrDetected,
@@ -385,7 +467,10 @@ export function selectQrPoseStability(
  * injects into the QR controller / demo so the `ar` layer never imports the
  * slice. The high-weight vote and the smooth overlay consume THIS, never the raw
  * latest pose (which stays available via {@link selectLatestQrDetection} for
- * scanning feedback / overlay persistence across misses).
+ * scanning feedback / overlay persistence across misses). The TourViewer
+ * and the QR demo use the FUSED pose instead (`createFusedQrPoseSource`
+ * over {@link selectQrFusedEntries}; QR near-frontal pose plan §60), and so
+ * do the recorder's votes since b6a (§71); no app wires this average today.
  *
  * ```ts
  * resolveStablePose: (text) => selectStableQrPose(store.getState(), text),
@@ -426,6 +511,7 @@ function toRawObservation(entry: QrDetectionEntry): RawQrObservation | null {
     imageWidth: entry.imageWidth,
     imageHeight: entry.imageHeight,
     timestamp: entry.timestamp,
+    ...(entry.orderSource ? { orderSource: entry.orderSource } : {}),
   };
 }
 
@@ -436,7 +522,7 @@ function toRawObservation(entry: QrDetectionEntry): RawQrObservation | null {
  * `null` when the marker is unknown, has no raw observations, cannot be sized
  * yet, or PnP rejects the latest quad — the re-test-friendly replacement for the
  * once-stored solved pose. Runs identically live and on replay (only
- * `deps.resolveDepthAt` differs). See `ar/qr-derived-pose.ts`.
+ * `deps.resolveDepthAt` differs). See `ar/qr/qr-derived-pose.ts`.
  */
 export function selectSolvedQrPose(
   state: RootWithQrDetected,
@@ -481,3 +567,70 @@ export function selectDerivedQrPlacement(
 ): DerivedQrPlacement | null {
   return deriveQrPlacement(text, selectQrRawObservations(state, text), deps);
 }
+
+/** Mapped fused-window entries per detections array and epoch (see {@link selectQrFusedEntries}). */
+const fusedEntriesCache = new WeakMap<
+  readonly QrDetectionEntry[],
+  { frameEpoch: number; mapped: readonly QrFusedEntry[] }
+>();
+
+/** The intrinsics of a stored entry: its own, or derived from its projection. */
+function entryIntrinsics(e: QrDetectionEntry): CameraIntrinsics | null {
+  if (e.intrinsics) return e.intrinsics;
+  if (!e.projectionMatrix || !e.imageWidth || !e.imageHeight) return null;
+  try {
+    return intrinsicsFromProjection(
+      e.projectionMatrix,
+      e.imageWidth,
+      e.imageHeight
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** One stored entry as a fused-window entry, or null when it cannot feed the solve. */
+function toFusedEntry(e: QrDetectionEntry): QrFusedEntry | null {
+  const intrinsics = entryIntrinsics(e);
+  if (!e.corners || !e.cameraPose || !intrinsics) return null;
+  return {
+    timestamp: e.timestamp,
+    corners: e.corners,
+    cameraPose: e.cameraPose,
+    intrinsics,
+    frameEpoch: e.frameEpoch ?? 0,
+    rawPose: e.qrPoseWorld ?? null,
+    ...(e.orderSource ? { orderSource: e.orderSource } : {}),
+  };
+}
+
+/**
+ * A marker's detections of the CURRENT frame epoch as fused-window entries
+ * (QR near-frontal pose plan M3b b3), oldest first. Older epochs live in
+ * another coordinate frame, so after a restart this is empty until the code
+ * is seen again (b2/b3 review #2). Entries without corners, a camera pose
+ * or intrinsics (from the entry, or derived from its projection matrix) are
+ * left out. Cached per detections ARRAY and epoch, so the same array comes
+ * back until a new detection arrives or the frame changes - the fused
+ * tracker caches on that identity, and consumers read this on hot paths.
+ */
+export function selectQrFusedEntries(
+  state: RootWithQrDetected,
+  text: string
+): readonly QrFusedEntry[] {
+  const marker = state.qrDetected.markers[text];
+  if (!marker) return EMPTY_FUSED;
+  const frameEpoch = state.qrDetected.frameEpoch ?? 0;
+  const cached = fusedEntriesCache.get(marker.detections);
+  if (cached && cached.frameEpoch === frameEpoch) return cached.mapped;
+  const mapped: QrFusedEntry[] = [];
+  for (const e of marker.detections) {
+    if ((e.frameEpoch ?? 0) !== frameEpoch) continue;
+    const f = toFusedEntry(e);
+    if (f) mapped.push(f);
+  }
+  fusedEntriesCache.set(marker.detections, { frameEpoch, mapped });
+  return mapped;
+}
+
+const EMPTY_FUSED: readonly QrFusedEntry[] = [];

@@ -13,8 +13,9 @@
  * to it (see that function for the full rationale).
  *
  * The per-frame XR plumbing (requesting the hit-test source, reading
- * `frame.getHitTestResults(...)`) stays in each app's WebXR glue and is
- * verified manually on-device. The two functions here are the unit-tested core:
+ * `frame.getHitTestResults(...)`) lives in the framework's shared driver,
+ * `ar/hit-test-reticle-driver.ts` (`startHitTestReticle`), promoted 2026-07-18
+ * from the app-local copies. The two functions here are the unit-tested core:
  * given the latest hit pose (a column-major 4x4 transform matrix) or `null`,
  * drive the mesh's visibility + transform. They are unit tested because that is
  * the logic a porting developer is most likely to get subtly wrong (e.g.
@@ -27,7 +28,9 @@ import {
   Mesh,
   MeshBasicMaterial,
   type Object3D,
+  Quaternion,
   RingGeometry,
+  Vector3,
 } from 'three';
 import { WEBXR_TO_NUE } from '../ar/webxr-nue-basis.js';
 
@@ -101,6 +104,45 @@ export function updateReticle(
   // whenever the parent (arWorldGroup) didn't change that frame — which it
   // doesn't between ~1 Hz GPS alignment updates — so the reticle would render
   // frozen at its previous surface despite a fresh pose each frame.
+  reticle.matrixWorldNeedsUpdate = true;
+  reticle.visible = true;
+}
+
+const surfaceInverse = new Matrix4();
+const surfaceLocal = new Vector3();
+const surfaceNormal = new Vector3();
+const surfaceTurn = new Quaternion();
+const parentTurn = new Quaternion();
+const parentPosition = new Vector3();
+const parentScale = new Vector3();
+const RETICLE_UP = new Vector3(0, 1, 0);
+const UNIT_SCALE = new Vector3(1, 1, 1);
+
+/**
+ * Put the reticle on a surface point given in WORLD coordinates, lying flat
+ * to the surface (its up axis along `worldNormal`) - the mesh cursor (Tour
+ * Viewer polish round M5c): the point comes from a raycast against the
+ * occluder mesh, while the reticle hangs under the alignment-carrying
+ * `arWorldGroup`, so the world pose is brought into its parent's frame.
+ * Reads the parent's current `matrixWorld`; makes the reticle visible.
+ */
+export function updateReticleAtSurface(
+  reticle: Object3D,
+  worldPosition: Vector3,
+  worldNormal: Vector3
+): void {
+  surfaceLocal.copy(worldPosition);
+  surfaceNormal.copy(worldNormal).normalize();
+  const parent = reticle.parent;
+  if (parent !== null) {
+    surfaceInverse.copy(parent.matrixWorld).invert();
+    surfaceLocal.applyMatrix4(surfaceInverse);
+    parent.matrixWorld.decompose(parentPosition, parentTurn, parentScale);
+    surfaceNormal.applyQuaternion(parentTurn.invert()).normalize();
+  }
+  surfaceTurn.setFromUnitVectors(RETICLE_UP, surfaceNormal);
+  reticle.matrix.compose(surfaceLocal, surfaceTurn, UNIT_SCALE);
+  // matrixAutoUpdate is false: see `updateReticle`.
   reticle.matrixWorldNeedsUpdate = true;
   reticle.visible = true;
 }

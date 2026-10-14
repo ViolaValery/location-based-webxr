@@ -13,17 +13,18 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createRecorderStore, type RecorderStore } from './recorder-store';
 import {
-  createRecorderStore,
   startSession,
   endSession,
+  recordWriteFailure,
+} from 'gps-plus-slam-app-framework/state/recording-slice';
+import {
   setZeroPos,
   recordGpsEvent,
-  recordWriteFailure,
-  setCurrentScenarioName,
-  type RecorderStore,
   type RawGpsPoint,
-} from './recorder-store';
+} from 'gps-plus-slam-app-framework/state';
+import { setCurrentScenarioName } from './scenario-slice';
 import { addRefPointEntry, type RefPointEntry } from './ref-points-slice';
 import { navigateTo } from './routing-slice';
 import { NullStorageBackend } from 'gps-plus-slam-app-framework/storage/null-storage-backend';
@@ -362,7 +363,6 @@ describe('Recorder Store', () => {
         altitude: 200,
         latLongAccuracy: 4,
         altitudeAccuracy: 3,
-        compassAbsolute: false,
         timestamp: 1_700_000_000_000,
       };
       const entry: RefPointEntry = {
@@ -377,6 +377,79 @@ describe('Recorder Store', () => {
         expect.objectContaining({ type: 'refPoints/addRefPointEntry' }),
         expect.any(Number)
       );
+    });
+
+    /**
+     * Why this test matters (indoor-loop enablement follow-up, 2026-07-12):
+     * the field protocol for loop recordings is "re-mark every corner on
+     * every pass WITHIN one recording" — multiple `addRefPointEntry`
+     * dispatches of the SAME id in one session. Every prior test dispatched
+     * a single mark, so a middleware regression that dedupes, drops, or
+     * mis-indexes repeated same-id actions would pass unnoticed and starve
+     * the investigation ground truth exactly like the 2026-07-11 session.
+     * This wires the REAL slice + REAL middleware and pins that all three
+     * re-marks persist, each with its own incrementing index and its own
+     * payload (none merged away).
+     */
+    it('persists EVERY re-observation of the same ref-point id with incrementing indices', async () => {
+      const { writeAction } =
+        await import('gps-plus-slam-app-framework/storage/opfs-storage');
+
+      store.dispatch(
+        startSession({
+          scenarioName: 'Test',
+          sessionName: 'recording-loop-session',
+          startTime: Date.now(),
+        })
+      );
+      vi.mocked(writeAction).mockClear();
+
+      const baseTs = 1_700_000_000_000;
+      const markOf = (timestamp: number): RefPointEntry => ({
+        id: '8b1fa0a4970afff', // one physical corner, re-marked per loop pass
+        timestamp,
+        rawGpsPoint: {
+          id: `gps-${timestamp}`,
+          latitude: 50.123,
+          longitude: 6.789,
+          timestamp,
+        },
+      });
+
+      // Three marks of the same corner, ≥10 s apart (past the UI cooldown).
+      store.dispatch(addRefPointEntry(markOf(baseTs)));
+      store.dispatch(addRefPointEntry(markOf(baseTs + 15_000)));
+      store.dispatch(addRefPointEntry(markOf(baseTs + 30_000)));
+
+      // Writes flow through the middleware's async WriteQueue — rapid
+      // successive dispatches are queued, not written synchronously, so the
+      // assertion must wait for the queue to drain (this is also why the
+      // single-mark tests above never noticed: their one write starts on
+      // the first microtask).
+      const getMarkWrites = () =>
+        vi
+          .mocked(writeAction)
+          .mock.calls.filter(
+            ([action]) =>
+              (action as { type?: string }).type ===
+              'refPoints/addRefPointEntry'
+          );
+      await vi.waitFor(() => expect(getMarkWrites()).toHaveLength(3));
+      const markWrites = getMarkWrites();
+      // Each write keeps its own payload — nothing deduped or overwritten.
+      expect(
+        markWrites.map(
+          ([action]) =>
+            (action as { payload: { timestamp: number } }).payload.timestamp
+        )
+      ).toEqual([baseTs, baseTs + 15_000, baseTs + 30_000]);
+      // Indices increment strictly (distinct actions/NNNNNN.json files).
+      const indices = markWrites.map(([, index]) => index);
+      expect(indices[1]).toBe(indices[0]! + 1);
+      expect(indices[2]).toBe(indices[1]! + 1);
+
+      // The REAL slice appends all three (pure append, no dedupe).
+      expect(store.getState().refPoints.entries).toHaveLength(3);
     });
 
     it('should NOT persist actions when not recording', async () => {
@@ -425,7 +498,94 @@ describe('Recorder Store', () => {
       );
     });
 
-    it('should use per-instance action indices, not shared across stores (Bug 10)', () => {
+    it('persists the compass opt-in AFTER setZeroPos so replay re-enables it (recording-fidelity)', async () => {
+      // Field finding (2026-06-27): in-house recordings (64c6a294, e7431b85)
+      // showed the compass opt-in actions persisted BEFORE the first setZeroPos,
+      // so replay dropped them (gpsData is null until setZeroPos) and the override
+      // looked OFF on replay even though it worked live. Root cause: the framework
+      // applied the opt-ins from a `store.subscribe` listener, which fires INSIDE
+      // setZeroPos's dispatch (subscriber notification runs within `next()`),
+      // while the persistence middleware enqueues AFTER `next()` — so the opt-in
+      // actions get LOWER persistence indices than setZeroPos itself. Pin the
+      // ordering BY INDEX (not async write-callback order) so the fix can't
+      // silently regress.
+      const backend = new NullStorageBackend();
+      const writeSpy = vi.spyOn(backend, 'writeAction');
+      const s = createRecorderStore({
+        storageBackend: backend,
+        enableDevChecks: false,
+        enableCompassColdStartOverride: true,
+        enableCompassRotationPrior: true,
+        enableCompassWebXRConsistency: true,
+      });
+      s.dispatch(
+        startSession({
+          scenarioName: 'test',
+          sessionName: 'fidelity',
+          startTime: Date.now(),
+        })
+      );
+      s.dispatch(setZeroPos({ lat: 48.8566, lon: 2.3522 }));
+      // Drain the async write queue so every writeAction call is captured.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const byIndex = writeSpy.mock.calls
+        .map((c) => ({
+          type: (c[0] as { type: string }).type,
+          index: c[1],
+        }))
+        .sort((a, b) => a.index - b.index);
+      const zero = byIndex.find((x) => x.type === 'gpsData/setZeroPos');
+      const cold = byIndex.find(
+        (x) => x.type === 'gpsData/setColdStartOverrideEnabled'
+      );
+      expect(zero).toBeDefined();
+      expect(cold).toBeDefined();
+      // Replay applies actions in index order; the opt-in must come AFTER the
+      // setZeroPos that creates gpsData, or the reducer drops it (state null).
+      expect((zero as { index: number }).index).toBeLessThan(
+        (cold as { index: number }).index
+      );
+      // No re-entrant "storm": each opt-in is persisted EXACTLY ONCE. The old
+      // store.subscribe mechanism re-entered itself and double-dispatched each
+      // flag; the listener middleware applies each unset flag once per gpsData
+      // creation (idempotency re-check before each dispatch).
+      const optInTypes = [
+        'gpsData/setColdStartOverrideEnabled',
+        'gpsData/setCompassRotationPriorEnabled',
+        'gpsData/setCompassWebXRConsistencyEnabled',
+      ];
+      for (const t of optInTypes) {
+        expect(byIndex.filter((x) => x.type === t)).toHaveLength(1);
+      }
+    });
+
+    it('forwards the 2026-07-19 field-test opt-ins to the framework store (experiment + Robust-solver comparison)', async () => {
+      // Why: the recorder settings toggles reach the solve only through this
+      // forwarding chain (compassDebug → createRecorderStore →
+      // createSlamAppStore → recorded gpsData actions). Pin that both new
+      // options arrive on the gpsData slice — a dropped forward would make the
+      // settings toggle silently inert on device.
+      const s = createRecorderStore({
+        storageBackend: new NullStorageBackend(),
+        enableDevChecks: false,
+        enableCompassExperiment: true,
+        enableConsensusSolverComparison: true,
+        compassVoteWeight: 0.1,
+      });
+      s.dispatch(setZeroPos({ lat: 48.8566, lon: 2.3522 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const gpsData = s.getState().gpsData as {
+        compassExperimentEnabled?: boolean;
+        consensusSolverComparisonEnabled?: boolean;
+        compassVoteWeight?: number;
+      } | null;
+      expect(gpsData?.compassExperimentEnabled).toBe(true);
+      expect(gpsData?.consensusSolverComparisonEnabled).toBe(true);
+      expect(gpsData?.compassVoteWeight).toBe(0.1);
+    });
+
+    it('should use per-instance action indices, not shared across stores (Bug 10)', async () => {
       /**
        * Why this test matters:
        * actionIndex was a module-level variable shared across all store
@@ -439,6 +599,14 @@ describe('Recorder Store', () => {
       const store1 = createRecorderStore({
         storageBackend: spyBackend1,
         enableDevChecks: false,
+        // `false` no longer SUPPRESSES the Stage-0 opt-in action — since
+        // gps-plus-slam-js 1.16.0 the library default is `true`, so the framework
+        // must record an explicit `setColdStartOverrideEnabled(false)` or the
+        // opt-out does nothing. There is therefore no way to get a compass-free
+        // action stream any more, which is why the assertions below match a
+        // SPECIFIC call instead of the last one: the subject here is the
+        // per-instance index counter, not the exact contents of the stream.
+        enableCompassColdStartOverride: false,
       });
 
       // Start session on store1 to enable persistence
@@ -457,7 +625,7 @@ describe('Recorder Store', () => {
 
       // setZeroPos = index 2
       store1.dispatch(setZeroPos({ lat: 0, lon: 0 }));
-      expect(writeSpy1).toHaveBeenLastCalledWith(
+      expect(writeSpy1).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'gpsData/setZeroPos' }),
         2
       );
@@ -467,13 +635,27 @@ describe('Recorder Store', () => {
       createRecorderStore({
         storageBackend: spyBackend2,
         enableDevChecks: false,
+        enableCompassColdStartOverride: false,
       });
 
-      // Dispatch on store1 again — index must continue at 3, not restart at 1
+      // Dispatch on store1 again - the index must CONTINUE, not restart at 1.
+      // Three changes from the original assertion, all downstream of the
+      // framework now recording an explicit Stage-0 opt-out (see the note above):
+      //  - index 4, not 3: the stream is startSession(1), setZeroPos(2),
+      //    setColdStartOverrideEnabled(false)(3), setZeroPos(4).
+      //  - a SPECIFIC call, not the last one: this setZeroPos is an origin jump,
+      //    which rebuilds gpsData; the rebuild clears the flag, so the opt-in
+      //    re-applies and the LAST write is that re-apply.
+      //  - it must AWAIT the drain hook. The write queue caps concurrency at 3
+      //    (MAX_CONCURRENT_WRITES), so the 4th write is queued and writeAction is
+      //    NOT called synchronously. This test passed before only because it
+      //    happened to stay under the cap - a latent fragility the extra action
+      //    exposed rather than caused.
       store1.dispatch(setZeroPos({ lat: 1, lon: 1 }));
-      expect(writeSpy1).toHaveBeenLastCalledWith(
+      await store1.flushPendingActionWrites();
+      expect(writeSpy1).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'gpsData/setZeroPos' }),
-        3
+        4
       );
     });
   });
@@ -778,7 +960,14 @@ describe('Recorder Store', () => {
       const backend = new NullStorageBackend();
       const spy = vi.spyOn(backend, 'writeAction');
 
-      const replayStore = createRecorderStore({ storageBackend: backend });
+      // Stage-0 opt-in explicitly OFF. Since gps-plus-slam-js 1.16.0 that no
+      // longer means "no compass action": the library default is ON, so the
+      // framework MUST record setColdStartOverrideEnabled(false) or the opt-out
+      // is a no-op. Hence three persisted actions, not two.
+      const replayStore = createRecorderStore({
+        storageBackend: backend,
+        enableCompassColdStartOverride: false,
+      });
 
       replayStore.dispatch(
         startSession({
@@ -790,7 +979,7 @@ describe('Recorder Store', () => {
       replayStore.dispatch(setZeroPos({ lat: 50.0, lon: 8.0 }));
 
       // NullStorageBackend is called (it's the backend) but does nothing
-      expect(spy).toHaveBeenCalledTimes(2);
+      expect(spy).toHaveBeenCalledTimes(3);
       // State is still updated correctly
       expect(replayStore.getState().gpsData).not.toBeNull();
       expect(replayStore.getState().recording.isRecording).toBe(true);
@@ -944,6 +1133,51 @@ describe('Recorder Store', () => {
         );
         expect(persistedTypes).not.toContain('routing/navigateTo');
       });
+    });
+  });
+
+  describe('Compass alignment debug opt-ins', () => {
+    // Why: the recorder exposes the library's Phase-4 compass flags (Stage 0 /
+    // Stage C / consistency gate) so the operator can test them on-device. The
+    // store must thread each through createSlamAppStore, which enables it on the
+    // gpsData slice once that slice exists (after the first setZeroPos).
+    it('threads all three compass flags into the library store', async () => {
+      const s = createRecorderStore({
+        enableCompassColdStartOverride: true,
+        enableCompassRotationPrior: true,
+        enableCompassWebXRConsistency: true,
+      });
+      expect(s.getState().gpsData).toBeNull();
+      s.dispatch(setZeroPos({ lat: 0, lon: 0 }));
+      // The opt-ins are applied on a microtask after gpsData is created (so they
+      // persist AFTER setZeroPos for replay fidelity — see the recording-fidelity
+      // test above), so await one tick before asserting they landed.
+      await Promise.resolve();
+      const g = s.getState().gpsData;
+      expect(g?.coldStartOverrideEnabled).toBe(true);
+      expect(g?.compassRotationPriorEnabled).toBe(true);
+      expect(g?.compassWebXRConsistencyEnabled).toBe(true);
+    });
+
+    it('inherits the framework defaults when no flags passed (Stage 0 on, others off)', async () => {
+      // createRecorderStore forwards undefined → createSlamAppStore applies its
+      // defaults: Stage 0 (cold-start override) is a default-on feature, while
+      // Stage C + the consistency gate stay field-gated (off). The opt-in is
+      // applied async after gpsData exists, hence the await.
+      const s = createRecorderStore();
+      s.dispatch(setZeroPos({ lat: 0, lon: 0 }));
+      await Promise.resolve();
+      const g = s.getState().gpsData;
+      expect(g?.coldStartOverrideEnabled).toBe(true);
+      expect(g?.compassRotationPriorEnabled).toBeFalsy();
+      expect(g?.compassWebXRConsistencyEnabled).toBeFalsy();
+    });
+
+    it('opts out of Stage 0 when enableCompassColdStartOverride: false', async () => {
+      const s = createRecorderStore({ enableCompassColdStartOverride: false });
+      s.dispatch(setZeroPos({ lat: 0, lon: 0 }));
+      await Promise.resolve();
+      expect(s.getState().gpsData?.coldStartOverrideEnabled).toBeFalsy();
     });
   });
 });

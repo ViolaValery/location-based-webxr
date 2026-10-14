@@ -52,13 +52,13 @@ Converts WebXR ARPose (object format) to store ArPose (array format).
 
 #### `buildGpsEventPayload(gpsPosition, arPose, deviceOrientation): GpsEventPayload`
 
-Builds a complete payload for the `recordGpsEvent` action. Returns `{ odomPosition, odomRotation, rawGpsPoint, rawDeviceOrientation? }` — raw sensor values only, no derived fields. The reducer computes `coordinates`, `weight`, `zeroRef`, and `deviceRotation` from the raw values + state.
+Builds a complete payload for the `recordGpsEvent` action. Returns `{ odomPosition, odomRotation, rawGpsPoint, rawAbsoluteOrientation? }` — raw sensor values only, no derived fields. The reducer computes `coordinates`, `weight`, and `zeroRef` from the raw values + state. The legacy `rawDeviceOrientation` field is no longer populated (§5b dead-code removal, 2026-06-28) — it was dead data on recorded GPS events; the live odometry-restart orientation snapshot reads the cached orientation via `getLastDeviceOrientation` instead.
 
 - **Input:**
   - `gpsPosition` - GpsPosition from Geolocation API
   - `arPose` - ARPose from WebXR
-  - `deviceOrientation` - Optional DeviceOrientation
-- **Output:** Payload ready for dispatch with `rawGpsPoint: RawGpsPoint` and optional `rawDeviceOrientation: RawDeviceOrientation`
+  - `deviceOrientation` - Optional DeviceOrientation (kept for the live orientation cache; no longer written into the payload)
+- **Output:** Payload ready for dispatch with `rawGpsPoint: RawGpsPoint` (and optional `rawAbsoluteOrientation` when an AbsoluteOrientationSensor reading is present)
 
 #### `createGpsPositionHandler(config): (position: GpsPosition) => void`
 
@@ -67,7 +67,56 @@ Creates a GPS callback function that dispatches combined events.
 - **Input:**
   - `config.store` - Redux store to dispatch to
   - `config.getArPose` - Function to get current AR pose
+  - `config.recordFix` (optional) - where the built fix goes instead of
+    `store.dispatch(recordGpsEvent(payload))`: called once per recorded fix,
+    after the session zero is set, with exactly the payload the default
+    dispatches. The Tour Viewer routes its device fixes through it so a fix
+    and its code keep-alive ring reach the store as ONE
+    `recordGpsEventBatch` (authoring plan 2026-09-28-0953, D18). The router
+    owns the dispatch and must record the fix, alone or in a batch.
+  - `config.absoluteOrientation` (optional, `'auto'` by default, or
+    `'off'`) - the compass cold start (owner decision D30, 2026-10-02,
+    plan `GpsPlusSlamJs_Docs/docs/2026-10-02-1830-compass-cold-start-default-plan.md`).
+    See "Compass cold start by default" below. Any other value throws a
+    `TypeError` at creation.
+  - `config.onAbsoluteOrientationStatus` (optional) - status of the watch
+    the default started (`active` / `unavailable` / `error`); defaults to
+    a log line. Not called for a watch the app started itself.
 - **Output:** Callback function for `startGpsWatch()`
+
+#### Compass cold start by default (D30)
+
+The core's cold-start yaw override (on by default) acts only on fixes
+carrying `rawAbsoluteOrientation`. So with `'auto'` the handler calls
+`ensureAbsoluteOrientationWatch` once, fire-and-forget, at the **first fix
+that arrives while recording** (before the AR-pose check), and every later
+fix carries the sensor's latest reading.
+
+- **Why the first recording fix and not creation:** the Tour Viewer and
+  MinimalExample create the handler at page load; fixes reach it only
+  inside the app's AR session. Starting at creation would run a 20 Hz
+  sensor for a page that may never enter AR. The cost is that the very
+  first fix carries no reading (the start is async); the override uses
+  every later one.
+- **No new prompt:** the start never calls
+  `DeviceOrientationEvent.requestPermission` or anything else that needs a
+  user gesture. Off Chrome Android (iOS, Safari, Firefox, desktop, headless
+  e2e) the watch reports `unavailable` synchronously, before any permission
+  query. On Chrome Android the only prompt-capable step is the sensor
+  constructor after a `navigator.permissions.query` (which never prompts);
+  it runs in the GPS callback, outside any user gesture. Whether Chrome
+  ever shows a prompt there was not measured in this repo; Chrome governs
+  these sensors with its "Motion sensors" site setting rather than a
+  prompt, and the Recorder has constructed the same sensor in the field
+  since 2026-06 without a reported prompt.
+- **Never restarts the app's own watch:** `ensure` is a no-op while a start
+  is requested (the Recorder starts it with its HUD callback before the
+  first fix; OsmDemo after its orientation permission). Once per handler,
+  so an app's teardown `stopAbsoluteOrientationWatch()` is never undone by
+  a late fix of the same handler.
+- **Lifetime:** nothing in the handler stops the watch; it runs until the
+  app stops it or the page closes (20 Hz sensor callbacks, snapshotted only
+  at GPS rate).
 
 ## Invariants & Assumptions
 
@@ -76,7 +125,7 @@ Creates a GPS callback function that dispatches combined events.
 3. **Recording state check** - Only dispatches when `isRecording` is true
 4. **Device orientation is optional** - Recorded if available, undefined otherwise
 5. **Coordinate convention — `extractOdomPosition`**: Returns raw WebXR `[x, y, z]` directly (identity pass-through). The reducer converts to NUE via `webxrToNUE()`. **Old recordings** (pre-2026-03-15 fix, no `odomCoordVersion` in session.json) also store raw WebXR positions; era-2 recordings (`odomCoordVersion: 2`) store NUE and require reverse-migration.
-6. **GPS field fidelity** - `buildRawGpsPoint()` preserves all Geolocation API fields: `altitudeAccuracy`, `heading`, `speed` (mapped from `null` → `undefined`). `compassAbsolute` is populated from `DeviceOrientationEvent.absolute` when device orientation is available. No derived fields (coordinates, weight, zeroRef) are computed — the reducer handles those.
+6. **GPS field fidelity** - `buildRawGpsPoint()` preserves all Geolocation API fields: `altitudeAccuracy`, `heading`, `speed` (mapped from `null` → `undefined`). The legacy `compassAbsolute` field is no longer populated (§5b dead-code removal, 2026-06-28). No derived fields (coordinates, weight, zeroRef) are computed — the reducer handles those.
 
 ## Examples
 
@@ -130,12 +179,25 @@ expect(store.getState().recorder.gpsEventCount).toBe(1);
 
 ## Tests
 
-- `gps-event-coordinator.test.ts` - 31 tests covering:
+- `gps-event-coordinator.test.ts` - covering:
   - Pose conversion (object to array format)
   - Payload building (with and without orientation)
   - GPS handler dispatching (recording mode checks)
   - AR pose unavailability handling
   - Multiple sequential events
+  - `recordFix`: the built fix is handed to the router (after the zero),
+    and the coordinator dispatches nothing for it itself
   - Device orientation caching
   - GPS field fidelity: heading, speed, altitudeAccuracy preserved (null→undefined)
-  - compassAbsolute populated from DeviceOrientationEvent.absolute
+  - legacy compassAbsolute / rawDeviceOrientation no longer populated
+- `gps-event-coordinator.compass-default.test.ts` (jsdom, fake
+  `window.AbsoluteOrientationSensor` through the real watch) - the
+  default on iOS-like, desktop/headless and insecure platforms does
+  nothing observable (no permission query, no
+  `DeviceOrientationEvent.requestPermission`, no throw, `unavailable`);
+  creation and non-recording fixes start nothing; the first recording fix
+  starts one sensor and later fixes carry its reading; `'off'`; an unknown
+  value throws; the app's own watch is kept; a throwing constructor.
+- `gps-event-coordinator.compass-default.property.test.ts` - for any
+  interleaving of recording and non-recording fixes, the permission gate is
+  reached once iff a fix arrived while recording (never with `'off'`).

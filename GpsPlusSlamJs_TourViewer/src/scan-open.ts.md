@@ -1,0 +1,95 @@
+# scan-open.ts
+
+## Purpose
+
+Step 4's scan-to-open policy (TourViewer scan-to-open plan,
+`GpsPlusSlamJs_Docs/docs/2026-09-27-0725-tour-viewer-creator-scan-to-open-plan.md`
+§2, §9, §13). The printed code carries the tour's link, so the first code
+the creator's camera reads with no tour open opens the tour it names; no link
+is pasted. Once a tour is open there is no wrong code (§13, owner): a code of
+another tour is one more reference for the open tour, measured into it,
+never a switch. Per detection it decides whether to open, and it says what
+the panel should report about the code in view.
+
+## Public API
+
+- `createScanOpen(deps): ScanOpen`
+  - `deps.ctx` - the session (reads `session`, `arSessionGeneration`).
+  - `deps.resolve(text)` - which tour a code names (`codeResolver(proxy)` =
+    `resolveCodeTour` bound to the open path's proxy base).
+  - `deps.open(url)` - `archive-open`'s open; resolves an `OpenOutcome`
+    (`opened`, `superseded`, `cancelled` - the creator chose to stay with
+    an unsaved rebuilt file, UI round 1, U2 -, or `failed` with the framework's reject cause
+    or `"other"`), never rejects (a rejection is treated as `other`).
+  - `deps.isOpening()` - any open in flight, including a step-1 open.
+  - `deps.now()`, `deps.render()`.
+- `ScanOpen.onDetection(text)` - a detection in the creator's AR session.
+- `ScanOpen.status(text | null): CodeTourStatus` - `quiet`, `opening`,
+  `not-a-tour`, `failed {cause, retrying}`, `added-to-open-tour`, `unknown`; `qr-author-mode.ts`'s `codeTourLine`
+  words it. No status locks anything; which codes are measured is `relation`'s.
+- `ScanOpen.relation(text)` (UI round 1, U3) - `tourRelation` against the open tour once the code is read, `"resolving"` before: what the creator panel may measure on its own (`qr-author-mode.ts` `autoMeasureAllowed`). `status` cannot answer it: its `quiet` folds the open tour's own code, a code naming no tour and a code still being read.
+
+## Invariants & assumptions
+
+- **State is minimal.** What a code names is a fact, cached for the page
+  (marked "resolving" before the first await, so frames never start a
+  second read). Everything else is derived on each call from the session.
+  The only kept state is the last failed attempt per tour, tagged with
+  `arSessionGeneration`, so a new AR session starts afresh without a
+  session-end hook.
+- **Opens only with no tour open.** Once a tour is open, a code of another
+  tour is `added-to-open-tour` and a link that cannot be compared is
+  `unknown` - the relation reads the open tour's levels
+  (`ctx.currentLevels`) as well as its link, so a tour opened from a file
+  knows its own code and calls any other `unknown` (K0 milestone review
+  R6); both are measured into the open tour like its own codes. To
+  edit another tour: step 1's link, or reload and scan its code first
+  (plan §13, which superseded the switching rules of §9 #3, §11, §12 #1).
+- **One open at a time:** none starts while `isOpening()` (the open path's
+  own flag, set before its first await). A code is acted on as soon as it
+  is read, while it is still the code in view (milestone review #9).
+- **Retries (§9 #7):** only `missing`, `cors` and `offline` (fixable while
+  standing at the poster; `offline` was split out of `cors` by tour kit
+  plan K0), after 10 s, then 20, then every 30 s (milestone review #10).
+  Anything else is final for the AR session.
+- **No work before any tour (since U3):** with no tour open a code is
+  never measured, so no level can wait for a tour. The "measured for
+  another tour" state of §9 #4 went with code book plan M5d.
+- **Quiet while a tour is open** about codes that name no tour (a
+  third-party code near the poster, §9 #15), and about codes still being
+  read.
+
+## Examples
+
+```ts
+const scanOpen = createScanOpen({
+  ctx,
+  resolve: codeResolver(corsProxyBaseUrl),
+  // The printed code's text rides along: it is the code's trust source
+  // (tour kit plan K1, §8 D2, `tour-trust.ts`).
+  open: (url, codeText) => openUrl(url, "measure-step", codeText),
+  isOpening: () => opening,
+  now: () => performance.now(),
+  render: () => hooks.renderAuthorReadout(),
+});
+scanOpen.onDetection(event.text); // from the author pipeline
+codeTourLine(scanOpen.status(ctx.lastDetectedText)); // in the readout
+```
+
+## Tests
+
+`scan-open.test.ts`, with a fake resolver, open and clock:
+
+- opening once, on the first sighting, however many frames arrive, and none
+  while a step-1 open is in flight;
+- a code naming no tour, with and without a tour open;
+- the pre-open level bound to its tour, a stale binding, one bound to none;
+- retry with backoff (10 s, 20 s, then capped at 30 s), `cors` and `offline` retried, no
+  retry for `corrupt`, a rejecting open, a superseded open not counted,
+  afresh in a new AR session;
+- with a tour open: its own code quiet, a code of another tour added (never
+  an open, however long in view), an uncomparable code `unknown`;
+- a tour opened from a file: its own code quiet once its levels are in, a
+  code whose level it does not carry `unknown` (K0 milestone review R6);
+- `relation` (U3): "resolving" until read, then `this-tour`, `other-tour`,
+  `not-a-tour`, `unknown`, and `no-tour-open` with no tour open.

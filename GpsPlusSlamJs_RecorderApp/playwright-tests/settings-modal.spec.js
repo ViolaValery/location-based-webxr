@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './e2e-test.js';
 import { fakeWebXRSupport } from './test-helpers.js';
 
 /**
@@ -96,14 +96,18 @@ test.describe('Settings Modal', () => {
 
     test('depth interval slider shows default value', async ({ page }) => {
       const valueDisplay = page.locator('#depth-interval-value');
-      await expect(valueDisplay).toHaveText('1.0s');
+      // 0.2s since the 2026-07-16 evening on-device framerate/mesh trade-off
+      // passes; equals the framework DEFAULT_RECONSTRUCTION_DEPTH_INTERVAL_MS.
+      await expect(valueDisplay).toHaveText('0.2s');
     });
 
     test('depth grid slider shows default value', async ({ page }) => {
       const valueDisplay = page.locator('#depth-grid-value');
-      // Default raised 3→16 with the occupancy-grid port (denser grid populates
-      // the AR-space occupancy grid fast enough for on-device verification).
-      await expect(valueDisplay).toHaveText('16×16');
+      // 24×24 since the 2026-07-16 evening on-device framerate/mesh
+      // trade-off pass (the sweep-derived 64 hurt the framerate); equals the
+      // framework DEFAULT_RECONSTRUCTION_DEPTH_GRID_SIZE shared with the
+      // PhysicsDemo.
+      await expect(valueDisplay).toHaveText('24×24');
     });
 
     test('images interval slider shows default value', async ({ page }) => {
@@ -114,6 +118,19 @@ test.describe('Settings Modal', () => {
     test('images quality slider shows default value', async ({ page }) => {
       const valueDisplay = page.locator('#images-quality-value');
       await expect(valueDisplay).toHaveText('70%');
+    });
+
+    test('occluder mesh-style selector defaults to surface nets and offers all modes', async ({
+      page,
+    }) => {
+      // 2026-06-30 F2/F2b: switch the persistent-occluder mesher between blocky
+      // cubes, corner-fit cubes and surface nets. Default 'smooth' (Naive
+      // Surface Nets) since the 2026-07-01 default-on decision.
+      const select = page.locator('#occupancy-occluder-mesh-mode');
+      await expect(select).toHaveValue('smooth');
+      await expect(select.locator('option')).toHaveCount(3);
+      await select.selectOption('greedy');
+      await expect(select).toHaveValue('greedy');
     });
 
     test('unchecking depth disables depth sliders', async ({ page }) => {

@@ -128,6 +128,9 @@ Every ID below is referenced by TypeScript code. Removing or renaming any of the
 | `folder-import-hint` | `p` | `hud.ts` | One-line recovery hint shown above the folder button when auto-expanded |
 | `btn-open-folder` | `button` | `hud.ts` | Inside `folder-import-section`. Click opens File System Access API. `aria-label` set |
 | `folder-status` | `p` | `hud.ts` | `.textContent` set to selected folder path |
+| `folder-import-progress` | `div` | `hud.ts` | D2 (2026-07-05): container of the determinate folder-import indexing progress display (`data-testid="folder-import-progress"`); `.hidden` toggled by `setFolderImportProgress`. Exposes `role="progressbar"` with static `aria-valuemin`/`aria-valuemax` and `aria-labelledby` pointing at the text label; `hud.ts` drives `aria-valuenow` (removed when hidden) so screen readers can announce progress (PR #168 review) |
+| `folder-import-progress-text` | `p` | `hud.ts` | Text label above the bar ("Recovering reference points… x / y recordings" / ✓ end-state summary) |
+| `folder-import-progress-bar` | `div` | `hud.ts` | Inner bar; `style.width` set to the completion percentage |
 | `scenario-select` | `select` | `hud.ts` | `<option>` elements appended dynamically; `change` listener |
 | `new-scenario-section` | `div` | `hud.ts` | `.hidden` toggled + opacity animation (CSS transition contract) |
 | `new-scenario-name` | `input` | `hud.ts` | `.value` read for custom scenario name; pre-filled with `Default Scenario` (UX 2026-05-03) so users can tap Enter AR without typing when no existing scenarios are found |
@@ -310,7 +313,7 @@ These elements do **not** exist in the static HTML — they are created by TypeS
 
 | Component | Module | What's created | Where attached |
 |---|---|---|---|
-| Toast container | `toast.ts` | `<div id="toast-container">` + child toast elements | `document.body` |
+| Toast container | `toast.ts` | `<div id="toast-container">` carrying the message text — **only while a message is showing**, attached on show and removed on hide (2026-08-24) | `#app` (the AR DOM-overlay root), falling back to `document.body` |
 | Confirm dialog | `confirm-dialog.ts` | Backdrop `<div>` + dialog `<div>` with `<p>` + buttons | `document.body` |
 | Ref-point picker content | `ref-point-picker.ts` | Full form HTML (input, dropdown, buttons) via `createRefPointPickerHtml()` | `#ref-point-picker-modal` (innerHTML) |
 | Summary map controls | `summary-map.ts` | Expand (⛶) and collapse (✕) buttons with `data-testid` | `#summary-map-container` |

@@ -325,6 +325,47 @@ export async function ensureScenarioDirectory(
   }
 }
 
+/**
+ * Open a scenario directory WITHOUT repointing the module's current-scenario
+ * state — unlike `setCurrentScenario`/`ensureScenarioDirectory`, which cache
+ * the handle as "current" as a side effect. Used by the eager ref-point
+ * indexing pass, which writes into many scenarios while the user's selected
+ * scenario must stay current (2026-07-05 folder-import plan §3.2).
+ *
+ * @returns The directory handle, or `null` when storage is uninitialized or
+ * the scenario does not exist and `create` was not requested.
+ * @throws Any other storage failure (`QuotaExceededError`,
+ * `TypeMismatchError` — a file occupying the scenario name — etc.): mapping
+ * those to `null` made the eager indexing pass skip the scenario and report
+ * SUCCESS with fewer points written instead of surfacing the error.
+ */
+export async function getScenarioDirectoryHandle(
+  scenarioName: string,
+  options: { create?: boolean } = {}
+): Promise<FileSystemDirectoryHandle | null> {
+  const scenRoot = await ensureScenariosDir();
+  if (!scenRoot) {
+    return null;
+  }
+  try {
+    return await scenRoot.getDirectoryHandle(scenarioName, {
+      create: options.create === true,
+    });
+  } catch (err) {
+    // Only "missing scenario, create not requested" is knowledge about the
+    // scenario; everything else is a storage failure the caller must hear
+    // about loudly (see @throws above).
+    if (
+      options.create !== true &&
+      err instanceof DOMException &&
+      err.name === 'NotFoundError'
+    ) {
+      return null;
+    }
+    throw err;
+  }
+}
+
 // ============================================================================
 // Maintenance
 // ============================================================================
@@ -343,9 +384,7 @@ export interface ClearRefPointsCacheResult {
 
 /** Outcome of clearing one scenario's `refPoints/` cache. */
 type ClearScenarioOutcome =
-  | { kind: 'cleared' }
-  | { kind: 'skipped' }
-  | { kind: 'error'; reason: string };
+  { kind: 'cleared' } | { kind: 'skipped' } | { kind: 'error'; reason: string };
 
 /**
  * Remove one scenario's `refPoints/` cache. A missing cache (`NotFoundError`)
@@ -446,6 +485,11 @@ export class ScenarioWrappingStorageBackend implements StorageBackend {
     }
     const result = await createOpfsSession(timestamp);
     _currentScenarioName = '';
+    // Drop the previous scenario's directory handle too (PR #106 review): the
+    // public accessor already answers null while the name is empty, but the
+    // retained reference kept the handle alive and left module state
+    // internally inconsistent (empty name, non-null handle).
+    currentScenarioHandle = null;
     _currentSessionName = result.sessionName;
     return { sessionName: result.sessionName };
   }

@@ -11,11 +11,12 @@
  *   (uses performance.now, not epoch ms — Risk R4)
  * - Max delay clamp prevents hanging on stale recordings
  *
- * @see docs/2026-02-19-replay-mode.md Issue 2 (Option D), Issue 3
+ * @see gps-plus-slam/GpsPlusSlamJs_Docs/docs/2026-02-19-replay-mode.md Issue 2 (Option D), Issue 3
  */
 
 import type { ReducersMapObject } from '@reduxjs/toolkit';
 import type { SlamAppStore } from './create-slam-app-store';
+import { recordedGpsEventPayloads } from '../utils/gps-event-actions';
 
 /** Minimal store contract used by the replay engine: dispatches plain actions. */
 type RecorderStore = SlamAppStore<ReducersMapObject>;
@@ -50,6 +51,21 @@ export interface ReplayAction {
 // extractActionTimestamp
 // ---------------------------------------------------------------------------
 
+/** A GPS event payload's time: `rawGpsPoint.timestamp` (new format) or
+ *  `gpsPoint.timestamp` (old recordings); null when neither is a number. */
+function gpsEventTimestamp(payload: Record<string, unknown>): number | null {
+  const rawGpsPoint = payload.rawGpsPoint as
+    Record<string, unknown> | undefined;
+  if (rawGpsPoint && typeof rawGpsPoint.timestamp === 'number') {
+    return rawGpsPoint.timestamp;
+  }
+  const gpsPoint = payload.gpsPoint as Record<string, unknown> | undefined;
+  if (gpsPoint && typeof gpsPoint.timestamp === 'number') {
+    return gpsPoint.timestamp;
+  }
+  return null;
+}
+
 /**
  * Extract an absolute epoch-ms timestamp from a Redux action, or null
  * if the action type doesn't carry one.
@@ -72,17 +88,19 @@ export function extractActionTimestamp(action: ReplayAction): number | null {
   const payload = action.payload as Record<string, unknown>;
 
   switch (action.type) {
-    case 'gpsData/recordGpsEvent': {
-      // payload.rawGpsPoint.timestamp (new format) or payload.gpsPoint.timestamp (old recordings)
-      const rawGpsPoint = payload.rawGpsPoint as
-        | Record<string, unknown>
-        | undefined;
-      if (rawGpsPoint && typeof rawGpsPoint.timestamp === 'number') {
-        return rawGpsPoint.timestamp;
-      }
-      const gpsPoint = payload.gpsPoint as Record<string, unknown> | undefined;
-      if (gpsPoint && typeof gpsPoint.timestamp === 'number') {
-        return gpsPoint.timestamp;
+    case 'gpsData/recordGpsEvent':
+      return gpsEventTimestamp(payload);
+
+    case 'gpsData/recordGpsEventBatch': {
+      // Core 1.26: several fixes, one solve (a Tour Viewer device fix with
+      // its keep-alive ring, a lock's votes). Paced by its FIRST event with
+      // a finite time - where the batch's span starts; the span folds into
+      // the delay after it, so a walk keeps its total length. An event
+      // without one is skipped: the core drops such an event alone.
+      for (const event of recordedGpsEventPayloads(action)) {
+        if (typeof event !== 'object' || event === null) continue;
+        const ts = gpsEventTimestamp(event as Record<string, unknown>);
+        if (ts !== null && Number.isFinite(ts)) return ts;
       }
       return null;
     }
@@ -102,8 +120,7 @@ export function extractActionTimestamp(action: ReplayAction): number | null {
       }
       // Fallback: try rawGpsPoint.timestamp (new format) then gpsPoint.timestamp (old recordings)
       const rawGpsPoint = payload.rawGpsPoint as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       if (rawGpsPoint && typeof rawGpsPoint.timestamp === 'number') {
         return rawGpsPoint.timestamp;
       }
@@ -122,10 +139,17 @@ export function extractActionTimestamp(action: ReplayAction): number | null {
 
     case 'qrDetected/recordQrDetection':
       // EXPLICITLY null — like depthSample, replayed in recorded order, not paced.
-      // The QR `timestamp` is EPOCH ms (`Date.now()`, the SAME domain as the depth
+      // The QR `timestamp` is EPOCH ms (the frame's capture time, the SAME domain as the depth
       // stream) so the derive-on-read size as-of join aligns on the payload
       // timestamps; this pacing function deliberately ignores it.
       return null;
+
+    case 'diagnostics/note':
+      // payload.atMs — epoch ms BY CONTRACT (see `diagnostics-action.ts`: the
+      // caller measures on whatever clock it likes and converts at dispatch).
+      // Without this case a sparse note between two paced actions nulled both
+      // sides of the pairwise delay, so the real gap around it was skipped.
+      return typeof payload.atMs === 'number' ? payload.atMs : null;
 
     case 'recording/endSession':
       // No timestamp in payload

@@ -1,0 +1,216 @@
+# draft-persistence.ts
+
+## Purpose
+
+The on-disk shape of an authoring draft: reading and writing it through a
+`DraftFileStore`. The RULES are in `authoring-draft.ts`; the OPFS mechanics
+are the framework's.
+
+## Public API
+
+- `writeDraftMeta(store, { tourUrl, sizeM, level, levels?, rejected? })` - the
+  tour, the printed size, the measured level and the ids the creator has
+  thrown away. (Metas written before code book plan M6 also carry the move
+  prompt's answers; they are read as if absent.) **This write is the commit point for a rejection** - see the
+  invariant below. `rejected` is optional and absent from every meta file
+  written before 2026-09-10. `levels` (code book plan M4c-1) is every code
+  the hosted zip does not hold yet, `level` (the code in hand) among them;
+  optional, and `readDraft` returns the one `level` as the list for a meta
+  written before it. Each entry is checked like `level`; one that does not
+  read costs itself (`draft.levels`).
+- `writeDraftEdit(store, object, blob, seen)` (M6 E2p) - a placement or
+  an edit, and, when `seen` is given, that version added to the object's
+  base as seen hosted (`creator-draft.ts` passes the tour as opened). Both
+  writes run at once; the result is the record's write only (E2p review
+  #6). The page's object writes go through it.
+- `addDraftBaseKey(store, id, list, key)` - one key added to `base:<id>`
+  (JSON `{ seen, written }`), read and written in place, nothing written
+  for a key already there; an update that does not land removes the base
+  (an older base beside a newer record could call it replaced; no base is
+  never superseded). Callers run it in the id's write queue, so the
+  read and the write are not raced.
+- `parseDraftBase(text)` - a stored base, or `undefined` for anything
+  that does not read as two string lists with at least one key: such a
+  base behaves as none (never superseded - a damaged file can only offer
+  too much, never drop work). `readDraft` reads the bases into
+  `draft.bases` (each `base:<id>`; absent when there are none).
+- `removeDraftObject` removes the base with the object's other files (up
+  to five: object, photo, deletion, visit, base). A deletion
+  (`writeDraftDeletion`) leaves it: a base is read only beside a record,
+  so it is inert there (re-review #4).
+- `writeDraftObject(store, object, blob?)` - one placement. Returns false
+  if either file failed, so a half-written photo is reported rather than
+  believed.
+- `removeDraftObject(store, id)` - deletes every file of one id: the
+  record, its photo AND a tombstone (and, for a visit id, the visit's log), because a caller rejecting a list of
+  ids should not have to know which of them ever reached disk. None
+  missing is a failure: a pin has no photo, a placement no tombstone.
+- `writeDraftDeletion(store, id) -> Promise<boolean>` (authoring plan
+  2026-09-28-0953 §3.4, M4) - records that `id` was deleted (a tombstone,
+  `deleted:<id>`), THEN removes its record and bytes. The tombstone is the
+  commit point: `readDraft` lets it outrank a record a crash left behind.
+  A refused tombstone returns false and leaves the record alone.
+- `removeDraftDeletion(store, id) -> Promise<true>` (M4 review #5) - takes
+  a deletion back (an Undo): removes the tombstone. A record written for
+  the id BEFORE it (an edited object's) counts again; until then the
+  tombstone outranks it, so an Undo cut short leaves the object deleted.
+- `writeDraftVisit(store, entry) -> Promise<boolean>` (authoring plan
+  2026-09-28-0953 M3b) - one AR visit's log (`visit-log.ts`: the visit's
+  walk and the codes it measured, for the summary after Finish), one file
+  per visit (`visit:<visitId>`), written at the visit's settle; a visit
+  settled again replaces its file.
+- `StoredDraft.visits` (M3b) - the visits' logs, oldest first, read back
+  through `parseVisitLogEntry` (a corrupt file costs that visit only).
+  NOT part of `draft`: a visit is nothing to offer and nothing for the zip.
+  A visit id the meta rejects is skipped like an object's; its file is in
+  `storedIds`, so a discard or a spent draft sweeps it with the objects,
+  through the same commit point.
+- `StoredDraft.storedIds` - EVERY id the read saw on disk (objects,
+  photos, tombstones and visits), not just the ones that parsed.
+  - **It exists because cleanup must cover what the reader refused.** A
+    record written by an older version, or a photo whose bytes never landed
+    (`writeDraftObject` returns false when the photo write hits a quota
+    wall, and the record it already wrote stays), is skipped by `readDraft`
+    and leaves files behind. `clear` used to sweep those; since its last
+    caller went, deleting only the parsed ids would leak them for the life
+    of the origin.
+  - Captured at READ time, like the objects, so nothing written afterwards
+    can be in the list - which is what keeps a rejection from touching this
+    session's work.
+  - **Cleanup is now PREFIX-SCOPED, where `clear` was not.** `clear` removed
+    every file in the namespace whatever its name; this list covers only
+    `object:`, `photo:`, `deleted:` and `visit:`. Any other key that ever lands in a draft
+    namespace - a future file kind, a stray write - therefore has no
+    collector at all. There is no such key today, which is why this is a
+    note rather than a fix (PR #455 review); a new kind of draft file must
+    either use one of these prefixes or extend this list.
+  - The id is sliced by the prefix that MATCHED, not by the first colon.
+    The colon version was coupled to "every prefix contains exactly one
+    colon" rather than to the constants, so renaming `PHOTO_PREFIX` to
+    something colon-free would have turned every delete into a no-op and
+    leaked silently - no test could have caught it, because they all build
+    their keys with `objectKey`/`photoKey` on both sides.
+- `StoredDraft.rejectedIds` - the ids the meta rejects that STILL have
+  files. Two jobs, both needing exactly this set:
+  - **the prune** - it is what the next meta write stores, so an id whose
+    files are gone drops out and the list cannot grow for the life of a
+    tour;
+  - **the sweep** - those are deletes that did not finish, and with
+    `clear` uncalled nothing else would ever reclaim them.
+- `readDraft(store) -> Promise<StoredDraft | undefined>` -
+  `{ draft, photos, rejectedIds, visits, storedIds }`, or
+  `undefined` when there
+  is no meta file. Objects the meta rejects are absent from `draft.objects`
+  and `photos` whether or not their files are still on disk.
+- `readDraft` also returns `draft.deleted` - the tombstoned ids (sorted),
+  minus rejected ones; a tombstoned id's record and bytes are skipped.
+  `storedIds` includes tombstone ids, so a discard or a spent draft sweeps
+  them too.
+- `parseDraftObject(text)`, `objectKey(id)`, `photoKey(id)`,
+  `deletedKey(id)`, `visitKey(visitId)`.
+- **Why a deletion is a FILE and not a list in the meta**: the meta is
+  rewritten from memory on every mint and finish, so a list kept there
+  would be dropped by any meta write that happens before the creator
+  restores the draft that held it - and the deleted object would come
+  back. One file per deletion, for the reason there is one per object.
+
+## Invariants & assumptions
+
+- **ONE FILE PER OBJECT, append-only.** Rewriting the whole draft on every
+  placement is O(n squared) bytes on the main thread during a live XR
+  session, and the full-resolution placed photo (its own round) is about to
+  make each object an order of magnitude bigger. Per object it is O(1) -
+  and a file that fails to write, or reads back corrupt, costs exactly that
+  one object rather than the walk.
+- **Validation is the manifest's own.** An object is checked by
+  round-tripping it through `parseTourManifest`, the same function the
+  finish serialises through, so a draft can never hold something the finish
+  would later reject. A second validator here is how the two would come to
+  disagree about what a tour object is.
+- **The META half validates its own fields**, since no parser owns them.
+  `level` in particular must be `null` or carry a string `id` AND a string
+  `json`: it is the field that travels furthest, reaching
+  `qrLevelEntryName(id)`, which throws on an unsafe id and leaves the
+  creator an opaque finish failure with no way forward but to re-measure.
+  A meta file written by an older version of the app is the case this
+  closes (PR #438 review); the current writer cannot produce one.
+- **No meta file means no draft.** A directory of objects cannot say which
+  tour it belongs to, and guessing is how a draft is appended to the wrong
+  zip.
+- **THE META WRITE IS THE COMMIT POINT FOR A REJECTION.** Writing the file
+  with an id in `rejected` is the single moment a discard becomes true. The
+  object deletes that follow are housekeeping: they may fail, be
+  interrupted by the tab closing, or never run, and the next read still
+  refuses the draft. Nothing is deleted before that write lands, so the
+  window costs nothing in the other direction either.
+  - **Two earlier shapes were each unsafe in one direction.** Deleting the
+    meta FIRST (up to r679) made a racing reload find no draft - but it
+    meant emptying the whole namespace, which deleted pins placed seconds
+    before the tap. Rewriting the meta and deleting afterwards (r680)
+    stopped losing work but let a reload inside the window be offered the
+    draft it had just rejected. One authoritative write does neither.
+  - **A malformed `rejected` list reads as NO rejection, never a total
+    one.** Hiding objects the creator never discarded is silent data loss -
+    the failure this feature produced four times - while offering a
+    discarded draft again costs a prompt with a "Delete it" button on it.
+    Non-string entries are dropped individually; the rest of the list
+    stands.
+  - **Every meta write re-states the list.** One that omitted it would
+    un-reject a draft whose files are still there, which is the same
+    failure one step later. `creator-setup` holds the current list per
+    tour for exactly this reason, and rewrites this file on each mint,
+    each finish and each tour open - not on each placement, which writes
+    only the object file.
+- **A photo record without its bytes is dropped with them.** It would name
+  a `content/<id>.jpg` the rebuilt zip does not contain - the shape of the
+  PR #435 bug, and worse here because the safety net would be introducing
+  it.
+- **The order is stable**, sorted by `createdAtIso` then id: the store
+  lists in whatever order the directory yields, and a tour whose objects
+  shuffle between restores would produce a different `tour.json` each time
+  for no reason a reader could see.
+- **Format version 2 (tour kit plan K1, §8 D7).** A draft object is
+  validated by wrapping it in a manifest of the CURRENT format, and the
+  pin and photo shapes did not change from version 1 to 2, so a draft
+  written by a pre-K1 app loads unchanged and its Finish writes version 2
+  (`draft-persistence.test.ts` loads one from the files the old app wrote).
+
+## Examples
+
+```ts
+const store = await openDraftNamespace(root, draftKeyForTour(tourUrl));
+if (store !== undefined) {
+  await writeDraftMeta(store, { tourUrl, sizeM, level });
+  await writeDraftObject(store, pin);
+  const found = await readDraft(store);
+}
+```
+
+## Tests
+
+`draft-persistence.test.ts`, against an in-memory store with the same
+contract. The ones that carry it: a corrupt record costing only itself, a
+photo record dropped with its missing bytes, no meta yielding nothing, and
+a property that the order is stable and is the order things were placed in.
+Plus the rejection set: an object the meta rejects is refused though its
+file is on disk, its photo bytes with it, the list is pruned to ids that
+still have files, and a missing or malformed `rejected` reads as no
+rejection. And the tombstones: a deletion hides the record and bytes
+though they were on disk, the tombstone is written before they are
+removed, a tombstone is a stored id and `removeDraftObject` takes it, a
+refused tombstone write keeps the record, and the claim protocol from
+both sides: a tombstone written after the meta stopped rejecting its id
+counts, one whose id a LATER meta write rejects does not. Which of the
+two was written last is the writer's job (`creator-setup.ts`
+`writeForObject`, M4 review #1); a test that expected a tombstone written
+after a rejection to be ignored pinned the defect it caused.
+And the visits (M3b): they come back on a new read (a reload), a corrupt
+visit file costs itself and stays a stored id, a rejected visit is hidden
+and `removeDraftObject` takes its file, and an object id never reads as a
+visit. And a meta from before M6 that still carries the move prompt's
+answers restores, the answers unread.
+
+`removeDraftObject` and `storedIds` are exercised from
+`creator-setup.test.ts`, not from here - the contract they carry is
+"cleanup covers what the reader refused", which only has meaning at the
+call site that does the rejecting.

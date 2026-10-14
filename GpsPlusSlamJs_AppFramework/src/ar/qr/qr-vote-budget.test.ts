@@ -1,0 +1,86 @@
+/**
+ * Per-code vote budget — unit tests.
+ *
+ * Why these tests matter: `onLocked` fires on every successful detection once
+ * locked, not once per lock transition, so without this cap one code in view
+ * injects a fresh vote batch several times a second for as long as it is
+ * looked at. The TourViewer learned that in its M4 review; the RecorderApp
+ * wired the same controller with no budget until PR #385. These pin the
+ * behaviour both now depend on.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { createQrVoteBudget, MAX_VOTED_LOCKS_PER_CODE } from './qr-vote-budget';
+
+describe('createQrVoteBudget', () => {
+  it('allows exactly the cap, then refuses', () => {
+    const budget = createQrVoteBudget();
+    for (let i = 0; i < MAX_VOTED_LOCKS_PER_CODE; i += 1) {
+      expect(budget.tryConsume('code-a'), `batch ${String(i)}`).toBe(true);
+    }
+    expect(budget.tryConsume('code-a')).toBe(false);
+  });
+
+  it('does not charge for a refused batch', () => {
+    // Why: a code at its cap must STAY at its cap rather than counting frames
+    // it never voted on — the status line reads this number.
+    const budget = createQrVoteBudget(2);
+    budget.tryConsume('code-a');
+    budget.tryConsume('code-a');
+    expect(budget.tryConsume('code-a')).toBe(false);
+    expect(budget.tryConsume('code-a')).toBe(false);
+    expect(budget.spentFor('code-a')).toBe(2);
+  });
+
+  it('budgets each code independently', () => {
+    const budget = createQrVoteBudget(1);
+    expect(budget.tryConsume('code-a')).toBe(true);
+    expect(budget.tryConsume('code-b')).toBe(true);
+    expect(budget.tryConsume('code-a')).toBe(false);
+  });
+
+  it('reset forgets every code', () => {
+    // Why: a store swap restarts the GPS list, so the previous store's spend
+    // must not keep a code silent against the new one.
+    const budget = createQrVoteBudget(1);
+    budget.tryConsume('code-a');
+    budget.reset();
+    expect(budget.spentFor('code-a')).toBe(0);
+    expect(budget.tryConsume('code-a')).toBe(true);
+  });
+
+  // Why (QR near-frontal pose plan §71): both apps skip the fused-pose
+  // solve for a code that can no longer vote. Asked of the budget itself,
+  // so a consumer's own cap is honoured instead of comparing `spentFor`
+  // with the default constant.
+  it('says when a code has spent its budget, at its own cap', () => {
+    const budget = createQrVoteBudget(2);
+    expect(budget.isSpent('code-a')).toBe(false);
+    budget.tryConsume('code-a');
+    expect(budget.isSpent('code-a')).toBe(false);
+    budget.tryConsume('code-a');
+    expect(budget.isSpent('code-a')).toBe(true);
+    expect(budget.isSpent('code-b')).toBe(false);
+    budget.reset();
+    expect(budget.isSpent('code-a')).toBe(false);
+  });
+
+  // Why (Tour Viewer authoring plan 2026-09-28-0953, M2b review): the
+  // viewer's keep-alive re-votes a spent code from the pose its last voted
+  // lock used. A re-scan long after that pose was taken must earn fresh
+  // votes from a fresh pose, for THAT code only - resetting every code would
+  // make a second code, still held from a fresh pose, vote its burst again.
+  it('forget re-arms one code and leaves the others spent', () => {
+    const budget = createQrVoteBudget(1);
+    budget.tryConsume('code-a');
+    budget.tryConsume('code-b');
+    budget.forget('code-a');
+    expect(budget.spentFor('code-a')).toBe(0);
+    expect(budget.isSpent('code-a')).toBe(false);
+    expect(budget.tryConsume('code-a')).toBe(true);
+    expect(budget.isSpent('code-b')).toBe(true);
+    expect(budget.tryConsume('code-b')).toBe(false);
+    budget.forget('never-seen'); // a no-op, never a throw
+    expect(budget.spentFor('never-seen')).toBe(0);
+  });
+});

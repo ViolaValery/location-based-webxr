@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { RawGpsPoint } from './recorder-store';
+import type { RawGpsPoint } from 'gps-plus-slam-app-framework/state';
 import {
   addRefPointEntry,
   countEntriesByCellInSession,
@@ -36,7 +36,6 @@ function raw(lat: number, lon: number): RawGpsPoint {
     altitude: 100,
     latLongAccuracy: 4,
     altitudeAccuracy: 3,
-    compassAbsolute: false,
     timestamp: 1_700_000_000_000,
   };
 }

@@ -17,6 +17,7 @@ import { installOPFSMocks } from '../test-utils/browser-mocks';
 import {
   initOpfsStorage,
   createSession,
+  createSessionInDirectory,
   writeAction,
   writeFrame,
   listSessions,
@@ -129,12 +130,120 @@ describe('opfs-storage', () => {
       expect(result.sessionName).toMatch(/^recording-2026-01-26_10-30-00utc$/);
     });
 
+    it('disambiguates two sessions started in the same UTC second', async () => {
+      // Why: `formatTimestamp` resolves to whole UTC seconds, so two recordings
+      // started within the same second would otherwise resolve to the SAME
+      // `recording-<ts>/` directory — `getDirectoryHandle(..., {create:true})`
+      // returns the existing handle, silently MIXING both recordings'
+      // session.json/actions/frames. A stop-then-immediate-restart within one
+      // second is the realistic trigger. The second session must own a
+      // distinct directory, while the first keeps the bare timestamp name.
+      const result1 = await createSession(new Date('2026-01-26T10:30:00Z'));
+      const handle1 = getSessionHandle();
+      const result2 = await createSession(new Date('2026-01-26T10:30:00Z'));
+      const handle2 = getSessionHandle();
+
+      expect(result1.sessionName).toBe('recording-2026-01-26_10-30-00utc');
+      expect(result2.sessionName).not.toBe(result1.sessionName);
+      expect(handle2).not.toBe(handle1);
+      expect(handle2).not.toBeNull();
+    });
+
+    it('picks a suffixed name when a FILE occupies the timestamp name (PR #158 review)', async () => {
+      // Why: the collision probe (`sessionDirExists`) used to treat EVERY
+      // getDirectoryHandle error as "name free". A FILE occupying
+      // `recording-<ts>` rejects the probe with TypeMismatchError (not
+      // NotFoundError), so the probe reported the name free and the follow-up
+      // getDirectoryHandle(..., {create: true}) crashed session creation with
+      // that same TypeMismatchError. A file-occupied name must instead be
+      // treated as taken, so the probe advances to the `-2` suffix.
+      const sessionsDir = (await (
+        await opfsRoot.getDirectoryHandle('gps-plus-slam')
+      ).getDirectoryHandle('sessions')) as MockOPFSDirectoryHandle;
+      await sessionsDir.getFileHandle('recording-2026-01-26_10-30-00utc', {
+        create: true,
+      });
+
+      const result = await createSession(new Date('2026-01-26T10:30:00Z'));
+
+      expect(result.sessionName).toBe('recording-2026-01-26_10-30-00utc-2');
+      expect(getSessionHandle()).not.toBeNull();
+    });
+
+    it('surfaces unexpected probe errors instead of looping or mislabeling (PR #158 review)', async () => {
+      // Why: a systemic storage failure (e.g. InvalidStateError on every
+      // getDirectoryHandle call) must fail createSession loudly with the real
+      // error. Treating it as "name free" crashes later with a misleading
+      // create-time error; treating it as "name taken" (the reviewer's
+      // suggestion) would make the suffix probe loop forever. Rethrow is the
+      // only behavior that does neither.
+      const sessionsDir = (await (
+        await opfsRoot.getDirectoryHandle('gps-plus-slam')
+      ).getDirectoryHandle('sessions')) as MockOPFSDirectoryHandle;
+      vi.spyOn(sessionsDir, 'getDirectoryHandle').mockRejectedValue(
+        new DOMException('backing store unavailable', 'InvalidStateError')
+      );
+
+      await expect(createSession(new Date())).rejects.toThrow(
+        /backing store unavailable/
+      );
+    });
+
     it('throws if initOpfsStorage was not called', async () => {
       // Why: Must enforce initialization order
       resetOpfsStorage();
       await expect(createSession(new Date())).rejects.toThrow(
         /not initialized/i
       );
+    });
+  });
+
+  describe('createSessionInDirectory', () => {
+    // Why: the Tour Viewer's troubleshooting recording shares this origin
+    // with the Recorder but must NOT land in the Recorder's `sessions/`
+    // folder (plan 2026-09-28-0953, review finding 16). It needs the same
+    // session layout, the same same-second collision probe and the same
+    // write functions - in a parent directory of its own - without a second
+    // copy of the probe.
+    it('creates the session layout under the given parent and targets the writes at it', async () => {
+      const parent = (await opfsRoot.getDirectoryHandle('tour-viewer', {
+        create: true,
+      })) as MockOPFSDirectoryHandle;
+
+      const result = await createSessionInDirectory(
+        parent,
+        new Date('2026-09-28T10:30:00Z')
+      );
+      await writeAction({ type: 'gpsData/setZeroPos' }, 1);
+
+      expect(result.sessionName).toBe('recording-2026-09-28_10-30-00utc');
+      const session = (await parent.getDirectoryHandle(
+        result.sessionName
+      )) as MockOPFSDirectoryHandle;
+      expect(getSessionHandle()).toBe(session);
+      const actions = (await session.getDirectoryHandle(
+        'actions'
+      )) as MockOPFSDirectoryHandle;
+      expect(actions.getStoredContentAsString('000001.json')).toContain(
+        'gpsData/setZeroPos'
+      );
+      // Needs no initOpfsStorage and creates no `sessions/` folder.
+      await expect(
+        opfsRoot.getDirectoryHandle('gps-plus-slam')
+      ).rejects.toThrow();
+    });
+
+    it('probes for a free name in THAT parent, like createSession does', async () => {
+      const parent = (await opfsRoot.getDirectoryHandle('tour-viewer', {
+        create: true,
+      })) as MockOPFSDirectoryHandle;
+      const at = new Date('2026-09-28T10:30:00Z');
+
+      const first = await createSessionInDirectory(parent, at);
+      const second = await createSessionInDirectory(parent, at);
+
+      expect(first.sessionName).toBe('recording-2026-09-28_10-30-00utc');
+      expect(second.sessionName).toBe('recording-2026-09-28_10-30-00utc-2');
     });
   });
 
@@ -160,6 +269,44 @@ describe('opfs-storage', () => {
 
       const parsed = JSON.parse(content!);
       expect(parsed).toEqual(action);
+    });
+
+    it('writes a depth sample packed and every action as compact JSON (scan pass S2)', async () => {
+      // Why: the packed depth grid is what makes a recording about 17x
+      // smaller per sample, and it is applied here, below the store - the
+      // in-memory action is never changed. Compact JSON for every action
+      // is a further free gain (nothing diffs these files).
+      const points = [0, 1, 2, 3].map((i) => ({
+        screenX: ((i % 2) + 1) / 3,
+        screenY: (Math.floor(i / 2) + 1) / 3,
+        depthM: 1.5,
+      }));
+      const depth = {
+        type: 'recording/recordDepthSample',
+        payload: {
+          timestamp: 1,
+          cameraPos: [0, 1, 0],
+          cameraRot: [0, 0, 0, 1],
+          points,
+        },
+      };
+      await writeAction(depth, 1);
+      await writeAction({ type: 'test/action', payload: { value: 42 } }, 2);
+
+      const sessionHandle =
+        getSessionHandle() as unknown as MockOPFSDirectoryHandle;
+      const actionsDir = (await sessionHandle.getDirectoryHandle(
+        'actions'
+      )) as unknown as MockOPFSDirectoryHandle;
+      const written = JSON.parse(
+        actionsDir.getStoredContentAsString('000001.json')!
+      ) as { payload: { points: unknown[]; grid: { size: number } } };
+      expect(written.payload.points).toEqual([]);
+      expect(written.payload.grid.size).toBe(2);
+      expect(depth.payload.points).toHaveLength(4);
+      expect(actionsDir.getStoredContentAsString('000002.json')).toBe(
+        '{"type":"test/action","payload":{"value":42}}'
+      );
     });
 
     it('writes multiple actions with sequential numbering', async () => {

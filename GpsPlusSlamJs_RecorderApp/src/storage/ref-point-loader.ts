@@ -14,6 +14,7 @@ import type {
 } from 'gps-plus-slam-app-framework/core';
 import type { ArPoseTuples } from 'gps-plus-slam-app-framework/types/ar-types';
 import { createLogger } from 'gps-plus-slam-app-framework/utils/logger';
+import { writeFileOrAbort } from 'gps-plus-slam-app-framework/storage/write-file-or-abort';
 import { isRefPointDefinitionShape } from './ref-point-zip-helpers';
 
 const log = createLogger('RefPointLoader');
@@ -270,11 +271,8 @@ export async function writeRefPointDefinition(
 /**
  * Atomically write a single RefPointDefinition JSON file inside `refPointsHandle`.
  *
- * Uses the OPFS "abort writable on failure" pattern: if `write()` or `close()`
- * throws, we explicitly call `abort()` to release the underlying lock so the
- * partial file does not block subsequent writes. Aborts that themselves throw
- * are intentionally swallowed because the original write error is the more
- * useful diagnostic for callers.
+ * The write/abort lifecycle lives in the framework's {@link writeFileOrAbort} —
+ * this function only decides the filename and the serialization.
  */
 async function writeRefPointDefinitionFile(
   refPointsHandle: FileSystemDirectoryHandle,
@@ -284,28 +282,7 @@ async function writeRefPointDefinitionFile(
     `${definition.id}.json`,
     { create: true }
   );
-  const writable = await fileHandle.createWritable();
-  let writeError: unknown = null;
-  try {
-    await writable.write(JSON.stringify(definition, null, 2));
-    await writable.close();
-  } catch (error: unknown) {
-    writeError = error;
-  } finally {
-    if (writeError !== null) {
-      try {
-        await writable.abort();
-      } catch {
-        // Intentionally ignored: abort failure should not mask the write error
-      }
-    }
-  }
-  if (writeError !== null) {
-    if (writeError instanceof Error) {
-      throw writeError;
-    }
-    throw new Error('OPFS write failed');
-  }
+  await writeFileOrAbort(fileHandle, JSON.stringify(definition, null, 2));
 }
 
 /**
@@ -396,10 +373,54 @@ export function flattenRefPointsToMarks(
 }
 
 /**
+ * Horizontal-accuracy gate for the robust average (D6(a), 2026-07-06):
+ * observations whose raw `latLongAccuracy` exceeds this are excluded from
+ * the averaged position. Empirically chosen from recorded-session data:
+ * legitimate ref-point observations sit ≤ ~10 m accuracy (p95 ≈ 7 m), so
+ * 20 m is ~2× above anything real and only fires on genuinely degraded
+ * fixes (indoor-poisoned captures land tens of meters off).
+ */
+export const REF_POINT_ACCURACY_GATE_M = 20;
+
+/**
+ * Starvation guard for the accuracy gate: when fewer than this many
+ * observations survive, the original set is kept — a mostly-poisoned
+ * definition must not be averaged over a tiny unrepresentative remnant.
+ */
+const ACCURACY_GATE_MIN_SURVIVORS = 3;
+
+/**
+ * Apply the accuracy gate to a definition's observations. Observations
+ * without a (finite, numeric) `latLongAccuracy` are kept — the gate only
+ * acts on provably bad fixes. `min(MIN_SURVIVORS, total)` means 1–2
+ * observation definitions always pass through unchanged.
+ */
+function gateObservationsByAccuracy(
+  observations: RefPointObservation[]
+): RefPointObservation[] {
+  const kept = observations.filter((obs) => {
+    const acc = obs.gpsPoint.latLongAccuracy;
+    return (
+      typeof acc !== 'number' ||
+      !Number.isFinite(acc) ||
+      acc <= REF_POINT_ACCURACY_GATE_M
+    );
+  });
+  if (
+    kept.length < Math.min(ACCURACY_GATE_MIN_SURVIVORS, observations.length)
+  ) {
+    return observations;
+  }
+  return kept;
+}
+
+/**
  * Compute one averaged GPS position per reference point ID.
  * For each observation, prefers `fusedGpsPoint` (sub-meter accuracy) when
  * available, falling back to raw `gpsPoint`. Returns the centroid (mean
- * lat/lon) across all observations.
+ * lat/lon) across the observations that pass the accuracy gate
+ * ({@link REF_POINT_ACCURACY_GATE_M} with a starvation guard — D6(a)
+ * robust averaging).
  */
 export function averageGpsPerRefPoint(
   refPointDefs: RefPointDefinition[]
@@ -407,7 +428,7 @@ export function averageGpsPerRefPoint(
   return refPointDefs
     .filter((def) => def.observations.length > 0)
     .map((def) => {
-      const coords = def.observations
+      const coords = gateObservationsByAccuracy(def.observations)
         .map((obs) => {
           if (obs.fusedGpsPoint) {
             return {

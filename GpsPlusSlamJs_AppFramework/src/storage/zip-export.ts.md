@@ -58,14 +58,35 @@ const { blob, fileCount } = await exportSessionHandleAsZip(sessionHandle, {
 });
 ```
 
-### Download ZIP
+### Download a file
 
 ```typescript
-import { downloadZip } from './zip-export';
+import { downloadZip, downloadBlob, PDF_FILE_TYPE } from './zip-export';
 
 // Trigger browser download
-await downloadZip(zipBlob, 'recording-2026-01-26.zip');
+const saved = await downloadZip(zipBlob, 'recording-2026-01-26.zip');
+// false: the user dismissed the save picker and nothing was written
+
+// Anything else: same picker-then-anchor path, a different filter
+await downloadBlob(pdfBlob, 'tour-codes-3x-16cm.pdf', PDF_FILE_TYPE);
 ```
+
+`downloadBlob(blob, filename, fileType)` is the general form;
+`downloadZip` is the zip-shaped call its existing callers already make.
+It was generalised when a second kind of file needed the same save path
+(the Tour Viewer's printable sheet of QR codes): the picker's type filter
+was the only zip-specific thing in it, and a second copy of the
+picker-then-anchor dance is exactly the duplication this repo keeps
+finding. `DownloadFileType` is `{ description, mimeType, extension }`;
+`PDF_FILE_TYPE` and `ZIP_FILE_TYPE` are both exported: the zip one was
+private while `downloadZip` was its only caller, and stopped being so when
+`share-or-download.ts` and the recorder needed to name the type without
+going through `downloadZip`.
+
+**`downloadZip` has no production callers left** (the Tour Viewer moved to
+`shareOrDownloadZip`, the recorder to `shareOrDownloadBlob`). It stays
+because it is part of the published package's surface, not because
+anything here uses it.
 
 ### Sync to External File Handle
 
@@ -77,7 +98,7 @@ const handle = await window.showSaveFilePicker({ ... });
 const { blob, fileCount } = await syncToExternalZip(handle, 'recording-...');
 ```
 
-This is used by [sync-manager.ts](sync-manager.ts) for periodic crash-safe syncing.
+**This has no production caller.** It was written for periodic crash-safe syncing and the recorder's `storage/sync-manager.ts` never adopted it - that module imports only a logger. The sibling `downloadZip` is in the same position and says so a few lines above; both are kept for now as a deliberate decision to record rather than a live path to rely on.
 
 ## ZIP Structure
 
@@ -109,16 +130,20 @@ never needs to know about them.
 2. File paths in ZIP match OPFS paths (relative to session root)
 3. Binary data (frames) is preserved exactly
 4. Download uses `showSaveFilePicker` when available, falls back to `<a download>`
-5. `syncToExternalZip` writes to external file handle via `createWritable()`
+5. `syncToExternalZip` writes to the external file handle through
+   `writeFileOrAbort` (a failed write is aborted, so the last good ZIP stays);
+   so does `downloadBlob`'s save-picker path (Tour Viewer M6 E2 plan review
+   #7, DEC-A3: both were hand-rolled without `abort()`).
 6. Files are streamed one at a time into the ZipWriter (not accumulated in memory first). This keeps peak memory proportional to a single file, avoiding OOM on large recordings with many frames.
 7. App-specific subdirs are appended via the `ZipExportContributor` seam after the framework-owned files; each contributor is confined to its declared subdir.
 
 ## Error Modes
 
-| Error               | Cause                      | Recovery                  |
-| ------------------- | -------------------------- | ------------------------- |
-| "Session not found" | Invalid session name       | Check session exists      |
-| AbortError          | User cancelled save dialog | Normal - no action needed |
+| Error                     | Cause                                                                                          | Recovery                                            |
+| ------------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| "Session not found"       | Invalid session name                                                                           | Check session exists                                |
+| AbortError                | User cancelled save dialog                                                                     | `downloadZip` resolves `false`; nothing was written |
+| "relative path is unsafe" | A contributor path fails `assertSafeZipEntryPaths` ([zip-entry-path.ts](zip-entry-path.ts.md)) | Fix the contributor; no partial archive is kept     |
 
 ## Dependencies
 

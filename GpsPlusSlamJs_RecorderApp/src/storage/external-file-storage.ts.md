@@ -56,7 +56,7 @@ type SaveFileResult =
 
 ## Invariants & Assumptions
 
-1. **Android Chrome Compatibility**: Uses `showDirectoryPicker({ mode: 'read' })` and `showSaveFilePicker()` which are reliable on Android Chrome, unlike `createWritable()` on directory handles.
+1. **Desktop only, inert on Android**: Chrome for Android exposes neither `showDirectoryPicker` nor `showSaveFilePicker`, so `isExternalStorageSupported()` returns false there and the periodic external sync described above simply never happens on a phone. The earlier claim that these two pickers are reliable on Android Chrome is removed as wrong - phone-side crash safety comes from OPFS (`opfs-storage.ts`) instead, which is why that module exists. Worth knowing before it changes: if the pickers ever do ship on Android, this gate starts returning true on its own and an untested path goes live on the device it was never exercised on.
 2. **Handles are stored, not returned directly**: The module stores handles internally to prevent stale reference issues.
 3. **Cancellation is not an error**: User cancelling a picker returns `{ success: false, reason: 'cancelled' }` without an error message.
 4. **Timestamp-only filenames**: Filenames use UTC timestamp format `YYYY-MM-DD_HH-MM-SSutc.zip` with no scenario prefix. The user can rename in the save picker if desired.
@@ -116,5 +116,5 @@ if (saveResult.success) {
 ## Related Files
 
 - [sync-manager.ts](sync-manager.ts) — Uses the save file handle for periodic sync
-- [zip-export.ts](zip-export.ts) — `syncToExternalZip()` writes to the file handle
-- [file-system.ts](file-system.ts) — OPFS-based storage (internal, always used)
+- [the framework's zip-export.ts](../../../GpsPlusSlamJs_AppFramework/src/storage/zip-export.ts) — where `syncToExternalZip()` moved to. NOTE it has no production caller in either root any more; its own sidecar says so.
+- OPFS-based storage was a `file-system.ts` in this folder; **that module no longer exists**, so the "internal, always used" claim this line carried describes nothing.

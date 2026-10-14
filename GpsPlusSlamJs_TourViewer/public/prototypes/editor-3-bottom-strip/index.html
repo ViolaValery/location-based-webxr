@@ -1,0 +1,2113 @@
+<!doctype html>
+<!-- Throwaway prototype, editor variant 3 (bottom strip). Not wired to the app. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Editor E3 bottom strip</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <style>
+      :root {
+        --paper: #f2f1ed;
+        --card: #fbf8ef;
+        --paper-3: #ddd2b6;
+        --line: #c9bea3;
+        --ink: #1b1b20;
+        --ink-dim: #5a5a63;
+        --ink-3: #8c8577;
+        --route: #cf4428;
+        --route-soft: #f5d9cd;
+        --accent: #f2971f;
+        --accent-ink: #8a4b00;
+        --ok: #2f7d4f;
+        --warn: #9a5b00;
+        --warn-soft: #fbeed5;
+        --danger: #b4232c;
+        --danger-soft: #f9dcdc;
+        --serif:
+          "Iowan Old Style", "Palatino Linotype", palatino, "Book Antiqua",
+          georgia, serif;
+        --sans:
+          system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+          sans-serif;
+        --shadow:
+          0 1px 2px rgb(60 45 20 / 0.1), 0 8px 28px rgb(60 45 20 / 0.16);
+        --shadow-big:
+          0 2px 4px rgb(60 45 20 / 0.12), 0 18px 50px rgb(60 45 20 / 0.24);
+        --radius: 16px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      body {
+        background: var(--paper);
+        color: var(--ink);
+        font: 14px/1.45 var(--sans);
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+      }
+      button,
+      input,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: var(--serif);
+        font-weight: 600;
+        margin: 0;
+        letter-spacing: normal;
+      }
+      .proto-label {
+        position: fixed;
+        z-index: 2000;
+        top: 6px;
+        left: 50%;
+        transform: translateX(-50%);
+        font: 600 11px/1 var(--sans);
+        letter-spacing: 0.02em;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgb(27 27 32 / 0.7);
+        color: #fff;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+
+      /* ---------- map ---------- */
+      #map {
+        position: fixed;
+        inset: 0;
+        background: #e9e4d6;
+        outline: none;
+      }
+      .leaflet-container {
+        font-family: var(--sans);
+      }
+      .leaflet-top.leaflet-left {
+        top: 96px;
+      }
+      .leaflet-control-zoom {
+        border: 0 !important;
+        box-shadow: var(--shadow) !important;
+        border-radius: 12px !important;
+        overflow: hidden;
+      }
+      .leaflet-control-zoom a {
+        background: var(--card) !important;
+        color: var(--ink) !important;
+        border-color: var(--line) !important;
+      }
+      .leaflet-control-attribution {
+        background: rgb(251 248 239 / 0.85) !important;
+        border-radius: 8px 0 0 0;
+        font-size: 11px;
+      }
+      .map-tiles {
+        filter: saturate(0.55) sepia(0.18) brightness(1.03);
+      }
+
+      /* ---------- markers ---------- */
+      .om {
+        background: none;
+        border: 0;
+      }
+      .om .m {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: grid;
+        place-items: center;
+        transition: transform 0.15s ease;
+      }
+      .om .m::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 46px;
+        height: 46px;
+        margin: -23px 0 0 -23px;
+        border-radius: 50%;
+        border: 3px solid var(--route);
+        opacity: 0;
+        pointer-events: none;
+      }
+      .om.pulse .m::after {
+        animation: ring 1s ease-out infinite;
+      }
+      @keyframes ring {
+        0% {
+          transform: scale(0.5);
+          opacity: 0.9;
+        }
+        100% {
+          transform: scale(1.5);
+          opacity: 0;
+        }
+      }
+      .om:hover .m {
+        transform: scale(1.08);
+      }
+      .m-code {
+        width: 30px;
+        height: 30px;
+        border-radius: 5px;
+        background: var(--ink);
+        color: var(--card);
+        font: 700 15px/30px var(--serif);
+        text-align: center;
+        box-shadow:
+          0 0 0 3px var(--card),
+          var(--shadow);
+      }
+      .m-pin {
+        width: 26px;
+        height: 26px;
+        border-radius: 50% 50% 50% 0;
+        transform: rotate(-45deg);
+        background: var(--route);
+        box-shadow:
+          0 0 0 2.5px var(--card),
+          var(--shadow);
+        display: grid;
+        place-items: center;
+      }
+      .m-pin span {
+        transform: rotate(45deg);
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--card);
+      }
+      .m-photo {
+        width: 38px;
+        height: 30px;
+        border-radius: 6px;
+        overflow: hidden;
+        box-shadow:
+          0 0 0 2.5px var(--card),
+          var(--shadow);
+        background: #ccc;
+      }
+      .m-photo svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .om.sel .m-code,
+      .om.sel .m-pin,
+      .om.sel .m-photo {
+        box-shadow:
+          0 0 0 3px var(--card),
+          0 0 0 6px var(--accent),
+          var(--shadow-big);
+      }
+      .om.sel .m {
+        transform: scale(1.15);
+      }
+      .om.moving .m {
+        cursor: grab;
+        animation: bob 1.1s ease-in-out infinite;
+      }
+      @keyframes bob {
+        0%,
+        100% {
+          transform: scale(1.15) translateY(0);
+        }
+        50% {
+          transform: scale(1.15) translateY(-4px);
+        }
+      }
+      .om.dim {
+        opacity: 0.35;
+      }
+      .code-tag {
+        font: italic 600 12px var(--serif);
+        color: var(--ink);
+        background: rgb(251 248 239 / 0.92);
+        padding: 1px 7px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        white-space: nowrap;
+        box-shadow: none;
+      }
+      .code-tag::before {
+        display: none;
+      }
+
+      /* ---------- floating panels ---------- */
+      .panel {
+        position: fixed;
+        z-index: 1000;
+        background: var(--card);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        border: 1px solid rgb(201 190 163 / 0.55);
+      }
+
+      /* top-left pill */
+      .pill {
+        top: 16px;
+        left: 16px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 10px 10px 10px 18px;
+        border-radius: 999px;
+        max-width: calc(100vw - 32px);
+      }
+      .pill .t {
+        min-width: 0;
+      }
+      .pill .t h1 {
+        font-size: 17px;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 280px;
+      }
+      .pill .t .sub {
+        font-size: 12px;
+        color: var(--ink-dim);
+        white-space: nowrap;
+      }
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgb(0 0 0 / 0.04);
+        white-space: nowrap;
+      }
+      .status .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--ok);
+      }
+      .status[data-s="saving"] .dot {
+        background: var(--accent);
+        animation: blink 0.8s ease-in-out infinite;
+      }
+      .status[data-s="error"] {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+      .status[data-s="error"] .dot {
+        background: var(--danger);
+      }
+      .status[data-s="unsaved"] {
+        background: var(--warn-soft);
+        color: var(--warn);
+      }
+      .status[data-s="unsaved"] .dot {
+        background: var(--accent);
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0.25;
+        }
+      }
+      .btn {
+        border: 0;
+        border-radius: 999px;
+        padding: 8px 16px;
+        font-weight: 600;
+        cursor: pointer;
+        background: rgb(0 0 0 / 0.06);
+        white-space: nowrap;
+      }
+      .btn:hover {
+        background: rgb(0 0 0 / 0.1);
+      }
+      .btn:focus-visible,
+      .sc:focus-visible,
+      .icon-btn:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .btn.primary {
+        background: var(--ink);
+        color: var(--card);
+      }
+      .btn.primary:hover {
+        background: #33333a;
+      }
+      .btn.danger {
+        color: var(--danger);
+      }
+      .btn.danger:hover {
+        background: var(--danger-soft);
+      }
+      .btn[disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .icon-btn {
+        border: 0;
+        background: transparent;
+        border-radius: 50%;
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        font-size: 18px;
+        color: var(--ink-dim);
+      }
+      .icon-btn:hover {
+        background: rgb(0 0 0 / 0.06);
+      }
+      .menu {
+        position: fixed;
+        z-index: 1100;
+        top: 70px;
+        left: 16px;
+        width: 300px;
+        padding: 8px;
+        display: none;
+      }
+      .menu.open {
+        display: block;
+      }
+      .menu .k {
+        font: 600 11px var(--sans);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--ink-3);
+        padding: 8px 10px 4px;
+      }
+      .menu button {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: 0;
+        background: none;
+        padding: 9px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .menu button:hover {
+        background: rgb(0 0 0 / 0.05);
+      }
+      .menu button small {
+        display: block;
+        color: var(--ink-dim);
+        font-size: 12px;
+      }
+      .save-error {
+        position: fixed;
+        z-index: 1000;
+        top: 80px;
+        left: 16px;
+        width: 340px;
+        padding: 12px 14px;
+        display: none;
+        border-left: 4px solid var(--danger);
+      }
+      .save-error.show {
+        display: block;
+      }
+      .save-error b {
+        color: var(--danger);
+      }
+      .save-error p {
+        margin: 4px 0 10px;
+        color: var(--ink-dim);
+        font-size: 13px;
+      }
+
+      /* top-right editing card */
+      .edit {
+        top: 16px;
+        right: 16px;
+        width: 350px;
+        max-height: calc(100vh - var(--strip-h, 200px) - 26px - 32px);
+        overflow: auto;
+        padding: 18px 18px 16px;
+        transform: translateY(-8px);
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity 0.16s ease,
+          transform 0.16s ease;
+      }
+      .edit.open {
+        transform: none;
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .edit .hd {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .edit .hd .ic {
+        flex: none;
+      }
+      .edit .hd h2 {
+        font-size: 20px;
+        line-height: 1.15;
+      }
+      .edit .hd .kind {
+        font: 600 11px var(--sans);
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--ink-3);
+      }
+      .edit .hd .icon-btn {
+        margin-left: auto;
+        margin-top: -6px;
+        margin-right: -6px;
+      }
+      .edit .photo {
+        border-radius: 12px;
+        overflow: hidden;
+        margin: 0 0 12px;
+        aspect-ratio: 16/9;
+        background: #ddd;
+      }
+      .edit .photo svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .edit label {
+        display: block;
+        font-weight: 600;
+        font-size: 13px;
+        margin: 0 0 6px;
+      }
+      .edit textarea {
+        width: 100%;
+        min-height: 84px;
+        resize: vertical;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: #fff;
+        line-height: 1.4;
+      }
+      .edit textarea:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: 0;
+        border-color: transparent;
+      }
+      .edit .row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      .note {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        font-size: 12.5px;
+        color: var(--ink-dim);
+        margin-top: 12px;
+        line-height: 1.4;
+      }
+      .note .i {
+        flex: none;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 1.5px solid currentColor;
+        display: grid;
+        place-items: center;
+        font: 700 11px var(--serif);
+      }
+      .note.warn {
+        color: var(--warn);
+        background: var(--warn-soft);
+        padding: 8px 10px;
+        border-radius: 10px;
+      }
+      .movebar {
+        display: none;
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: var(--route-soft);
+        font-size: 13px;
+      }
+      .movebar.show {
+        display: block;
+      }
+      .movebar .row {
+        margin-top: 8px;
+      }
+      .edit .meta {
+        font-size: 12px;
+        color: var(--ink-3);
+        margin-top: 12px;
+        border-top: 1px solid rgb(201 190 163 / 0.5);
+        padding-top: 10px;
+      }
+
+      /* bottom strip */
+      .strip {
+        left: 16px;
+        right: 16px;
+        bottom: 26px;
+        padding: 10px 12px 12px;
+      }
+      .strip .bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 4px 8px;
+      }
+      .strip .bar h3 {
+        font-size: 15px;
+      }
+      .strip .bar .count {
+        color: var(--ink-dim);
+        font-size: 12.5px;
+      }
+      .strip .bar .sp {
+        flex: 1;
+      }
+      .strip .bar label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12.5px;
+        color: var(--ink-dim);
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .strip .bar .btn {
+        padding: 5px 12px;
+        font-size: 12.5px;
+      }
+      .track-wrap {
+        position: relative;
+      }
+      .track {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        scroll-behavior: smooth;
+        padding: 4px 2px 6px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--line) transparent;
+      }
+      .track::-webkit-scrollbar {
+        height: 8px;
+      }
+      .track::-webkit-scrollbar-thumb {
+        background: var(--line);
+        border-radius: 8px;
+      }
+      .sc {
+        flex: none;
+        width: 138px;
+        text-align: left;
+        border: 1.5px solid transparent;
+        background: #fff;
+        border-radius: 13px;
+        padding: 7px;
+        cursor: pointer;
+        box-shadow: 0 1px 2px rgb(60 45 20 / 0.1);
+        transition:
+          border-color 0.12s,
+          transform 0.12s,
+          box-shadow 0.12s;
+      }
+      .sc:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow);
+      }
+      .sc.sel {
+        border-color: var(--accent);
+        box-shadow:
+          0 0 0 3px rgb(242 151 31 / 0.25),
+          var(--shadow);
+      }
+      .sc.focus:not(.sel) {
+        border-color: var(--line);
+      }
+      .sc .th {
+        height: 56px;
+        border-radius: 8px;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        background: var(--paper);
+      }
+      .sc .th svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .sc .lb {
+        margin-top: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        line-height: 1.25;
+        height: 2.5em;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+      }
+      .sc .mt {
+        font-size: 11.5px;
+        color: var(--ink-3);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .sc.code {
+        width: 112px;
+        background: var(--ink);
+        color: var(--card);
+      }
+      .sc.code .th {
+        background: rgb(255 255 255 / 0.08);
+      }
+      .sc.code .mt {
+        color: #bdb6a6;
+      }
+      .sc.code .num {
+        width: 34px;
+        height: 34px;
+        border-radius: 6px;
+        background: var(--card);
+        color: var(--ink);
+        font: 700 18px/34px var(--serif);
+        text-align: center;
+      }
+      .sc.pin .th {
+        background: var(--route-soft);
+      }
+      .sc.moved .mt::after {
+        content: " - moved";
+        color: var(--warn);
+      }
+      .gap {
+        flex: none;
+        width: 1px;
+        background: var(--line);
+        margin: 8px 2px;
+      }
+      .track-wrap .nav {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 2;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: 0;
+        background: var(--card);
+        box-shadow: var(--shadow);
+        cursor: pointer;
+        font-size: 16px;
+      }
+      .track-wrap .nav.l {
+        left: -6px;
+      }
+      .track-wrap .nav.r {
+        right: -6px;
+      }
+      .keys {
+        font-size: 11.5px;
+        color: var(--ink-3);
+        white-space: nowrap;
+      }
+      kbd {
+        font: 600 10.5px var(--sans);
+        border: 1px solid var(--line);
+        border-bottom-width: 2px;
+        border-radius: 4px;
+        padding: 0 4px;
+        background: #fff;
+        color: var(--ink-dim);
+      }
+
+      /* toast */
+      .toast {
+        position: fixed;
+        z-index: 1500;
+        left: 50%;
+        bottom: calc(var(--strip-h, 200px) + 40px);
+        transform: translate(-50%, 10px);
+        opacity: 0;
+        pointer-events: none;
+        background: var(--ink);
+        color: var(--card);
+        border-radius: 999px;
+        padding: 9px 10px 9px 18px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        box-shadow: var(--shadow-big);
+        transition:
+          opacity 0.18s,
+          transform 0.18s;
+        white-space: nowrap;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+        pointer-events: auto;
+      }
+      .toast button {
+        border: 0;
+        border-radius: 999px;
+        background: rgb(255 255 255 / 0.14);
+        color: var(--card);
+        font-weight: 700;
+        padding: 5px 12px;
+        cursor: pointer;
+      }
+      .toast button:hover {
+        background: rgb(255 255 255 / 0.24);
+      }
+      .toast button[hidden] {
+        display: none;
+      }
+
+      /* modals */
+      .veil {
+        position: fixed;
+        inset: 0;
+        z-index: 1800;
+        background: rgb(242 241 237 / 0.62);
+        backdrop-filter: blur(3px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      .veil.open {
+        display: flex;
+      }
+      .modal {
+        width: min(560px, 100%);
+        max-height: calc(100vh - 32px);
+        overflow: auto;
+        background: var(--card);
+        border-radius: 22px;
+        box-shadow: var(--shadow-big);
+        padding: 30px 32px 26px;
+        border: 1px solid rgb(201 190 163 / 0.55);
+      }
+      .modal .kicker {
+        font: 700 11px var(--sans);
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--ink-dim);
+      }
+      .modal h2 {
+        font-size: 30px;
+        line-height: 1.08;
+        margin: 0.2em 0 0.35em;
+      }
+      .modal h2 em {
+        color: var(--route);
+      }
+      .modal p {
+        margin: 0 0 14px;
+        color: var(--ink-dim);
+      }
+      .pick {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        border: 1.5px dashed var(--line);
+        border-radius: 14px;
+        padding: 14px 16px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        background: #fff;
+        transition:
+          border-color 0.12s,
+          background 0.12s;
+      }
+      .pick:hover {
+        border-color: var(--route);
+        background: #fffdf8;
+      }
+      .pick input {
+        display: none;
+      }
+      .pick .big {
+        font-weight: 700;
+      }
+      .pick .sm {
+        font-size: 12.5px;
+        color: var(--ink-dim);
+      }
+      .pick .fn {
+        font-size: 12.5px;
+        color: var(--ok);
+        font-weight: 600;
+      }
+      .pick .ico {
+        flex: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        background: var(--paper);
+        font-size: 19px;
+      }
+      .pick.opt {
+        border-style: dotted;
+      }
+      .or {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--ink-3);
+        font-size: 12px;
+        margin: 14px 0;
+      }
+      .or::before,
+      .or::after {
+        content: "";
+        height: 1px;
+        background: var(--line);
+        flex: 1;
+      }
+      .modal .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+        align-items: center;
+      }
+      .small {
+        font-size: 12px;
+        color: var(--ink-3);
+        margin-top: 16px;
+        line-height: 1.45;
+      }
+      .modal ul {
+        margin: 0 0 14px;
+        padding-left: 20px;
+        color: var(--ink-dim);
+      }
+      .modal li {
+        margin: 4px 0;
+      }
+      .ver {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        background: var(--paper);
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin: 0 0 14px;
+        font-size: 13px;
+      }
+      .ver b {
+        font-family: var(--serif);
+        font-size: 16px;
+      }
+
+      /* narrow windows (about 800 px): the card drops under the pill */
+      @media (max-width: 1060px) {
+        .edit {
+          top: 88px;
+          width: 330px;
+          max-height: calc(100vh - var(--strip-h, 200px) - 26px - 104px);
+        }
+        .pill .t h1 {
+          max-width: 200px;
+        }
+      }
+      @media (max-width: 720px) {
+        .pill .t .sub {
+          display: none;
+        }
+        .pill .t h1 {
+          max-width: 140px;
+          font-size: 15px;
+        }
+        .edit {
+          left: 16px;
+          right: 16px;
+          width: auto;
+        }
+        .keys {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="proto-label">
+      Prototype E3 - bottom strip (faked, nothing is saved)
+    </div>
+    <div id="map" aria-label="Tour map"></div>
+
+    <!-- top-left pill: tour name, save status, publish -->
+    <div class="panel pill" id="pill" hidden>
+      <div class="t">
+        <h1 id="tourName">Altstadt walk</h1>
+        <div class="sub" id="tourSub">Listed tour - version 3 published</div>
+      </div>
+      <div
+        class="status"
+        id="status"
+        data-s="saved"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="dot"></span><span id="statusText">Saved</span>
+      </div>
+      <button class="btn" id="saveBtn" hidden>Save (download)</button>
+      <button class="btn primary" id="publishBtn">Publish version</button>
+      <button
+        class="icon-btn"
+        id="menuBtn"
+        aria-label="More"
+        aria-expanded="false"
+      >
+        &#8942;
+      </button>
+    </div>
+    <div class="panel menu" id="menu" role="menu">
+      <div class="k">Prototype controls</div>
+      <button id="mFail" role="menuitem">
+        Simulate a failed save<small>The next save cannot write the file</small>
+      </button>
+      <button id="mFirefox" role="menuitem">
+        Pretend this is Firefox or Safari<small
+          >No write access: an explicit Save instead</small
+        >
+      </button>
+      <div class="k">Tour</div>
+      <button id="mOpen" role="menuitem">
+        Open another tour<small>Back to the open dialog</small>
+      </button>
+    </div>
+    <div class="panel save-error" id="saveError" role="alert">
+      <b>Could not write the tour file.</b>
+      <p>
+        Your edit is kept on this computer. Saving tries again with your next
+        edit, or now.
+      </p>
+      <button class="btn primary" id="retryBtn">Try again</button>
+      <button class="btn" id="errDismiss">Later</button>
+    </div>
+
+    <!-- top-right editing card -->
+    <aside
+      class="panel edit"
+      id="edit"
+      aria-label="Selected object"
+      aria-hidden="true"
+    >
+      <div class="hd">
+        <div class="ic" id="eIcon"></div>
+        <div>
+          <div class="kind" id="eKind">Pin</div>
+          <h2 id="eTitle">Pin</h2>
+        </div>
+        <button
+          class="icon-btn"
+          id="eClose"
+          aria-label="Close (Esc)"
+          title="Close (Esc)"
+        >
+          &#10005;
+        </button>
+      </div>
+      <div class="photo" id="ePhoto" hidden></div>
+      <label for="eText" id="eTextLabel">Text shown to visitors</label>
+      <textarea id="eText" rows="3"></textarea>
+      <div class="row" id="eActions">
+        <button class="btn" id="eMove">Move</button>
+        <button class="btn danger" id="eDelete">Delete</button>
+      </div>
+      <div class="movebar" id="moveBar">
+        <b>Drag the marker on the map.</b> It is saved where you drop it.
+        <div class="row">
+          <button class="btn primary" id="moveDone">Done</button
+          ><button class="btn" id="moveCancel">Put it back</button>
+        </div>
+      </div>
+      <div class="note" id="ePrecision">
+        <span class="i">i</span
+        ><span
+          >Placed from GPS alignment: about 1-3 m. The dashed ring on the map
+          shows that margin.</span
+        >
+      </div>
+      <div class="note warn" id="eHeight" hidden>
+        <span class="i">!</span
+        ><span
+          >Height kept from the phone; on sloped ground it may be off.</span
+        >
+      </div>
+      <div class="note" id="eCodeNote" hidden>
+        <span class="i">i</span
+        ><span
+          >A code is where it is printed. To move it, re-measure it with the
+          phone on site.</span
+        >
+      </div>
+      <div class="meta" id="eMeta"></div>
+    </aside>
+
+    <!-- bottom strip: every object in walk order -->
+    <section
+      class="panel strip"
+      id="strip"
+      hidden
+      aria-label="Objects in walk order"
+    >
+      <div class="bar">
+        <h3>Along the walk</h3>
+        <span class="count" id="count"></span>
+        <span class="sp"></span>
+        <span class="keys"
+          ><kbd>&larr;</kbd> <kbd>&rarr;</kbd> step, <kbd>Del</kbd> delete,
+          <kbd>Esc</kbd> deselect</span
+        >
+        <label
+          ><input type="checkbox" id="follow" checked /> Follow the walk while
+          scrolling</label
+        >
+        <button class="btn" id="fitBtn">Show all</button>
+      </div>
+      <div class="track-wrap">
+        <button class="nav l" id="navL" aria-label="Scroll left">
+          &#8249;
+        </button>
+        <div class="track" id="track"></div>
+        <button class="nav r" id="navR" aria-label="Scroll right">
+          &#8250;
+        </button>
+      </div>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite">
+      <span id="toastText"></span><button id="toastUndo" hidden>Undo</button>
+    </div>
+
+    <!-- open modal -->
+    <div class="veil open" id="openVeil">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="openTitle"
+      >
+        <div class="kicker">Tour editor</div>
+        <h2 id="openTitle">Open a <em>tour</em></h2>
+        <p>
+          Edit on a big screen what your phone created: texts, positions,
+          photos. Your changes are saved into the file as you go.
+        </p>
+        <label class="pick" for="zipIn">
+          <span class="ico">&#128230;</span>
+          <span
+            ><span class="big">Choose the tour file (.zip)</span><br /><span
+              class="sm"
+              >The file your phone saved after Finish.</span
+            ><br /><span class="fn" id="zipName"></span
+          ></span>
+          <input type="file" id="zipIn" accept=".zip,application/zip" />
+        </label>
+        <label class="pick opt" for="scanIn">
+          <span class="ico">&#128225;</span>
+          <span
+            ><span class="big">Add scan files</span>
+            <span class="sm">(optional)</span><br /><span class="sm"
+              >The scan zips recorded on the walk, for a later 3D view.</span
+            ><br /><span class="fn" id="scanName"></span
+          ></span>
+          <input
+            type="file"
+            id="scanIn"
+            accept=".zip,application/zip"
+            multiple
+          />
+        </label>
+        <div class="or">or</div>
+        <button
+          class="pick"
+          id="folderBtn"
+          style="width: 100%; text-align: left"
+        >
+          <span class="ico">&#128193;</span>
+          <span
+            ><span class="big">Open a folder</span><br /><span class="sm"
+              >One permission covers the tour and its scans; the folder is what
+              joins them.</span
+            ></span
+          >
+        </button>
+        <div class="actions">
+          <button class="btn primary" id="openBtn" disabled>Open</button>
+          <button class="btn" id="sampleBtn">Use the sample tour</button>
+        </div>
+        <div class="small">
+          Chrome and Edge save straight into the file you opened. Firefox and
+          Safari cannot write to it: there you get an explicit Save that
+          downloads a new file, and your edits are kept on this computer between
+          saves.
+        </div>
+      </div>
+    </div>
+
+    <!-- publish modal -->
+    <div class="veil" id="pubVeil">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pubTitle"
+      >
+        <div class="kicker">Listed tour</div>
+        <h2 id="pubTitle">Publish a new <em>version</em>?</h2>
+        <p>
+          Your edits are already saved in the file on this computer. Visitors
+          see them only once you publish.
+        </p>
+        <div class="ver">
+          <span>Now published:</span> <b id="pubFrom">version 3</b>
+          <span>&rarr;</span> <b id="pubTo">version 4</b>
+          <span
+            id="pubEdits"
+            style="margin-left: auto; color: var(--ink-dim)"
+          ></span>
+        </div>
+        <ul>
+          <li>
+            A listed tour gains <b>one</b> new signed version per editing
+            session, however many edits you made. Autosaves never create
+            versions.
+          </li>
+          <li>
+            If you close the editor without publishing, the session's version is
+            created on close.
+          </li>
+          <li>Older versions stay in the tour's history.</li>
+        </ul>
+        <div class="actions">
+          <button class="btn primary" id="pubGo">Publish version 4</button>
+          <button class="btn" id="pubCancel">Not yet</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      "use strict";
+      /* ================= fake data around Marktplatz, Tuebingen ================= */
+      const WALK = [
+        [48.52038, 9.0529],
+        [48.52036, 9.0533],
+        [48.5203, 9.0537],
+        [48.52024, 9.054],
+        [48.5204, 9.0545],
+        [48.52052, 9.0551],
+        [48.52058, 9.0557],
+        [48.52064, 9.0563],
+        [48.52062, 9.05665],
+        [48.5204, 9.0567],
+        [48.5201, 9.0565],
+        [48.51985, 9.0562],
+        [48.51965, 9.05595],
+        [48.5195, 9.056],
+        [48.51935, 9.0564],
+        [48.51925, 9.0569],
+      ];
+      function photoSvg(h, kind) {
+        const sky = `hsl(${h} 55% 78%)`,
+          sky2 = `hsl(${h + 20} 45% 90%)`;
+        const wall = `hsl(${(h + 180) % 360} 25% 62%)`,
+          roof = `hsl(${(h + 150) % 360} 45% 42%)`;
+        let fg = "";
+        if (kind === "house")
+          fg = `<rect x="8" y="20" width="18" height="20" fill="${wall}"/><path d="M6 21 17 10 28 21z" fill="${roof}"/><rect x="31" y="15" width="22" height="25" fill="${wall}" opacity=".85"/><path d="M29 16 42 6 55 16z" fill="${roof}" opacity=".9"/><rect x="12" y="25" width="4" height="5" fill="#fff8"/><rect x="36" y="21" width="4" height="5" fill="#fff8"/><rect x="44" y="21" width="4" height="5" fill="#fff8"/>`;
+        if (kind === "church")
+          fg = `<rect x="22" y="14" width="14" height="26" fill="${wall}"/><path d="M22 14 29 2 36 14z" fill="${roof}"/><rect x="8" y="24" width="44" height="16" fill="${wall}" opacity=".7"/><circle cx="29" cy="20" r="2.5" fill="#fff9"/>`;
+        if (kind === "river")
+          fg = `<path d="M0 30 Q15 26 30 30 T60 29 V45 H0z" fill="hsl(200 45% 52%)"/><rect x="38" y="12" width="9" height="19" fill="${wall}"/><path d="M37 13 42.5 5 48 13z" fill="${roof}"/><circle cx="12" cy="22" r="7" fill="hsl(110 30% 45%)"/>`;
+        if (kind === "fountain")
+          fg = `<rect x="27" y="10" width="6" height="24" fill="${wall}"/><circle cx="30" cy="9" r="4" fill="${roof}"/><ellipse cx="30" cy="36" rx="20" ry="5" fill="hsl(200 40% 60%)"/><rect x="0" y="38" width="60" height="7" fill="hsl(35 20% 70%)"/>`;
+        return `<svg viewBox="0 0 60 45" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g${h}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sky}"/><stop offset="1" stop-color="${sky2}"/></linearGradient></defs><rect width="60" height="45" fill="url(#g${h})"/><rect y="40" width="60" height="5" fill="hsl(35 18% 64%)"/>${fg}</svg>`;
+      }
+      /* one object model: codes, and notes (text pins and photo notes alike) */
+      function sampleObjects() {
+        return [
+          {
+            id: "c1",
+            type: "code",
+            n: 1,
+            text: "Marktplatz, at the fountain",
+            lat: 48.52028,
+            lng: 9.05378,
+          },
+          {
+            id: "p1",
+            type: "pin",
+            text: "The town hall facade was painted in 1876; look for the astronomical clock.",
+            lat: 48.52012,
+            lng: 9.0536,
+          },
+          {
+            id: "f1",
+            type: "photo",
+            kind: "fountain",
+            hue: 205,
+            text: "The Neptune fountain on a market morning.",
+            lat: 48.52034,
+            lng: 9.05392,
+          },
+          {
+            id: "p2",
+            type: "pin",
+            text: "Market days: Monday, Wednesday and Friday mornings.",
+            lat: 48.52044,
+            lng: 9.05352,
+          },
+          {
+            id: "f2",
+            type: "photo",
+            kind: "house",
+            hue: 30,
+            text: "Half-timbered houses on the north side of the square.",
+            lat: 48.52049,
+            lng: 9.05415,
+          },
+          {
+            id: "c2",
+            type: "code",
+            n: 2,
+            text: "Holzmarkt, by the church steps",
+            lat: 48.52062,
+            lng: 9.05655,
+          },
+          {
+            id: "p3",
+            type: "pin",
+            text: "The collegiate church: climb the tower for the view over the Neckar.",
+            lat: 48.52076,
+            lng: 9.0569,
+          },
+          {
+            id: "f3",
+            type: "photo",
+            kind: "church",
+            hue: 220,
+            text: "The church tower from the Holzmarkt.",
+            lat: 48.52048,
+            lng: 9.0564,
+          },
+          {
+            id: "p4",
+            type: "pin",
+            text: "The bookshop where Hesse worked as an apprentice.",
+            lat: 48.5207,
+            lng: 9.05622,
+          },
+          {
+            id: "c3",
+            type: "code",
+            n: 3,
+            text: "Neckar bank, below the tower",
+            lat: 48.51955,
+            lng: 9.0559,
+          },
+          {
+            id: "p5",
+            type: "pin",
+            text: "The Hoelderlin tower: the poet lived here for 36 years.",
+            lat: 48.51944,
+            lng: 9.0557,
+          },
+          {
+            id: "f4",
+            type: "photo",
+            kind: "river",
+            hue: 190,
+            text: "Punts on the river in summer.",
+            lat: 48.51938,
+            lng: 9.05628,
+          },
+          {
+            id: "p6",
+            type: "pin",
+            text: "End of the walk: the bridge. Turn round for the classic view.",
+            lat: 48.51926,
+            lng: 9.05688,
+          },
+        ];
+      }
+
+      /* ================= state ================= */
+      let objects = [],
+        markers = new Map(),
+        selId = null,
+        moving = null,
+        ring = null;
+      let version = 3,
+        editsSince = 0,
+        noWriteAccess = false,
+        unsavedCount = 0;
+      let saveInFlight = false,
+        saveQueued = false,
+        failNext = false,
+        lastError = false;
+      const $ = (id) => document.getElementById(id);
+
+      /* ================= map ================= */
+      const map = L.map("map", {
+        zoomControl: true,
+        keyboard: false,
+        attributionControl: true,
+      }).setView([48.5201, 9.055], 18);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        className: "map-tiles",
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(map);
+      L.polyline(WALK, { color: "#fbf8ef", weight: 9, opacity: 0.9 }).addTo(
+        map,
+      );
+      L.polyline(WALK, {
+        color: "#cf4428",
+        weight: 4,
+        opacity: 0.9,
+        dashArray: "1 8",
+        lineCap: "round",
+      }).addTo(map);
+      L.polyline(WALK, { color: "#cf4428", weight: 3, opacity: 0.55 }).addTo(
+        map,
+      );
+      map.on("click", () => {
+        if (!moving) select(null);
+      });
+
+      function iconHtml(o) {
+        if (o.type === "code")
+          return `<div class="m"><div class="m-code">${o.n}</div></div>`;
+        if (o.type === "pin")
+          return `<div class="m"><div class="m-pin"><span></span></div></div>`;
+        return `<div class="m"><div class="m-photo">${photoSvg(o.hue, o.kind)}</div></div>`;
+      }
+      function makeIcon(o) {
+        const s = o.type === "photo" ? [44, 36] : [34, 34];
+        return L.divIcon({
+          className: "om",
+          html: iconHtml(o),
+          iconSize: s,
+          iconAnchor: o.type === "pin" ? [17, 30] : [s[0] / 2, s[1] / 2],
+        });
+      }
+      function addMarker(o) {
+        const m = L.marker([o.lat, o.lng], {
+          icon: makeIcon(o),
+          keyboard: false,
+          riseOnHover: true,
+          title: label(o),
+        }).addTo(map);
+        if (o.type === "code")
+          m.bindTooltip(`Code ${o.n}`, {
+            permanent: true,
+            direction: "right",
+            offset: [16, 0],
+            className: "code-tag",
+          });
+        m.on("click", (e) => {
+          L.DomEvent.stopPropagation(e);
+          if (!moving) select(o.id, { fromMap: true });
+        });
+        m.on("mouseover", () => cardEl(o.id)?.classList.add("focus"));
+        m.on("mouseout", () => cardEl(o.id)?.classList.remove("focus"));
+        m.on("drag", () => {
+          if (ring) ring.setLatLng(m.getLatLng());
+        });
+        m.on("dragend", () => {
+          const p = m.getLatLng();
+          o.lat = p.lat;
+          o.lng = p.lng;
+          o.moved = true;
+          renderCard();
+          renderStrip();
+          edited("moved");
+        });
+        markers.set(o.id, m);
+      }
+      function markerEl(id) {
+        return markers.get(id)?.getElement();
+      }
+
+      /* ================= helpers ================= */
+      function dist(a, b) {
+        const R = 6371000,
+          toR = Math.PI / 180,
+          dLat = (b.lat - a.lat) * toR,
+          dLng = (b.lng - a.lng) * toR;
+        const x =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(a.lat * toR) *
+            Math.cos(b.lat * toR) *
+            Math.sin(dLng / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(x));
+      }
+      function label(o) {
+        if (o.type === "code") return o.text || `Code ${o.n}`;
+        const t = (o.text || "").trim();
+        return t ? t : "(no text yet)";
+      }
+      function nearestCode(o) {
+        let best = null;
+        for (const c of objects)
+          if (c.type === "code") {
+            const d = dist(o, c);
+            if (!best || d < best.d) best = { c, d };
+          }
+        return best;
+      }
+      function kindName(o) {
+        return o.type === "code"
+          ? "QR code"
+          : o.type === "pin"
+            ? "Text note"
+            : "Photo note";
+      }
+      function meta(o) {
+        if (o.type === "code") return "printed on site";
+        const n = nearestCode(o);
+        return `${o.type === "pin" ? "Note" : "Photo"} - ${Math.round(n.d)} m from code ${n.c.n}`;
+      }
+      function esc(s) {
+        return String(s).replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+      }
+
+      /* ================= strip ================= */
+      function cardEl(id) {
+        return $("track").querySelector(`.sc[data-id="${id}"]`);
+      }
+      function renderStrip() {
+        const t = $("track");
+        const keep = t.scrollLeft;
+        t.innerHTML = "";
+        objects.forEach((o, i) => {
+          if (o.type === "code" && i > 0) {
+            const g = document.createElement("div");
+            g.className = "gap";
+            t.appendChild(g);
+          }
+          const b = document.createElement("button");
+          b.className = `sc ${o.type}${o.id === selId ? " sel" : ""}${o.moved ? " moved" : ""}`;
+          b.dataset.id = o.id;
+          b.setAttribute("aria-label", `${kindName(o)}: ${label(o)}`);
+          const th =
+            o.type === "code"
+              ? `<div class="num">${o.n}</div>`
+              : o.type === "pin"
+                ? `<svg viewBox="0 0 24 24" width="30" height="30"><path d="M12 2c4 0 7 3 7 7 0 5-7 13-7 13S5 14 5 9c0-4 3-7 7-7z" fill="#cf4428"/><circle cx="12" cy="9" r="2.8" fill="#fbf8ef"/></svg>`
+                : photoSvg(o.hue, o.kind);
+          b.innerHTML = `<div class="th">${th}</div><div class="lb">${esc(o.type === "code" ? `Code ${o.n}` : label(o))}</div><div class="mt">${esc(o.type === "code" ? label(o) : meta(o))}</div>`;
+          b.addEventListener("click", () => select(o.id));
+          b.addEventListener("mouseenter", () =>
+            markerEl(o.id)?.classList.add("pulse"),
+          );
+          b.addEventListener("mouseleave", () =>
+            markerEl(o.id)?.classList.remove("pulse"),
+          );
+          b.addEventListener("focus", () =>
+            markerEl(o.id)?.classList.add("pulse"),
+          );
+          b.addEventListener("blur", () =>
+            markerEl(o.id)?.classList.remove("pulse"),
+          );
+          t.appendChild(b);
+        });
+        t.style.scrollBehavior = "auto";
+        t.scrollLeft = keep;
+        t.style.scrollBehavior = "";
+        const notes = objects.filter((o) => o.type !== "code"),
+          photos = notes.filter((o) => o.type === "photo").length;
+        $("count").textContent =
+          `${objects.length - notes.length} codes, ${notes.length} notes (${photos} with a photo)`;
+      }
+      $("navL").onclick = () => $("track").scrollBy({ left: -420 });
+      $("navR").onclick = () => $("track").scrollBy({ left: 420 });
+      $("fitBtn").onclick = () => fitAll();
+      function fitAll() {
+        map.fitBounds(
+          L.latLngBounds(WALK.concat(objects.map((o) => [o.lat, o.lng]))),
+          {
+            paddingTopLeft: [40, 100],
+            paddingBottomRight: [selId ? 400 : 40, 220],
+          },
+        );
+      }
+      /* scrolling the strip pans the map along the walk (optional) */
+      let followT = null,
+        programmaticScroll = false;
+      $("track").addEventListener(
+        "scroll",
+        () => {
+          if (!$("follow").checked || programmaticScroll || moving) return;
+          clearTimeout(followT);
+          followT = setTimeout(() => {
+            const t = $("track"),
+              r = t.getBoundingClientRect(),
+              mid = r.left + r.width / 2;
+            let best = null,
+              bd = 1e9;
+            t.querySelectorAll(".sc").forEach((c) => {
+              const cr = c.getBoundingClientRect();
+              const d = Math.abs(cr.left + cr.width / 2 - mid);
+              if (d < bd) {
+                bd = d;
+                best = c;
+              }
+            });
+            if (!best) return;
+            const o = objects.find((x) => x.id === best.dataset.id);
+            t.querySelectorAll(".sc.focus").forEach((c) =>
+              c.classList.remove("focus"),
+            );
+            best.classList.add("focus");
+            map.panTo(mapCentreFor(o), { animate: true, duration: 0.5 });
+          }, 140);
+        },
+        { passive: true },
+      );
+      /* the map centre that puts a point in the free area (left of the card, above the strip) */
+      function mapCentreFor(o) {
+        const size = map.getSize(),
+          cardW =
+            $("edit").classList.contains("open") && innerWidth > 720
+              ? $("edit").offsetWidth + 16
+              : 0,
+          stripH = $("strip").offsetHeight + 26;
+        const free = { x: (size.x - cardW) / 2, y: (size.y - stripH) / 2 + 30 };
+        const p = map.latLngToContainerPoint([o.lat, o.lng]);
+        const off = L.point(size.x / 2 - free.x, size.y / 2 - free.y);
+        return map.containerPointToLatLng(p.add(off));
+      }
+
+      /* ================= selection ================= */
+      function select(id, opts = {}) {
+        if (moving && id !== moving.id) endMove(true);
+        if (selId) {
+          markerEl(selId)?.classList.remove("sel");
+          markers.get(selId)?.setZIndexOffset(0);
+        }
+        selId = id;
+        if (ring) {
+          map.removeLayer(ring);
+          ring = null;
+        }
+        $("track")
+          .querySelectorAll(".sc.sel")
+          .forEach((c) => c.classList.remove("sel"));
+        if (!id) {
+          $("edit").classList.remove("open");
+          $("edit").setAttribute("aria-hidden", "true");
+          return;
+        }
+        const o = objects.find((x) => x.id === id);
+        if (!o) return;
+        markerEl(id)?.classList.add("sel");
+        markers.get(id).setZIndexOffset(1000);
+        if (o.type !== "code")
+          ring = L.circle([o.lat, o.lng], {
+            radius: 3,
+            color: "#f2971f",
+            weight: 2,
+            dashArray: "4 5",
+            fillColor: "#f2971f",
+            fillOpacity: 0.08,
+            interactive: false,
+          }).addTo(map);
+        const c = cardEl(id);
+        if (c) {
+          c.classList.add("sel");
+          programmaticScroll = true;
+          c.scrollIntoView({
+            behavior: "smooth",
+            inline: "center",
+            block: "nearest",
+          });
+          setTimeout(() => (programmaticScroll = false), 600);
+        }
+        $("edit").classList.add("open");
+        $("edit").setAttribute("aria-hidden", "false");
+        renderCard();
+        /* keep the selection visible: pan only when it sits under a panel */
+        const p = map.latLngToContainerPoint([o.lat, o.lng]),
+          size = map.getSize();
+        const cardLeft =
+            innerWidth > 720 ? size.x - $("edit").offsetWidth - 32 : size.x,
+          stripTop = size.y - $("strip").offsetHeight - 40;
+        if (p.x < 40 || p.y < 110 || p.x > cardLeft || p.y > stripTop)
+          map.panTo(mapCentreFor(o), { animate: true, duration: 0.4 });
+      }
+      function renderCard() {
+        const o = objects.find((x) => x.id === selId);
+        if (!o) return;
+        const isCode = o.type === "code";
+        $("eKind").textContent = kindName(o);
+        $("eTitle").textContent = isCode
+          ? `Code ${o.n}`
+          : o.type === "pin"
+            ? "Note"
+            : "Photo note";
+        $("eIcon").innerHTML = isCode
+          ? `<div class="m-code" style="width:34px;height:34px;line-height:34px">${o.n}</div>`
+          : o.type === "pin"
+            ? `<svg viewBox="0 0 24 24" width="34" height="34"><path d="M12 2c4 0 7 3 7 7 0 5-7 13-7 13S5 14 5 9c0-4 3-7 7-7z" fill="#cf4428"/><circle cx="12" cy="9" r="2.8" fill="#fbf8ef"/></svg>`
+            : "";
+        $("ePhoto").hidden = o.type !== "photo";
+        if (o.type === "photo") $("ePhoto").innerHTML = photoSvg(o.hue, o.kind);
+        $("eTextLabel").textContent = isCode
+          ? "Name shown to visitors"
+          : o.type === "photo"
+            ? "Caption shown with the photo"
+            : "Text shown to visitors";
+        if (document.activeElement !== $("eText")) $("eText").value = o.text;
+        $("eMove").hidden = isCode;
+        $("eDelete").hidden = isCode;
+        $("eCodeNote").hidden = !isCode;
+        $("ePrecision").hidden = isCode;
+        $("eHeight").hidden = !(o.moved && !isCode);
+        $("moveBar").classList.toggle("show", !!moving && moving.id === o.id);
+        $("eActions").hidden = !!moving;
+        $("eMeta").textContent = isCode
+          ? "Placed by the phone's measurement at the code."
+          : `${meta(o)}. Placed on the phone${o.moved ? ", moved here on this computer" : ""}.`;
+      }
+      $("eClose").onclick = () => select(null);
+      let textT = null;
+      $("eText").addEventListener("input", () => {
+        const o = objects.find((x) => x.id === selId);
+        if (!o) return;
+        o.text = $("eText").value;
+        const c = cardEl(o.id);
+        if (c) {
+          c.querySelector(".lb").textContent =
+            o.type === "code" ? `Code ${o.n}` : label(o);
+          if (o.type === "code") c.querySelector(".mt").textContent = label(o);
+        }
+        markers.get(o.id).getElement()?.setAttribute("title", label(o));
+        setStatus("unsaved-typing");
+        clearTimeout(textT);
+        textT = setTimeout(() => edited("text"), 900);
+      });
+
+      /* ================= move ================= */
+      $("eMove").onclick = () => {
+        const o = objects.find((x) => x.id === selId);
+        if (!o) return;
+        moving = { id: o.id, lat: o.lat, lng: o.lng, moved: !!o.moved };
+        const m = markers.get(o.id);
+        m.dragging.enable();
+        markerEl(o.id).classList.add("moving");
+        objects.forEach((x) => {
+          if (x.id !== o.id) markerEl(x.id)?.classList.add("dim");
+        });
+        renderCard();
+        $("moveDone").focus();
+      };
+      function endMove(cancel) {
+        if (!moving) return;
+        const o = objects.find((x) => x.id === moving.id),
+          m = markers.get(moving.id);
+        if (m) {
+          m.dragging.disable();
+          markerEl(moving.id)?.classList.remove("moving");
+        }
+        objects.forEach((x) => markerEl(x.id)?.classList.remove("dim"));
+        if (cancel && o && (o.lat !== moving.lat || o.lng !== moving.lng)) {
+          o.lat = moving.lat;
+          o.lng = moving.lng;
+          o.moved = moving.moved;
+          m.setLatLng([o.lat, o.lng]);
+          if (ring) ring.setLatLng([o.lat, o.lng]);
+          renderStrip();
+          edited("put back");
+        }
+        moving = null;
+        renderCard();
+      }
+      $("moveDone").onclick = () => endMove(false);
+      $("moveCancel").onclick = () => endMove(true);
+
+      /* ================= delete + undo ================= */
+      let undoT = null,
+        lastDeleted = null;
+      function del(id) {
+        const i = objects.findIndex((x) => x.id === id);
+        if (i < 0) return;
+        const o = objects[i];
+        if (o.type === "code") {
+          toast("A code stays: it is printed on site.");
+          return;
+        }
+        if (moving) endMove(true);
+        select(null);
+        objects.splice(i, 1);
+        map.removeLayer(markers.get(id));
+        markers.delete(id);
+        lastDeleted = { o, i };
+        renderStrip();
+        edited("deleted");
+        toast(`${o.type === "photo" ? "Photo note" : "Note"} deleted.`, () => {
+          if (!lastDeleted) return;
+          objects.splice(lastDeleted.i, 0, lastDeleted.o);
+          addMarker(lastDeleted.o);
+          const back = lastDeleted.o.id;
+          lastDeleted = null;
+          renderStrip();
+          select(back);
+          edited("restored");
+          toast("Restored.");
+        });
+      }
+      $("eDelete").onclick = () => del(selId);
+      function toast(text, undo) {
+        $("toastText").textContent = text;
+        $("toastUndo").hidden = !undo;
+        $("toastUndo").onclick = () => {
+          hideToast();
+          undo();
+        };
+        $("toast").classList.add("show");
+        clearTimeout(undoT);
+        undoT = setTimeout(hideToast, undo ? 7000 : 2600);
+      }
+      function hideToast() {
+        $("toast").classList.remove("show");
+      }
+
+      /* ================= continuous saving (faked) ================= */
+      function edited() {
+        editsSince++;
+        updatePublish();
+        if (noWriteAccess) {
+          unsavedCount++;
+          setStatus("unsaved");
+          return;
+        }
+        requestSave();
+      }
+      function requestSave() {
+        if (saveInFlight) {
+          saveQueued = true;
+          return;
+        }
+        runSave();
+      }
+      function runSave() {
+        saveInFlight = true;
+        setStatus("saving");
+        const fail = failNext;
+        failNext = false;
+        setTimeout(
+          () => {
+            saveInFlight = false;
+            if (fail) {
+              lastError = true;
+              setStatus("error");
+              $("saveError").classList.add("show");
+            } else {
+              lastError = false;
+              $("saveError").classList.remove("show");
+              setStatus("saved");
+            }
+            if (saveQueued) {
+              saveQueued = false;
+              runSave();
+            }
+          },
+          600 + Math.random() * 300,
+        );
+      }
+      function setStatus(s) {
+        const el = $("status"),
+          tx = $("statusText");
+        if (s === "unsaved-typing") {
+          if (noWriteAccess) {
+            el.dataset.s = "unsaved";
+            tx.textContent = `${unsavedCount + 1} edits not saved yet`;
+          }
+          return;
+        }
+        el.dataset.s = s;
+        tx.textContent =
+          s === "saving"
+            ? "Saving…"
+            : s === "error"
+              ? "Not saved"
+              : s === "unsaved"
+                ? `${unsavedCount} ${unsavedCount === 1 ? "edit" : "edits"} not saved yet`
+                : noWriteAccess
+                  ? "Saved (downloaded)"
+                  : "Saved";
+        el.title =
+          s === "error"
+            ? "Your edit is kept on this computer"
+            : noWriteAccess
+              ? "Firefox and Safari: Save downloads a new file"
+              : "Saved into the tour file you opened";
+      }
+      $("retryBtn").onclick = () => requestSave();
+      $("errDismiss").onclick = () => $("saveError").classList.remove("show");
+      $("saveBtn").onclick = () => {
+        const b = $("saveBtn");
+        b.disabled = true;
+        b.textContent = "Preparing…";
+        setStatus("saving");
+        setTimeout(() => {
+          unsavedCount = 0;
+          b.disabled = false;
+          b.textContent = "Save (download)";
+          setStatus("saved");
+          toast("Downloaded altstadt-walk.zip (a new copy).");
+        }, 800);
+      };
+
+      /* ================= publish ================= */
+      function updatePublish() {
+        $("publishBtn").classList.toggle("primary", !!editsSince);
+        $("publishBtn").title = editsSince
+          ? "Publish this session's edits as one new signed version"
+          : "No edits since the last published version";
+        $("tourSub").textContent = editsSince
+          ? `Listed tour - version ${version} live, ${editsSince} ${editsSince === 1 ? "edit" : "edits"} since`
+          : `Listed tour - version ${version} published`;
+      }
+      $("publishBtn").onclick = () => {
+        $("pubFrom").textContent = `version ${version}`;
+        $("pubTo").textContent = `version ${version + 1}`;
+        $("pubEdits").textContent =
+          `${editsSince} ${editsSince === 1 ? "edit" : "edits"} this session`;
+        $("pubGo").textContent = editsSince
+          ? `Publish version ${version + 1}`
+          : "Nothing new to publish";
+        $("pubGo").disabled = !editsSince;
+        $("pubVeil").classList.add("open");
+        $("pubGo").focus();
+      };
+      $("pubCancel").onclick = () => $("pubVeil").classList.remove("open");
+      $("pubGo").onclick = () => {
+        const b = $("pubGo");
+        b.disabled = true;
+        b.textContent = "Signing and publishing…";
+        setTimeout(() => {
+          version++;
+          editsSince = 0;
+          updatePublish();
+          $("pubVeil").classList.remove("open");
+          toast(`Version ${version} published. Visitors now see your edits.`);
+        }, 1100);
+      };
+
+      /* ================= menu (prototype controls) ================= */
+      $("menuBtn").onclick = (e) => {
+        e.stopPropagation();
+        const open = !$("menu").classList.contains("open");
+        $("menu").classList.toggle("open", open);
+        $("menuBtn").setAttribute("aria-expanded", open);
+      };
+      document.addEventListener("click", (e) => {
+        if (!$("menu").contains(e.target)) $("menu").classList.remove("open");
+      });
+      $("mFail").onclick = () => {
+        $("menu").classList.remove("open");
+        if (noWriteAccess) setFirefox(false);
+        failNext = true;
+        editsSince++;
+        updatePublish();
+        requestSave();
+      };
+      function setFirefox(on) {
+        noWriteAccess = on;
+        $("saveBtn").hidden = !on;
+        unsavedCount = 0;
+        setStatus("saved");
+        $("mFirefox").firstChild.textContent = on
+          ? "Pretend this is Chrome or Edge"
+          : "Pretend this is Firefox or Safari";
+        $("mFirefox").querySelector("small").textContent = on
+          ? "Write access: saved into the file as you go"
+          : "No write access: an explicit Save instead";
+      }
+      $("mFirefox").onclick = () => {
+        $("menu").classList.remove("open");
+        setFirefox(!noWriteAccess);
+        toast(
+          noWriteAccess
+            ? "Firefox or Safari: edits wait for Save."
+            : "Chrome or Edge: saved as you go.",
+        );
+      };
+      $("mOpen").onclick = () => {
+        $("menu").classList.remove("open");
+        $("openVeil").classList.add("open");
+      };
+
+      /* ================= keyboard ================= */
+      document.addEventListener("keydown", (e) => {
+        if (
+          $("openVeil").classList.contains("open") ||
+          $("pubVeil").classList.contains("open")
+        ) {
+          if (e.key === "Escape") $("pubVeil").classList.remove("open");
+          return;
+        }
+        const typing = /^(TEXTAREA|INPUT)$/.test(
+          document.activeElement?.tagName || "",
+        );
+        if (e.key === "Escape") {
+          if (moving) {
+            endMove(true);
+            return;
+          }
+          if (typing) {
+            document.activeElement.blur();
+            return;
+          }
+          select(null);
+          $("menu").classList.remove("open");
+          return;
+        }
+        if (typing) return;
+        if ((e.key === "Delete" || e.key === "Backspace") && selId) {
+          e.preventDefault();
+          del(selId);
+          return;
+        }
+        if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+          if (moving || objects.length === 0) return;
+          e.preventDefault();
+          const i = objects.findIndex((x) => x.id === selId),
+            d = e.key === "ArrowRight" ? 1 : -1;
+          const n =
+            i < 0
+              ? d > 0
+                ? 0
+                : objects.length - 1
+              : Math.max(0, Math.min(objects.length - 1, i + d));
+          select(objects[n].id);
+          cardEl(objects[n].id)?.focus({ preventScroll: true });
+        }
+      });
+
+      /* ================= open modal ================= */
+      let chosenName = null;
+      $("zipIn").onchange = () => {
+        const f = $("zipIn").files[0];
+        if (f) {
+          chosenName = f.name;
+          $("zipName").textContent = `Chosen: ${f.name}`;
+          $("openBtn").disabled = false;
+        }
+      };
+      $("scanIn").onchange = () => {
+        const n = $("scanIn").files.length;
+        $("scanName").textContent = n
+          ? `${n} scan ${n === 1 ? "file" : "files"} added`
+          : "";
+      };
+      $("folderBtn").onclick = async () => {
+        if (!window.showDirectoryPicker) {
+          toast(
+            "This browser has no folder picker. Choose the tour file instead.",
+          );
+          return;
+        }
+        try {
+          const h = await window.showDirectoryPicker({ mode: "readwrite" });
+          chosenName = h.name;
+          $("zipName").textContent =
+            `Folder: ${h.name} (prototype: the sample stands in)`;
+          $("openBtn").disabled = false;
+        } catch (_) {
+          /* cancelled */
+        }
+      };
+      $("openBtn").onclick = () => load(chosenName);
+      $("sampleBtn").onclick = () => load(null);
+      function load(name) {
+        markers.forEach((m) => map.removeLayer(m));
+        markers.clear();
+        select(null);
+        objects = sampleObjects();
+        objects.forEach(addMarker);
+        $("tourName").textContent = name
+          ? name.replace(/\.zip$/i, "")
+          : "Altstadt walk, Tuebingen";
+        version = 3;
+        editsSince = 0;
+        updatePublish();
+        setFirefox(false);
+        $("openVeil").classList.remove("open");
+        $("pill").hidden = false;
+        $("strip").hidden = false;
+        renderStrip();
+        setTimeout(() => {
+          map.invalidateSize();
+          fitAll();
+        }, 30);
+        if (name) toast("Prototype: the sample tour stands in for your file.");
+      }
+      /* panels size themselves from the strip's real height (it wraps at narrow widths) */
+      function syncStripHeight() {
+        document.documentElement.style.setProperty(
+          "--strip-h",
+          $("strip").offsetHeight + "px",
+        );
+      }
+      new ResizeObserver(syncStripHeight).observe($("strip"));
+      /* the scroll arrows show only where there is more to scroll to */
+      function syncNav() {
+        const t = $("track");
+        $("navL").hidden = t.scrollLeft <= 2;
+        $("navR").hidden = t.scrollLeft + t.clientWidth >= t.scrollWidth - 2;
+      }
+      $("track").addEventListener("scroll", syncNav, { passive: true });
+      new ResizeObserver(syncNav).observe($("track"));
+      addEventListener("resize", () => map.invalidateSize());
+    </script>
+  </body>
+</html>

@@ -16,7 +16,7 @@ import * as fc from 'fast-check';
 import { mat4 } from 'gl-matrix';
 import type { Matrix4, Vector3 } from 'gps-plus-slam-js';
 import type { DepthSample } from '../types/ar-types';
-import { OccupancyGrid } from './occupancy-grid';
+import { OccupancyGrid, cellKey, unpackCellKey } from './occupancy-grid';
 
 const PROJECTION: Matrix4 = Array.from(
   mat4.perspective(mat4.create(), Math.PI / 3, 16 / 9, 0.1, 1000)
@@ -179,6 +179,152 @@ describe('OccupancyGrid properties', () => {
           expect(grid.getOccupiedCells()).toContainEqual([0, 0, -farCells]);
         }
       )
+    );
+  });
+
+  it('getOccupiedCellsFlat is exactly the flattened tuple snapshot for any observation history and floor (Step 1.3)', () => {
+    // Why this property matters: the flat API feeds the mesh-worker pack path
+    // and must never drift from the tuple API the cubes/COLMAP consumers read
+    // — same cells, same order, for any interleaving of observations and any
+    // minObservations floor (including floors above the memoized range).
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.array(fc.double({ min: 0.6, max: 12, noNaN: true }), {
+            minLength: 1,
+            maxLength: 5,
+          }),
+          { minLength: 1, maxLength: 8 }
+        ),
+        fc.integer({ min: 1, max: 12 }),
+        (samples, minObservations) => {
+          const grid = new OccupancyGrid();
+          for (const depths of samples) {
+            grid.addSample(makeSample([0, 0, 0], depths));
+          }
+          const tuples = grid.getOccupiedCells(minObservations);
+          const flat = grid.getOccupiedCellsFlat(minObservations);
+          expect(Array.from(flat)).toEqual(tuples.flat());
+        }
+      )
+    );
+  });
+
+  it('getOccupiedCellsWithin ≡ brute-force radius filter of getOccupiedCells for any grid, center and radius (Step 2)', () => {
+    // Why this property matters: the chunk-index window is the structural
+    // change that bounds consumer cost by the neighbourhood — if its
+    // AABB-vs-sphere chunk walk or interior-chunk shortcut ever drops or
+    // over-includes a cell relative to the plain distance filter, occlusion
+    // and cubes silently diverge from the grid. Cameras at several origins
+    // spread samples across chunk boundaries.
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            camX: fc.integer({ min: -30, max: 30 }),
+            camY: fc.integer({ min: -5, max: 5 }),
+            depths: fc.array(fc.double({ min: 0.6, max: 20, noNaN: true }), {
+              minLength: 1,
+              maxLength: 4,
+            }),
+          }),
+          { minLength: 1, maxLength: 6 }
+        ),
+        fc.tuple(
+          fc.double({ min: -35, max: 35, noNaN: true }),
+          fc.double({ min: -8, max: 8, noNaN: true }),
+          fc.double({ min: -25, max: 5, noNaN: true })
+        ),
+        fc.double({ min: 0.3, max: 40, noNaN: true }),
+        fc.integer({ min: 1, max: 3 }),
+        (samples, center, radiusM, minObservations) => {
+          const grid = new OccupancyGrid({ cellSizeM: 1 });
+          for (const s of samples) {
+            grid.addSample(makeSample([s.camX, s.camY, 0], s.depths));
+          }
+          const expected = grid
+            .getOccupiedCells(minObservations)
+            .filter((cell) => {
+              const c = grid.getCellCenter(cell);
+              const dx = c[0] - center[0];
+              const dy = c[1] - center[1];
+              const dz = c[2] - center[2];
+              return dx * dx + dy * dy + dz * dz <= radiusM * radiusM;
+            });
+          const actual = grid.getOccupiedCellsWithin(
+            center,
+            radiusM,
+            minObservations
+          );
+          // Same SET of cells (chunk iteration order differs from Map order).
+          const key = (c: readonly number[]): string => c.join(',');
+          expect(new Set(actual.map(key))).toEqual(new Set(expected.map(key)));
+          expect(actual).toHaveLength(expected.length);
+          // The flat variant carries exactly the tuple result.
+          expect(
+            Array.from(
+              grid.getOccupiedCellsWithinFlat(center, radiusM, minObservations)
+            )
+          ).toEqual(actual.flat());
+        }
+      )
+    );
+  });
+
+  it('duplicating points within one sample scales counts but never changes the occupied set (Step 3.2 carve-dedupe contract)', () => {
+    // Why this property matters: Step 3.2 carves once per UNIQUE endpoint
+    // cell instead of once per point — legal only because a repeated carve
+    // within one sample is an exact no-op (carve-before-increment). This
+    // pins the observable contract that makes the dedupe byte-identical:
+    // repeating every point k times must (a) leave the occupied SET
+    // identical and (b) multiply every cell's observation count by exactly
+    // k — a dedupe bug that skipped increments or mis-keyed a carve breaks
+    // one of the two.
+    fc.assert(
+      fc.property(
+        fc.array(fc.double({ min: 0.6, max: 20, noNaN: true }), {
+          minLength: 1,
+          maxLength: 6,
+        }),
+        fc.integer({ min: 2, max: 4 }),
+        (depths, k) => {
+          const single = new OccupancyGrid({ cellSizeM: 1 });
+          single.addSample(makeSample([0, 0, 0], depths));
+
+          const duplicated = new OccupancyGrid({ cellSizeM: 1 });
+          const repeated: number[] = [];
+          for (let i = 0; i < k; i++) repeated.push(...depths);
+          duplicated.addSample(makeSample([0, 0, 0], repeated));
+
+          const key = (c: readonly number[]): string => c.join(',');
+          const singleSet = new Set(single.getOccupiedCells().map(key));
+          expect(new Set(duplicated.getOccupiedCells().map(key))).toEqual(
+            singleSet
+          );
+          // Count scaling: a cell observed n times in `single` is observed
+          // exactly k·n times in `duplicated`.
+          for (let n = 1; n <= depths.length; n++) {
+            expect(
+              new Set(duplicated.getOccupiedCells(k * n).map(key))
+            ).toEqual(new Set(single.getOccupiedCells(n).map(key)));
+          }
+        }
+      )
+    );
+  });
+
+  it('unpackCellKey is the exact inverse of cellKey over the full packable envelope (Step 3.1)', () => {
+    // Why this property matters: Step 3.1 drops the stored per-record cell
+    // tuple — every tuple the public APIs return is now recovered by
+    // unpacking the Map key. A single bit of drift in the inverse would
+    // silently corrupt every consumer (cubes, occluder, COLMAP export), so
+    // the round-trip is pinned across the whole ±65 535 range the pr145 §1
+    // envelope allows (|coord| ≤ CELL_KEY_LIMIT).
+    const coord = fc.integer({ min: -65535, max: 65535 });
+    fc.assert(
+      fc.property(coord, coord, coord, (x, y, z) => {
+        expect(unpackCellKey(cellKey([x, y, z]))).toEqual([x, y, z]);
+      })
     );
   });
 });

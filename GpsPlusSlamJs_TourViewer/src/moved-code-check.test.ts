@@ -1,0 +1,654 @@
+/**
+ * The viewer's per-code moved-code check (authoring plan 2026-09-28-0953
+ * §3.6, D20, M5c): a scanned code is pinned at its voted lock and judged on
+ * the store's device fixes as they arrive.
+ *
+ * Why these tests matter: the check runs on the visitor's live GPS history,
+ * which holds the code's OWN votes - points built from the same pose and
+ * saved geo the pin uses, so they agree with it by construction and would
+ * dilute any real move towards zero (§7j #3). It must read device fixes
+ * only, decide once, stop at its horizon, survive a reset of the history,
+ * and drop a pin whose odometry frame is gone. The fixes go through a real
+ * viewer store, as the page's do.
+ */
+import { describe, expect, it } from "vitest";
+import { Matrix4, Quaternion, Vector3 } from "three";
+import { WEBXR_TO_NUE } from "gps-plus-slam-app-framework/ar/webxr-nue-basis";
+import type { Pose } from "gps-plus-slam-app-framework/ar/qr/qr-pose";
+import type { QrLevel } from "gps-plus-slam-app-framework/ar/qr/qr-level";
+import { buildQrGpsVotes } from "gps-plus-slam-app-framework/ar/qr/qr-gps-vote";
+import { calcGpsCoords, type LatLong } from "gps-plus-slam-app-framework/core";
+import {
+  recordGpsEvent,
+  recordGpsEventBatch,
+  resetGpsSessionData,
+  selectGpsPositions,
+  selectOdometryPositions,
+  selectZeroReference,
+  setZeroPos,
+  type RecordGpsEventPayload,
+} from "gps-plus-slam-app-framework/state";
+
+import { objectPoseNue } from "./content-placement.js";
+import {
+  checkHadItsWindow,
+  createMovedCodeChecks,
+  RESTORE_SPREAD_FACTOR,
+} from "./moved-code-check.js";
+import { CODE_MOVE_RULE } from "./code-displacement.js";
+import {
+  CODE_TURN_RULE,
+  MOVED_CODE_FIT_WINDOW_S,
+  MOVED_CODE_RULE_VERSION,
+} from "./moved-code-rule.js";
+import { createTourViewerStore } from "./tour-viewer-session.js";
+
+// The geodesy is licence-gated; building a store activates it.
+createTourViewerStore();
+
+const ZERO: LatLong = { lat: 47.5, lon: 8.7 };
+const T0 = 1_790_000_000_000;
+const rad = (d: number): number => (d * Math.PI) / 180;
+
+/** The true odometry-NUE to world-NUE transform: a 40 degree turn and a
+ *  shift, so no identity frame can pass a test. */
+const ODOM_TO_WORLD = new Matrix4().compose(
+  new Vector3(30, 0, -12),
+  new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), rad(40)),
+  new Vector3(1, 1, 1),
+);
+const WORLD_TO_ODOM = ODOM_TO_WORLD.clone().invert();
+const NUE_TO_WEBXR = WEBXR_TO_NUE.clone().invert();
+
+/** The saved code: 20 m north, 10 m east of the zero, facing east. */
+const SAVED_GEO = (() => {
+  const g = calcGpsCoords(ZERO, [20, 400, 10]);
+  return { lat: g.lat, lon: g.lon, alt: 400, headingDeg: 90 };
+})();
+const level = (alignmentSampleCount = 300): QrLevel => ({
+  version: 1,
+  qr: {
+    physicalSizeM: 0.2,
+    geo: SAVED_GEO,
+    mintQuality: { alignmentSampleCount, gpsAccuracyM: 3.5 },
+  },
+});
+
+/** A world-NUE pose as the raw WebXR odometry sees it. */
+function rawOf(world: Matrix4): Pose {
+  const m = NUE_TO_WEBXR.clone().multiply(WORLD_TO_ODOM).multiply(world);
+  const p = new Vector3();
+  const q = new Quaternion();
+  m.decompose(p, q, new Vector3());
+  return { position: [p.x, p.y, p.z], rotation: [q.x, q.y, q.z, q.w] };
+}
+
+/** Where the poster physically hangs: the saved pose moved by `move`
+ *  (north, east) and turned by `turnDeg`, as the camera sees it. */
+function codeSeen(move: readonly [number, number], turnDeg = 0): Pose {
+  const saved = objectPoseNue(SAVED_GEO, ZERO);
+  const turned = new Quaternion(...saved.rotationNue).premultiply(
+    new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), rad(turnDeg)),
+  );
+  return rawOf(
+    new Matrix4().compose(
+      new Vector3(
+        saved.positionNue[0] + move[0],
+        saved.positionNue[1],
+        saved.positionNue[2] + move[1],
+      ),
+      turned,
+      new Vector3(1, 1, 1),
+    ),
+  );
+}
+
+/** A device fix taken at world [n, e] at second `s`: exact odometry, GPS =
+ *  truth + `bias`, accuracy `acc`. */
+function fixAt(
+  s: number,
+  n: number,
+  e: number,
+  over: { bias?: readonly [number, number]; acc?: number } = {},
+): RecordGpsEventPayload {
+  const raw = rawOf(new Matrix4().makeTranslation(n, 1.4, e));
+  const b = over.bias ?? [0, 0];
+  const g = calcGpsCoords(ZERO, [n + b[0], 400, e + b[1]]);
+  return {
+    odomPosition: raw.position,
+    odomRotation: [0, 0, 0, 1],
+    rawGpsPoint: {
+      id: `gps-${String(s)}`,
+      latitude: g.lat,
+      longitude: g.lon,
+      altitude: 400,
+      latLongAccuracy: over.acc ?? 4,
+      timestamp: T0 + s * 1000,
+    },
+  };
+}
+
+/** A walk around world [n, e] on a circle of `radiusM`, one fix a second
+ *  from second `from` to `to`. */
+function circle(
+  from: number,
+  to: number,
+  centre: readonly [number, number],
+  radiusM: number,
+  over: { bias?: readonly [number, number]; acc?: number } = {},
+): RecordGpsEventPayload[] {
+  const out: RecordGpsEventPayload[] = [];
+  for (let s = from; s <= to; s += 1) {
+    const a = (2 * Math.PI * s) / 40;
+    out.push(
+      fixAt(
+        s,
+        centre[0] + radiusM * Math.cos(a),
+        centre[1] + radiusM * Math.sin(a),
+        over,
+      ),
+    );
+  }
+  return out;
+}
+
+function harness(options: Parameters<typeof createMovedCodeChecks>[0] = {}) {
+  const store = createTourViewerStore();
+  store.dispatch(setZeroPos(ZERO));
+  const checks = createMovedCodeChecks(options);
+  const view = () => {
+    const s = store.getState();
+    return {
+      gpsPositions: selectGpsPositions(s),
+      odometryPositions: selectOdometryPositions(s),
+      zero: selectZeroReference(s),
+    };
+  };
+  /** Feed fixes one by one, judging after each (the viewer's cadence);
+   *  returns every verdict with the second it came at. */
+  const feed = (fixes: readonly RecordGpsEventPayload[]) => {
+    const out: { s: number; levelId: string; decidedBy: string }[] = [];
+    for (const f of fixes) {
+      store.dispatch(recordGpsEvent(f));
+      const s = (f.rawGpsPoint.timestamp - T0) / 1000;
+      for (const v of checks.update(view(), T0 + s * 1000)) {
+        out.push({ s, levelId: v.levelId, decidedBy: v.evidence.decidedBy });
+      }
+    }
+    return out;
+  };
+  const pin = (pose: Pose, atS: number, lvl: QrLevel = level(), id = "lvl") =>
+    checks.pin({
+      text: `text-${id}`,
+      levelId: id,
+      level: lvl,
+      qrPoseWorld: pose,
+      atMs: T0 + atS * 1000,
+      zero: ZERO,
+    });
+  return { store, checks, view, feed, pin };
+}
+
+// Every fix is a full re-solve in the reducer, so a test here takes
+// seconds, more on a loaded machine.
+describe("createMovedCodeChecks", { timeout: 60_000 }, () => {
+  // Why: the headline case. A poster re-hung 40 m east; the visitor scans
+  // it and walks. The fit needs 60 s and 2 m of evidence, then reads the
+  // move - once.
+  it("reads a code moved 40 m as moved by position, once, after 60 s of walking", () => {
+    const h = harness();
+    // GPS before the scan, then the scan at second 10.
+    h.feed(circle(0, 9, [20, 50], 6));
+    h.pin(codeSeen([0, 40]), 10);
+    const verdicts = h.feed(circle(10, 120, [20, 50], 6));
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]).toMatchObject({
+      levelId: "lvl",
+      decidedBy: "position",
+    });
+    // The evidence spans 60 s (the history from second 0 is folded too).
+    expect(verdicts[0]!.s).toBeGreaterThanOrEqual(60);
+    expect(verdicts[0]!.s).toBeLessThan(75);
+  });
+
+  it("never reads an unmoved code as moved, and stops at its horizon", () => {
+    const h = harness();
+    h.pin(codeSeen([0, 0]), 0);
+    expect(h.feed(circle(0, 290, [20, 10], 8, { bias: [4, -3] }))).toEqual([]);
+    expect(h.checks.snapshot()).toHaveLength(1);
+    // Past the 300 s horizon the check is gone: even a wild jump decides
+    // nothing.
+    h.feed(circle(301, 310, [20, 10], 8, { bias: [60, 0] }));
+    expect(h.checks.snapshot()).toEqual([]);
+  });
+
+  // Why (§7j #3): the code's own votes agree with its pin by construction.
+  // A check that read them would see a 40 m move shrink towards zero.
+  it("reads device fixes only: the code's votes in the history change nothing", () => {
+    const withVotes = harness();
+    const plain = harness();
+    for (const h of [withVotes, plain]) h.pin(codeSeen([0, 40]), 0);
+    const fixes = circle(0, 90, [20, 50], 6);
+    const judged = (h: ReturnType<typeof harness>) => {
+      for (const f of fixes) {
+        h.store.dispatch(recordGpsEvent(f));
+        if (h === withVotes) {
+          h.store.dispatch(
+            recordGpsEventBatch({
+              events: buildQrGpsVotes({
+                qrPoseWorld: codeSeen([0, 40]),
+                sizeM: 0.2,
+                qrGeo: SAVED_GEO,
+                syntheticAccuracyM: 5,
+                baselineM: 30,
+                count: 16,
+                timestamp: f.rawGpsPoint.timestamp,
+              }),
+            }),
+          );
+        }
+      }
+      // One judgement over the whole walk: moved, with its evidence.
+      const [verdict] = h.checks.update(h.view(), T0 + 50_000);
+      return { ...verdict!.evidence, samples: verdict!.evidence.deviceFixes };
+    };
+    const a = judged(withVotes);
+    const b = judged(plain);
+    expect(a.magnitudeM).toBeCloseTo(b.magnitudeM, 6);
+    expect(a.samples).toBe(b.samples);
+    expect(a.magnitudeM).toBeGreaterThan(35);
+  });
+
+  // Why: the turn check - the rigid fit absorbs a turn, so only the yaw
+  // reads it. A settled save (300 solved fixes) uses the yaw at 45 degrees.
+  it("reads a poster turned 90 degrees in place by the settled yaw", () => {
+    const h = harness();
+    h.pin(codeSeen([0, 0], 90), 0);
+    const verdicts = h.feed(circle(0, 120, [20, 10], 10));
+    expect(verdicts).toEqual([expect.objectContaining({ decidedBy: "turn" })]);
+  });
+
+  // Why (PR #583 review): the readout's threshold must be the one deciding
+  // the verdict. It used the module's default rule while the verdict used
+  // the injected one, so a replay sweeping the rule read a number that
+  // decided nothing.
+  it("reports the turn threshold of the rules it judges with", () => {
+    const h = harness({
+      rules: {
+        move: CODE_MOVE_RULE,
+        turn: { ...CODE_TURN_RULE, sigmaFactor: 0, settledYawDeg: 70 },
+      },
+    });
+    h.pin(codeSeen([0, 0], 0), 0);
+    h.feed(circle(0, 120, [20, 10], 10));
+    expect(h.checks.snapshot()[0]!.turnThresholdDeg).toBe(70);
+  });
+
+  // Why (owner, 2026-10-02): an early save's heading is not trustworthy, so
+  // the turn check does not run for it - not even for a half turn after a
+  // long, wide walk. Only a move by position can veto such a code.
+  it("never judges a turn for an unsettled save, however far the visitor walks", () => {
+    const h = harness();
+    h.pin(codeSeen([0, 0], 150), 0, level(30));
+    expect(h.feed(circle(0, 200, [20, 10], 15))).toEqual([]);
+    expect(h.checks.snapshot()[0]).toMatchObject({
+      turnChecked: false,
+      verdict: "consistent",
+    });
+    expect(Math.abs(h.checks.snapshot()[0]!.yawDeg)).toBeGreaterThan(140);
+  });
+
+  // Why (owner decision D31, 2026-10-02): a level the mint marked
+  // `headingUncertain` (its alignment spanned under about 10 m of GPS) is
+  // not settled even with a settled-looking fix count, so the same 90 degree
+  // turn that a settled save reads above is never judged for it.
+  it("never judges a turn for a save marked headingUncertain, whatever its fix count", () => {
+    const h = harness();
+    const uncertain: QrLevel = {
+      ...level(300),
+      qr: {
+        ...level(300).qr,
+        mintQuality: {
+          alignmentSampleCount: 300,
+          gpsAccuracyM: 3.5,
+          alignmentGpsExtentM: 4,
+          headingUncertain: true,
+        },
+      },
+    };
+    h.pin(codeSeen([0, 0], 90), 0, uncertain);
+    expect(h.feed(circle(0, 120, [20, 10], 10))).toEqual([]);
+    expect(h.checks.snapshot()[0]).toMatchObject({ turnChecked: false });
+  });
+
+  // Why (owner, 2026-10-02): the code's rotation comes only from its pose in
+  // GPS world space. The check offers no way in for a compass reading.
+  it("takes no compass reading", () => {
+    expect(Object.keys(createMovedCodeChecks()).sort()).toEqual([
+      "clear",
+      "frameChanged",
+      "pin",
+      "snapshot",
+      "update",
+    ]);
+  });
+
+  // Why (M5c review H2): the real-walk measurement fitted visits of a few
+  // minutes; a fit over everything since the entry would let fixes from long
+  // before the scan - another street, another GPS bias - decide about the
+  // code. The fit reads only the fixes stamped within the window before the
+  // pin (and every one after it).
+  it("folds only the device fixes stamped within 300 s before the pin", () => {
+    const h = harness();
+    h.feed(circle(0, 400, [20, 50], 6));
+    h.pin(codeSeen([0, 0]), 400);
+    h.checks.update(h.view(), T0 + 400_000);
+    const view = h.checks.snapshot()[0]!;
+    expect(MOVED_CODE_FIT_WINDOW_S).toBe(300);
+    // Seconds 100 to 400: 301 fixes, a 300 s span.
+    expect(view.samples).toBe(301);
+    expect(view.spanS).toBeCloseTo(300, 6);
+  });
+
+  it("is not vetoed by fixes from long before the scan, however far off they read", () => {
+    const h = harness();
+    // Ninety seconds of fixes 150 m off (an old bias, or another place),
+    // then five unbiased minutes before the scan and one after it.
+    h.feed(circle(0, 90, [20, 10], 8, { bias: [150, 0] }));
+    h.feed(circle(91, 399, [20, 10], 8));
+    h.pin(codeSeen([0, 0]), 400);
+    expect(h.feed(circle(400, 460, [20, 10], 8))).toEqual([]);
+    expect(h.checks.snapshot()[0]!.magnitudeM).toBeLessThan(5);
+  });
+
+  // Why: after an odometry restart the pin names a place in a dead frame.
+  // The check ends; the next voted lock pins again and folds only the fixes
+  // stored after the change.
+  it("drops every pin at a frame change, and a new pin folds only what came after it", () => {
+    const h = harness();
+    h.pin(codeSeen([0, 40]), 0);
+    h.feed(circle(0, 30, [20, 50], 6));
+    h.checks.frameChanged(selectGpsPositions(h.store.getState()).length);
+    expect(h.checks.snapshot()).toEqual([]);
+    h.feed(circle(31, 40, [20, 50], 6));
+    h.pin(codeSeen([0, 40]), 41);
+    h.checks.update(h.view(), T0 + 41_000);
+    // The new pin's evidence starts at the frame change (second 31).
+    expect(h.checks.snapshot()[0]!.spanS).toBeCloseTo(9, 6);
+  });
+
+  // Why (M5c review M4): after an odometry frame change the store's history
+  // holds two frames' fixes; the veto's recovery resets it and re-feeds
+  // them all. A check pinned in the new frame must not fold the old frame's
+  // fixes from index 0 - their odometry names other places. The check ends
+  // instead, and a later pin folds only what is stored after the reset.
+  it("ends its checks when the history shrinks after a frame change, instead of folding the old frame again", () => {
+    const h = harness();
+    const before = circle(0, 30, [20, 50], 6);
+    const after = circle(31, 60, [20, 50], 6);
+    h.feed(before);
+    h.checks.frameChanged(selectGpsPositions(h.store.getState()).length);
+    h.feed(after);
+    h.pin(codeSeen([0, 0]), 61);
+    // The code's votes join the history.
+    h.store.dispatch(
+      recordGpsEventBatch({
+        events: buildQrGpsVotes({
+          qrPoseWorld: codeSeen([0, 0]),
+          sizeM: 0.2,
+          qrGeo: SAVED_GEO,
+          syntheticAccuracyM: 5,
+          baselineM: 30,
+          count: 16,
+          timestamp: T0 + 61_000,
+        }),
+      }),
+    );
+    h.checks.update(h.view(), T0 + 61_000);
+    expect(h.checks.snapshot()[0]!.samples).toBe(after.length);
+    // A veto's recovery: reset, then every device fix of both frames.
+    h.store.dispatch(resetGpsSessionData());
+    h.store.dispatch(recordGpsEventBatch({ events: [...before, ...after] }));
+    h.checks.update(h.view(), T0 + 62_000);
+    expect(h.checks.snapshot()).toEqual([]);
+    // A later pin folds only the fixes stored after the reset.
+    h.pin(codeSeen([0, 0]), 62);
+    h.feed(circle(62, 70, [20, 50], 6));
+    const view = h.checks.snapshot()[0]!;
+    expect(view.samples).toBe(9);
+    expect(view.spanS).toBeCloseTo(8, 6);
+  });
+
+  // Why: the recovery resets the GPS history and re-feeds the device fixes;
+  // a check still running for another code must not double-count them.
+  it("folds the history again when it shrinks (a reset), without counting a fix twice", () => {
+    const h = harness();
+    const fixes = circle(0, 40, [20, 50], 6);
+    h.pin(codeSeen([0, 40]), 0);
+    h.feed(fixes);
+    const before = h.checks.snapshot()[0]!;
+    h.store.dispatch(resetGpsSessionData());
+    h.store.dispatch(recordGpsEventBatch({ events: fixes }));
+    h.checks.update(h.view(), T0 + 41_000);
+    const after = h.checks.snapshot()[0]!;
+    expect(after.samples).toBe(before.samples);
+    expect(after.magnitudeM).toBeCloseTo(before.magnitudeM, 6);
+  });
+
+  // Why (§7j #15): the log must carry what the detector computed, so a
+  // recording can say why a code was ignored.
+  it("hands back the detector's inputs with a verdict", () => {
+    const h = harness();
+    h.pin(codeSeen([0, 40]), 0);
+    for (const f of circle(0, 70, [20, 50], 6, { acc: 3 })) {
+      h.store.dispatch(recordGpsEvent(f));
+    }
+    const [v] = h.checks.update(h.view(), T0 + 70_000);
+    expect(v).toMatchObject({ text: "text-lvl", levelId: "lvl" });
+    expect(v!.evidence).toMatchObject({
+      ruleVersion: MOVED_CODE_RULE_VERSION,
+      decidedBy: "position",
+      turnChecked: true,
+      boundM: 20,
+      settled: true,
+      alignmentSampleCount: 300,
+      storedAccuracyM: 3.5,
+      deviceAccuracyMedianM: 3,
+      deviceFixes: 71,
+      sinceScanS: 70,
+    });
+    expect(v!.evidence.magnitudeM).toBeGreaterThan(35);
+    expect(v!.evidence.spanS).toBe(70);
+    expect(v!.evidence.spreadM).toBeGreaterThan(2);
+    expect(v!.evidence.displacementM).toHaveLength(2);
+    expect(Number.isFinite(v!.evidence.yawDeg)).toBe(true);
+  });
+
+  it("pins a code once per frame, and refuses a level without geo or a zero", () => {
+    const h = harness();
+    h.pin(codeSeen([0, 0]), 0);
+    h.pin(codeSeen([0, 40]), 5);
+    expect(h.checks.snapshot()).toHaveLength(1);
+    h.checks.pin({
+      text: "t2",
+      levelId: "nogeo",
+      level: { version: 1, qr: { physicalSizeM: 0.2 } },
+      qrPoseWorld: codeSeen([0, 0]),
+      atMs: T0,
+      zero: ZERO,
+    });
+    h.checks.pin({
+      text: "t3",
+      levelId: "nozero",
+      level: level(),
+      qrPoseWorld: codeSeen([0, 0]),
+      atMs: T0,
+      zero: null,
+    });
+    expect(h.checks.snapshot().map((c) => c.levelId)).toEqual(["lvl"]);
+  });
+});
+
+describe("createMovedCodeChecks - a tour switch", () => {
+  // Why (§7j #13): the checks belong to the open tour; a check of a closed
+  // tour's code left running could veto it - and reset the new tour's GPS
+  // history with the recovery.
+  it("ends every check at clear(), and pins again afterwards", () => {
+    const h = harness();
+    h.pin(codeSeen([0, 40]), 0);
+    h.checks.clear();
+    expect(h.checks.snapshot()).toEqual([]);
+    expect(h.feed(circle(0, 90, [20, 50], 6))).toEqual([]);
+    h.pin(codeSeen([0, 40]), 91);
+    expect(h.checks.snapshot()).toHaveLength(1);
+  });
+});
+
+describe("checkHadItsWindow (tour kit K4 review R1)", () => {
+  // Why: the station guide holds a code lock the visitor's GPS disagrees
+  // with until the moved-code check COULD have read a move - the rule's
+  // own evidence gate (60 s span, 2 m spread) - so the two must agree on
+  // what "enough evidence" is; a separate copy of the numbers would drift.
+  it("is true exactly when the rule's evidence gate is met", () => {
+    const view = (spanS: number, spreadM: number) => ({
+      text: "t",
+      levelId: "lvl",
+      magnitudeM: 0,
+      yawDeg: 0,
+      spanS,
+      spreadM,
+      samples: 10,
+      turnChecked: false,
+      verdict: "undecided" as const,
+    });
+    expect(checkHadItsWindow(view(59.9, 5))).toBe(false);
+    expect(checkHadItsWindow(view(60, 1.9))).toBe(false);
+    expect(checkHadItsWindow(view(60, 2))).toBe(true);
+  });
+
+  it("a check pinned after a minute of walking has had its window at the first fix after the pin", () => {
+    const h = harness();
+    h.feed(circle(0, 70, [20, 10], 6));
+    h.pin(codeSeen([0, 0]), 70);
+    h.feed(circle(71, 71, [20, 10], 6));
+    expect(checkHadItsWindow(h.checks.snapshot()[0]!)).toBe(true);
+    const fresh = harness();
+    fresh.pin(codeSeen([0, 0]), 0);
+    fresh.feed(circle(0, 30, [20, 10], 6));
+    expect(checkHadItsWindow(fresh.checks.snapshot()[0]!)).toBe(false);
+  });
+});
+
+describe(
+  "a veto is re-judged as evidence grows (polish round C5)",
+  {
+    timeout: 120_000,
+  },
+  () => {
+    // Why these tests matter (the 2026-10-10 viewer recording; owner
+    // decision Q-C5): a veto used to hold for the rest of the session, so a
+    // code vetoed on poor early GPS stayed ignored however often it was
+    // scanned afterwards. The check now keeps folding a vetoed code and
+    // lifts the veto once the verdict is consistent again on at least
+    // `RESTORE_SPREAD_FACTOR` times the spread it was vetoed on; a code that
+    // really moved never reads consistent and stays vetoed.
+    function withRestorations() {
+      const store = createTourViewerStore();
+      store.dispatch(setZeroPos(ZERO));
+      const restored: { levelId: string; s: number; spreadM: number }[] = [];
+      let nowS = 0;
+      const checks = createMovedCodeChecks({
+        onRestored: (r) => {
+          restored.push({
+            levelId: r.levelId,
+            s: nowS,
+            spreadM: r.evidence.spreadM,
+          });
+        },
+      });
+      const vetoes: { s: number; spreadM: number }[] = [];
+      const feed = (fixes: readonly RecordGpsEventPayload[]) => {
+        for (const f of fixes) {
+          store.dispatch(recordGpsEvent(f));
+          nowS = (f.rawGpsPoint.timestamp - T0) / 1000;
+          const s = store.getState();
+          for (const v of checks.update(
+            {
+              gpsPositions: selectGpsPositions(s),
+              odometryPositions: selectOdometryPositions(s),
+              zero: selectZeroReference(s),
+            },
+            T0 + nowS * 1000,
+          )) {
+            vetoes.push({ s: nowS, spreadM: v.evidence.spreadM });
+          }
+        }
+      };
+      return { checks, feed, restored, vetoes };
+    }
+
+    it("lifts a veto that poor early GPS caused, once a wider walk reads the code where it is", () => {
+      const h = withRestorations();
+      h.checks.pin({
+        text: "text-lvl",
+        levelId: "lvl",
+        level: level(),
+        qrPoseWorld: codeSeen([0, 0]),
+        atMs: T0,
+        zero: ZERO,
+      });
+      // 70 s of GPS biased 30 m east on a small circle: a position veto.
+      h.feed(circle(0, 70, [20, 10], 4, { bias: [0, 30] }));
+      expect(h.vetoes).toHaveLength(1);
+      expect(h.restored).toEqual([]);
+      // Then good GPS on a wide walk: the fit settles back on the code.
+      h.feed(circle(71, 600, [20, 10], 15));
+      expect(h.restored).toHaveLength(1);
+      expect(h.restored[0]!.levelId).toBe("lvl");
+      expect(h.restored[0]!.spreadM).toBeGreaterThanOrEqual(
+        RESTORE_SPREAD_FACTOR * h.vetoes[0]!.spreadM,
+      );
+      // Lifted once; the check is gone.
+      expect(h.checks.snapshot()).toEqual([]);
+    });
+
+    // Why (the M0a review #1): a veto outlived its check - an AR re-entry or
+    // a frame change ends every check, and an ignored code's locks never pin
+    // a new one - so it stuck again. A probation check (pinned on an ignored
+    // code's lock, starting vetoed at the spread the veto was read on) can
+    // only lift the veto, never read a new one.
+    it("a probation check never vetoes, and lifts the veto on a wide consistent walk", () => {
+      const h = withRestorations();
+      h.checks.pin({
+        text: "text-lvl",
+        levelId: "lvl",
+        level: level(),
+        qrPoseWorld: codeSeen([0, 0]),
+        atMs: T0,
+        zero: ZERO,
+        vetoSpreadM: 2.8,
+      });
+      h.feed(circle(0, 400, [20, 10], 15));
+      expect(h.vetoes).toEqual([]);
+      expect(h.restored).toHaveLength(1);
+      expect(h.restored[0]!.spreadM).toBeGreaterThanOrEqual(
+        RESTORE_SPREAD_FACTOR * 2.8,
+      );
+    });
+
+    it("keeps a code that really moved vetoed, however long the visitor walks", () => {
+      const h = withRestorations();
+      h.checks.pin({
+        text: "text-lvl",
+        levelId: "lvl",
+        level: level(),
+        qrPoseWorld: codeSeen([0, 40]),
+        atMs: T0,
+        zero: ZERO,
+      });
+      h.feed(circle(0, 600, [20, 50], 15));
+      expect(h.vetoes).toHaveLength(1);
+      expect(h.restored).toEqual([]);
+    });
+  },
+);

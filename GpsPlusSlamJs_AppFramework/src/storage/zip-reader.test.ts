@@ -9,14 +9,24 @@
  */
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { Reader } from '@zip.js/zip.js';
 import {
   readZipEntries,
   loadActionsFromZip,
+  loadActionsFromEntries,
   loadSessionMetadata,
   loadSessionMetadataFromBlob,
+  loadEntriesFromSubdir,
+  toZipReader,
   MAX_ACTION_FILE_SIZE,
   type ZipActionEntry,
 } from './zip-reader';
+import { ArchiveLimitError } from './archive-limits';
+import {
+  DEPTH_SAMPLE_ACTION_TYPE,
+  packDepthAction,
+} from './depth-sample-codec';
+import { DecompressionBudget } from './capped-zip-entries';
 import {
   produceTestZip,
   type TestZipResult,
@@ -367,6 +377,74 @@ describe('zip-reader', () => {
     });
   });
 
+  describe('packed depth samples (scan pass S2)', () => {
+    // Why: every reader of a recording goes through this parse, so this is
+    // where a packed sample becomes today's sample again - for a recording
+    // written before S2, after it, and across the change.
+    const points = [0, 1, 2, 3].map((i) => ({
+      screenX: ((i % 2) + 1) / 3,
+      screenY: (Math.floor(i / 2) + 1) / 3,
+      depthM: Math.fround(1.1 + i),
+      rgb: [i, 2 * i, 255 - i],
+    }));
+    const depth = {
+      type: DEPTH_SAMPLE_ACTION_TYPE,
+      payload: {
+        timestamp: 1,
+        cameraPos: [0, 1, 0],
+        cameraRot: [0, 0, 0, 1],
+        points,
+      },
+    };
+    async function zipOf(texts: string[]): Promise<Uint8Array> {
+      const { ZipWriter, Uint8ArrayWriter, TextReader } =
+        await import('@zip.js/zip.js');
+      const zipWriter = new ZipWriter(new Uint8ArrayWriter());
+      for (const [i, text] of texts.entries()) {
+        const name = `actions/${String(i + 1).padStart(6, '0')}.json`;
+        await zipWriter.add(name, new TextReader(text));
+      }
+      return new Uint8Array(await zipWriter.close());
+    }
+
+    it('reads the JSON form and the packed form to the same action', async () => {
+      const data = await zipOf([
+        JSON.stringify(depth, null, 2),
+        JSON.stringify(packDepthAction(depth)),
+      ]);
+      const result = await loadActionsFromZip(data);
+      expect(result.map((r) => r.index)).toEqual([1, 2]);
+      expect(result[0]!.action).toEqual(depth);
+      expect(result[1]!.action).toEqual(depth);
+    });
+
+    it('skips a damaged packed grid with a warning, and keeps the rest', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const packed = packDepthAction(depth) as {
+        payload: { grid: Record<string, unknown> };
+      };
+      const damaged = {
+        ...packed,
+        payload: {
+          ...packed.payload,
+          grid: { ...packed.payload.grid, size: 3 },
+        },
+      };
+      const data = await zipOf([
+        JSON.stringify(damaged),
+        '{"type":"recording/endSession"}',
+      ]);
+      const result = await loadActionsFromZip(data);
+      expect(result.map((r) => r.action.type)).toEqual([
+        'recording/endSession',
+      ]);
+      expect(
+        warnSpy.mock.calls.map((call) => call.join(' ')).join('\n')
+      ).toMatch(/000001\.json.*damaged/);
+      warnSpy.mockRestore();
+    });
+  });
+
   describe('action shape validation (valid JSON but invalid action structure)', () => {
     // Why this suite matters:
     // JSON.parse succeeds for values like null, 42, "hello", [] — all of which
@@ -697,5 +775,365 @@ describe('loadGpsPathFromBlob', () => {
     for (const c of coords) {
       expect(c.accuracy).toBe(7.5);
     }
+  });
+
+  it('reads every fix inside a recordGpsEventBatch, in order, between the single fixes around it', async () => {
+    // Why (core 1.26; Tour Viewer authoring plan 2026-09-28-0953 D18): a
+    // viewer recording carries a device fix together with its keep-alive
+    // ring as ONE batch action. A reader that knew only `recordGpsEvent`
+    // drew a track with every such fix missing (M2e/M2f milestone review
+    // #5). Each event is read as the single action is read - an event
+    // without coordinates is skipped alone, as a single one would be.
+    const fix = (lat: number, accuracy?: number) => ({
+      odomPosition: [0, 0, 0],
+      odomRotation: [0, 0, 0, 1],
+      rawGpsPoint: {
+        id: `gps-${String(lat)}`,
+        latitude: lat,
+        longitude: 8,
+        timestamp: 1_700_000_000_000,
+        ...(accuracy === undefined ? {} : { latLongAccuracy: accuracy }),
+      },
+    });
+    const { ZipWriter, Uint8ArrayWriter, TextReader } =
+      await import('@zip.js/zip.js');
+    const writer = new ZipWriter(new Uint8ArrayWriter());
+    const actions = [
+      { type: 'gpsData/recordGpsEvent', payload: fix(50.1, 3) },
+      {
+        type: 'gpsData/recordGpsEventBatch',
+        payload: {
+          events: [
+            fix(50.2, 4),
+            { ...fix(0), rawGpsPoint: { id: 'broken' } },
+            fix(50.3, 5),
+          ],
+        },
+      },
+      { type: 'gpsData/recordGpsEvent', payload: fix(50.4) },
+    ];
+    for (const [i, action] of actions.entries()) {
+      await writer.add(
+        `actions/${String(i + 1).padStart(8, '0')}.json`,
+        new TextReader(JSON.stringify(action))
+      );
+    }
+    const blob = new Blob([await writer.close()]);
+
+    const coords = await loadGpsPathFromBlob(blob);
+
+    expect(coords).toEqual([
+      { lat: 50.1, lng: 8, accuracy: 3 },
+      { lat: 50.2, lng: 8, accuracy: 4 },
+      { lat: 50.3, lng: 8, accuracy: 5 },
+      { lat: 50.4, lng: 8 },
+    ]);
+  });
+
+  it('draws only device fixes: synthetic QR votes and readings of an unknown source are left out', async () => {
+    // Why (Tour Viewer authoring plan 2026-09-28-0953, M2e milestone review
+    // #8): a code's votes are recorded as GPS events at points up to 30 m
+    // along the code's face, where nobody walked - in the Tour Viewer inside
+    // a batch, in the Recorder one `recordGpsEvent` each. This path is the
+    // replay preview's track AND the Recorder's coverage backfill, so a vote
+    // here draws a walk that never happened and marks cells nobody visited.
+    // An unrecognised stamp is not rounded to "device" either (the core's
+    // `gpsPointSourceOf` contract); an absent one is a device fix.
+    const point = (lat: number, source?: unknown) => ({
+      odomPosition: [0, 0, 0],
+      odomRotation: [0, 0, 0, 1],
+      rawGpsPoint: {
+        id: `p-${String(lat)}`,
+        latitude: lat,
+        longitude: 8,
+        timestamp: 1_700_000_000_000,
+        ...(source === undefined ? {} : { source }),
+      },
+    });
+    const { ZipWriter, Uint8ArrayWriter, TextReader } =
+      await import('@zip.js/zip.js');
+    const writer = new ZipWriter(new Uint8ArrayWriter());
+    const actions = [
+      { type: 'gpsData/recordGpsEvent', payload: point(50.1) },
+      { type: 'gpsData/recordGpsEvent', payload: point(50.11, 'synthetic-qr') },
+      {
+        type: 'gpsData/recordGpsEventBatch',
+        payload: {
+          events: [
+            point(50.2, 'device'),
+            point(50.21, 'synthetic-qr'),
+            point(50.22, 'synthetic-qr'),
+          ],
+        },
+      },
+      { type: 'gpsData/recordGpsEvent', payload: point(50.3, 'future-beacon') },
+      { type: 'gpsData/recordGpsEvent', payload: point(50.4, 7) },
+      { type: 'gpsData/recordGpsEvent', payload: point(50.5) },
+    ];
+    for (const [i, action] of actions.entries()) {
+      await writer.add(
+        `actions/${String(i + 1).padStart(8, '0')}.json`,
+        new TextReader(JSON.stringify(action))
+      );
+    }
+    const blob = new Blob([await writer.close()]);
+
+    const coords = await loadGpsPathFromBlob(blob);
+
+    expect(coords.map((c) => c.lat)).toEqual([50.1, 50.2, 50.5]);
+  });
+});
+
+describe('ZipSource lazy Reader input', () => {
+  // Why these tests matter: the corpus-validation gate in
+  // GpsPlusSlamJs_Investigation reads 100+ recording zips (2.4 GB) from disk,
+  // and loading whole archives into memory to validate a few KB of JSON
+  // breached its 60 s regression budget (see that repo's
+  // docs/2026-07-09-1944-regression-gate-budget-breach-followup.md). The helpers
+  // therefore accept any zip.js Reader (ranged, lazy) in addition to
+  // Uint8Array. These tests prove the Reader path is result-equivalent to
+  // the Uint8Array path, that lazy getText works after the helper returned,
+  // and that ONE shared Reader instance survives the concurrent triple-use
+  // pattern of gps-plus-slam-recorder's loadRecording (Promise.all over
+  // loadActionsFromZip + loadSessionMetadata + loadEntriesFromSubdir).
+
+  /**
+   * Ranged reader that never hands zip.js the whole buffer — reads are served
+   * strictly by (index, length) slices, mimicking an fd-backed lazy reader.
+   * init() is deliberately idempotent so a single instance can back several
+   * ZipReader constructions (the shared-instance pattern of loadRecording).
+   */
+  class RangedTestReader extends Reader<void> {
+    private readonly data: Uint8Array;
+    constructor(data: Uint8Array) {
+      super(undefined);
+      this.data = data;
+    }
+    override async init(): Promise<void> {
+      await super.init?.();
+      this.size = this.data.length;
+    }
+    readUint8Array(index: number, length: number): Promise<Uint8Array> {
+      const end = Math.min(index + length, this.data.length);
+      return Promise.resolve(this.data.slice(index, end));
+    }
+  }
+
+  let zipData: Uint8Array;
+
+  beforeAll(async () => {
+    zipData = (await produceTestZip()).zipData;
+  });
+
+  it('exports toZipReader as the runtime capability marker', () => {
+    // Why: consumers outside this workspace (the Investigation project)
+    // resolve this module from the published dist at runtime and probe
+    // `typeof toZipReader === 'function'` before passing lazy Readers.
+    // Renaming or removing this export silently downgrades them to the
+    // eager whole-file path.
+    expect(typeof toZipReader).toBe('function');
+  });
+
+  it('readZipEntries returns the same entries for Reader and Uint8Array input', async () => {
+    const fromBytes = await readZipEntries(zipData);
+    const fromReader = await readZipEntries(new RangedTestReader(zipData));
+    expect(fromReader.map((e) => e.filename)).toEqual(
+      fromBytes.map((e) => e.filename)
+    );
+  });
+
+  it('loadActionsFromZip returns identical actions for Reader input', async () => {
+    const fromBytes = await loadActionsFromZip(zipData);
+    const fromReader = await loadActionsFromZip(new RangedTestReader(zipData));
+    expect(fromReader).toEqual(fromBytes);
+  });
+
+  it('loadSessionMetadata returns identical metadata for Reader input', async () => {
+    const fromBytes = await loadSessionMetadata(zipData);
+    const fromReader = await loadSessionMetadata(new RangedTestReader(zipData));
+    expect(fromReader).toEqual(fromBytes);
+  });
+
+  it('loadEntriesFromSubdir supports lazy getText after the helper returned', async () => {
+    // Why: loadEntriesFromSubdir closes its ZipReader before callers invoke
+    // getText() — the Reader path must keep serving ranged reads afterwards
+    // (the Uint8Array path gets this for free from the in-memory buffer).
+    const fromBytes = await loadEntriesFromSubdir(zipData, 'actions');
+    const fromReader = await loadEntriesFromSubdir(
+      new RangedTestReader(zipData),
+      'actions'
+    );
+    expect(fromReader.map((e) => e.relativePath)).toEqual(
+      fromBytes.map((e) => e.relativePath)
+    );
+    expect(fromReader.length).toBeGreaterThan(0);
+    expect(await fromReader[0]!.getText()).toBe(await fromBytes[0]!.getText());
+  });
+
+  it('one shared Reader instance survives concurrent triple use', async () => {
+    // Why: loadRecording runs loadActionsFromZip + loadSessionMetadata +
+    // readSidecarRefPoints over the SAME input via Promise.all. With a
+    // shared lazy Reader that means three ZipReaders over one Reader
+    // instance concurrently — init() re-entry and interleaved ranged reads
+    // must not corrupt results.
+    const shared = new RangedTestReader(zipData);
+    const [actionsResult, meta, subdir] = await Promise.all([
+      loadActionsFromZip(shared),
+      loadSessionMetadata(shared),
+      loadEntriesFromSubdir(shared, 'actions'),
+    ]);
+    expect(actionsResult).toEqual(await loadActionsFromZip(zipData));
+    expect(meta).toEqual(await loadSessionMetadata(zipData));
+    expect(subdir.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Why these tests matter (tour kit plan K0): a tour zip is often a whole
+ * recording, and the Tour Viewer parses its action stream through
+ * `loadActionsFromZip`. The per-entry check reads each entry's DECLARED
+ * size, so many entries each just under it - kilobytes deflated, a
+ * megabyte inflated - added up without any limit. The actions now read
+ * through a `DecompressionBudget` that counts the bytes actually inflated
+ * and caps the archive total.
+ */
+describe('loadActionsFromZip under a decompression budget', () => {
+  async function deflatedActions(count: number): Promise<Uint8Array> {
+    const { ZipWriter, Uint8ArrayWriter, TextReader } =
+      await import('@zip.js/zip.js');
+    const writer = new ZipWriter(new Uint8ArrayWriter(), { level: 9 });
+    const padding = 'x'.repeat(500_000);
+    for (let i = 1; i <= count; i += 1) {
+      await writer.add(
+        `actions/${String(i).padStart(6, '0')}.json`,
+        new TextReader(JSON.stringify({ type: 'test/pad', payload: padding }))
+      );
+    }
+    return writer.close();
+  }
+
+  it('stops at the archive total even though every entry is under the per-entry cap', async () => {
+    const zip = await deflatedActions(4); // 4 x ~500 KB inflated, a few KB on disk
+    const budget = new DecompressionBudget({
+      maxEntryBytes: 1_048_576,
+      maxTotalBytes: 1_200_000,
+    });
+    const err = await loadActionsFromZip(
+      zip,
+      MAX_ACTION_FILE_SIZE,
+      budget
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ArchiveLimitError);
+    expect((err as ArchiveLimitError).kind).toBe('total-bytes');
+  });
+
+  it('reads the same stream in full under a budget that fits it', async () => {
+    const zip = await deflatedActions(4);
+    const budget = new DecompressionBudget({
+      maxEntryBytes: 1_048_576,
+      maxTotalBytes: 4_000_000,
+    });
+    const result = await loadActionsFromZip(zip, MAX_ACTION_FILE_SIZE, budget);
+    expect(result).toHaveLength(4);
+    expect(budget.totalBytes).toBeGreaterThan(2_000_000);
+  });
+
+  it('stops at the archive total when the action entries all share ONE name', async () => {
+    // K0 milestone review R3: thousands of copies of `actions/000001.json`,
+    // each its own deflated data, all read by the filter below. Charged by
+    // name, every copy after the first was free and the total never bit.
+    const zip = await deflatedActions(4);
+    const copies = ['000002', '000003', '000004'].map(
+      (n) => `actions/${n}.json`
+    );
+    const crafted = zip.slice();
+    const target = new TextEncoder().encode('actions/000001.json');
+    for (const name of copies) {
+      const needle = new TextEncoder().encode(name);
+      for (let i = 0; i + needle.length <= crafted.length; i += 1) {
+        if (needle.every((b, j) => crafted[i + j] === b))
+          crafted.set(target, i);
+      }
+    }
+    const budget = new DecompressionBudget({
+      maxEntryBytes: 1_048_576,
+      maxTotalBytes: 1_200_000,
+    });
+    const err = await loadActionsFromZip(
+      crafted,
+      MAX_ACTION_FILE_SIZE,
+      budget
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ArchiveLimitError);
+    expect((err as ArchiveLimitError).kind).toBe('total-bytes');
+  });
+
+  it('uses a default budget sized from the archive when none is passed', async () => {
+    // The default allowance has a 64 MiB floor, so a small real stream is
+    // unaffected - the guard only bites on a crafted archive.
+    const zip = await deflatedActions(2);
+    expect(await loadActionsFromZip(zip)).toHaveLength(2);
+  });
+});
+
+describe('loadActionsFromEntries: the parse over the caller own list and reader (tour kit plan K1)', () => {
+  // Why this matters: a signed tour hashes every entry it reads (tier 2).
+  // The action stream is read by this parser, so the parser must read each
+  // entry through the caller's reader - with the per-file cap it would have
+  // applied - or the recording would be the one part of a signed tour that
+  // is never checked. And it must parse the LIST the caller checked: a
+  // second read of a live source's directory can return another one (K1
+  // milestone review R1).
+  it('reads every action entry through the given reader, with the per-file cap', async () => {
+    const { ZipWriter, Uint8ArrayWriter, TextReader } =
+      await import('@zip.js/zip.js');
+    const writer = new ZipWriter(new Uint8ArrayWriter());
+    await writer.add('actions/000001.json', new TextReader('{"type":"a"}'));
+    await writer.add('actions/000002.json', new TextReader('{"type":"b"}'));
+    const zip = await writer.close();
+    const seen: [string, number][] = [];
+    const result = await loadActionsFromEntries(
+      await readZipEntries(zip),
+      (entry, maxBytes) => {
+        seen.push([entry.filename, maxBytes]);
+        return Promise.resolve(`{"type":"via-${entry.filename.slice(8, 14)}"}`);
+      },
+      1234
+    );
+    expect(seen).toEqual([
+      ['actions/000001.json', 1234],
+      ['actions/000002.json', 1234],
+    ]);
+    expect(result.map((r) => r.action.type)).toEqual([
+      'via-000001',
+      'via-000002',
+    ]);
+  });
+
+  it('lets the reader refuse: its error is the parse error', async () => {
+    const { ZipWriter, Uint8ArrayWriter, TextReader } =
+      await import('@zip.js/zip.js');
+    const writer = new ZipWriter(new Uint8ArrayWriter());
+    await writer.add('actions/000001.json', new TextReader('{"type":"a"}'));
+    const zip = await writer.close();
+    await expect(
+      loadActionsFromEntries(await readZipEntries(zip), () =>
+        Promise.reject(new Error('modified'))
+      )
+    ).rejects.toThrow('modified');
+  });
+
+  it('reads only the entries it is given, never a second directory', async () => {
+    const { ZipWriter, Uint8ArrayWriter, TextReader } =
+      await import('@zip.js/zip.js');
+    const writer = new ZipWriter(new Uint8ArrayWriter());
+    await writer.add('actions/000001.json', new TextReader('{"type":"a"}'));
+    await writer.add('actions/000002.json', new TextReader('{"type":"b"}'));
+    const all = await readZipEntries(await writer.close());
+    const result = await loadActionsFromEntries(
+      all.filter((e) => e.filename.endsWith('000001.json')),
+      () => Promise.resolve('{"type":"a"}')
+    );
+    expect(result.map((r) => r.filename)).toEqual(['actions/000001.json']);
   });
 });
