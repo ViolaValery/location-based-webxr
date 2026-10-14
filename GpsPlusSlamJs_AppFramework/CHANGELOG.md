@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-10-14
+
 ### Added
 
 - **`OccluderSinkHandle.triangleCount()`** (`visualization/occluder-sink`):
