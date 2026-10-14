@@ -59,7 +59,8 @@ where the browser allows it, it saves the opened file in place (E2b-1,
   the build and again before the write; a changed, moved or unwritable file
   is refused in a toast that keeps the changes and offers "Download
   instead", which turns the tour's saves into downloads (still keeping the
-  walk) - unless no save of the tour has landed yet: the rebuild then reads
+  walk) - unless no save of the tour was built yet (delivered or not, PR #614
+  review): the rebuild then reads
   the opened file, which no longer reads, so the toast says the edits
   cannot be saved here (E2b-1 review #4). A save checks against the target
   it started with, even if one was attached while it was built. A refused permission, a dropped or input-chosen file, and a second

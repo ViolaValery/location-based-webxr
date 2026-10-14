@@ -38,6 +38,9 @@ export interface PickerWindow {
 export type PickOutcome =
   | { readonly kind: "unavailable" }
   | { readonly kind: "cancelled" }
+  /** Picked, but gone before it could be read (moved, deleted, a volume
+   *  unmounted, PR #614 review). */
+  | { readonly kind: "unreadable"; readonly reason: string }
   | {
       readonly kind: "picked";
       readonly file: File;
@@ -84,7 +87,14 @@ export async function pickTourFile(win: PickerWindow): Promise<PickOutcome> {
   const handle = handles[0];
   if (handle === undefined) return { kind: "cancelled" };
   const writable = await askToWrite(handle);
-  return { kind: "picked", file: await handle.getFile(), handle, writable };
+  try {
+    return { kind: "picked", file: await handle.getFile(), handle, writable };
+  } catch (err) {
+    return {
+      kind: "unreadable",
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 async function askToWrite(handle: WritableFileHandle): Promise<boolean> {

@@ -994,6 +994,9 @@ test("Ctrl+S saves, and the browser's own save never opens", async ({
   // browser's "Save page as" would save the editor itself.
   await noSavePicker(page);
   await page.goto("/edit.html");
+  // The page's keydown handler exists once its script is wired; a press
+  // before that reached the browser (a flaky run under load).
+  await expect(page.locator("body")).toHaveAttribute("data-editor", "ready");
   const prevented = page.evaluate(
     () =>
       new Promise((resolve) => {
@@ -1155,4 +1158,81 @@ test("a group's count follows a delete while the search hides the deleted note",
   await page.locator("#filter").fill("Fountain");
   await page.locator("#card button", { hasText: "Delete" }).click();
   await expect(photos).toHaveText("1");
+});
+
+test("a refusal after a save was built still offers the download, and a later open of the file is this tab's", async ({
+  page,
+}) => {
+  // Why (PR #614 review): a save that was built but not written leaves its
+  // bytes with the page, so a later refusal can still download - it said
+  // the edits could not be saved. And "Download instead" let the lock go
+  // without waiting for it, so the same file opened again was told
+  // another tab had it.
+  await noSavePicker(page);
+  await page.goto("/edit.html");
+  await offerOpfsFile(page, await wrappedTour({ pin: true }), "wrapped.zip");
+  await page.evaluate(() => {
+    // @ts-expect-error - the e2e's own picker, around the real handle.
+    const real = window.showOpenFilePicker;
+    // @ts-expect-error - read by the test.
+    window.__failWrites = true;
+    // @ts-expect-error - the e2e's own picker.
+    window.showOpenFilePicker = async () => {
+      const [handle] = await real();
+      return [
+        {
+          kind: "file",
+          name: handle.name,
+          getFile: () => handle.getFile(),
+          requestPermission: () => Promise.resolve("granted"),
+          createWritable: async () => {
+            // @ts-expect-error - set above.
+            if (window.__failWrites) {
+              return {
+                write: () => Promise.reject(new Error("the disk is full")),
+                close: () => Promise.resolve(),
+                abort: () => Promise.resolve(),
+              };
+            }
+            return handle.createWritable();
+          },
+        },
+      ];
+    };
+  });
+  await page.locator("#choose-btn").click();
+  await expect(page.locator("#tour-name")).toHaveText("Wrapped fixture");
+  await page.locator("#rail .row", { hasText: "Wrapped pin" }).click();
+  await page.locator("#card textarea").fill("Built, not written");
+  await page.locator("#save-btn").click();
+  await expect(
+    page.locator(".toast", { hasText: "the disk is full" }),
+  ).toBeVisible();
+  // Something else writes the file; the next Save is refused before it
+  // builds - and the save built before is still there to download.
+  await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const w = await (await root.getFileHandle("wrapped.zip")).createWritable();
+    await w.write("another program wrote this");
+    await w.close();
+  });
+  await page.locator("#save-btn").click();
+  const refusal = page.locator(".toast", { hasText: "changed on disk" });
+  await expect(refusal).toBeVisible();
+  await expect(refusal).not.toContainText("cannot be saved here");
+  const download = page.waitForEvent("download");
+  await refusal.locator("button", { hasText: "Download instead" }).click();
+  expect((await download).suggestedFilename()).toBe("wrapped.zip");
+  // The same file again, in this tab: no "another tab".
+  await offerOpfsFile(page, await wrappedTour({ pin: true }), "wrapped.zip");
+  page.once("dialog", (dialog) => {
+    void dialog.accept();
+  });
+  await page.locator("#open-another").click();
+  await page.locator("#choose-btn").click();
+  await expect(page.locator("#tour-name")).toHaveText("Wrapped fixture");
+  await expect(page.locator("#keep-walk")).toBeHidden();
+  await expect(
+    page.locator(".toast", { hasText: "Another tab is editing" }),
+  ).toHaveCount(0);
 });

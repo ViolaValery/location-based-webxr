@@ -107,6 +107,17 @@ describe("pickTourFile", () => {
     expect(await outcome.file.text()).toBe("zip bytes");
   });
 
+  // Why (PR #614 review): the file can go between the pick and its read
+  // (moved, deleted, an unmounted volume); that is said, not thrown.
+  it("says a picked file that can no longer be read, instead of throwing", async () => {
+    const { handle, state } = fakeHandle("zip bytes");
+    state.gone = true;
+    const outcome = await pickTourFile({
+      showOpenFilePicker: () => Promise.resolve([handle]),
+    });
+    expect(outcome).toMatchObject({ kind: "unreadable" });
+  });
+
   it("opens a file it may not write, to be saved as a download", async () => {
     for (const permission of ["denied", "prompt", "throws"] as const) {
       const { handle, state } = fakeHandle("zip bytes");

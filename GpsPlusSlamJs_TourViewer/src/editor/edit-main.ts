@@ -106,9 +106,10 @@ let target: SaveTarget | null = null;
  *  refused (E2b-1 review #3). */
 let lock: EditorLock | null = null;
 let letGo: Promise<void> = Promise.resolve();
-/** A save of this tour reached its file or a download: from then on the
- *  page's copy of it can be rebuilt whatever happens to the opened file. */
-let landed = false;
+/** A save of this tour was built: from then on the next rebuild starts
+ *  from the page's own copy, whatever happens to the opened file (PR #614
+ *  review: delivered or not). */
+let built = false;
 /** Toasts about this file that mean nothing once another tour is open. */
 const fileToasts: HTMLElement[] = [];
 /** The browser's file picker is open: a second click opens nothing. */
@@ -524,7 +525,7 @@ function leaveFile(): void {
 }
 
 function resetEditing(): void {
-  landed = false;
+  built = false;
   endUndo();
   moving = null;
   moved.clear();
@@ -688,6 +689,11 @@ async function chooseTour(): Promise<void> {
     return;
   }
   if (outcome.kind === "cancelled") return;
+  if (outcome.kind === "unreadable") {
+    openError.textContent = `The chosen file could not be read: ${outcome.reason}`;
+    openError.hidden = false;
+    return;
+  }
   const opened = await openFile(
     outcome.file,
     outcome.writable ? outcome.handle : null,
@@ -713,7 +719,7 @@ function refuseInPlace(
   canDownload: boolean,
 ): void {
   if (!canDownload) {
-    // Before any save landed the rebuild reads the opened file, and that
+    // Before any save was built the rebuild reads the opened file, and that
     // no longer reads once something else wrote it: no build can be made,
     // and a download offer would be a promise the page cannot keep (E2b-1
     // review #4).
@@ -736,6 +742,9 @@ function refuseInPlace(
         const was = lock;
         lock = null;
         was?.release();
+        // Waited for by the next open of this name, as `leaveFile` does
+        // (PR #614 review).
+        letGo = was?.released ?? letGo;
         target = null;
         void runSave();
       },
@@ -852,7 +861,7 @@ async function runSave(): Promise<void> {
     if (state !== "same") {
       saving = false;
       renderSaveState();
-      refuseInPlace(mine, into.name, new InPlaceRefusal(state).message, landed);
+      refuseInPlace(mine, into.name, new InPlaceRefusal(state).message, built);
       return;
     }
   }
@@ -869,6 +878,7 @@ async function runSave(): Promise<void> {
       abandon();
       return;
     }
+    built = true;
     // A later save rebuilds from this one's bytes, so the walk switch can
     // no longer change anything (the phone's rule, E2a review #1).
     keepWalk.hidden = true;
@@ -881,7 +891,6 @@ async function runSave(): Promise<void> {
     }
     undelivered = arrived ? null : save;
     if (arrived) {
-      landed = true;
       // A move made during the save is still pending: its line stays.
       const pending = new Set(mine.pendingIds());
       for (const id of [...moved]) if (!pending.has(id)) moved.delete(id);

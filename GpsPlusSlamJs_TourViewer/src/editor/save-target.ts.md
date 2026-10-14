@@ -18,6 +18,8 @@ build plan, re-cut" and its cold review
   - `cancelled` - the picker dismissed, or a second one refused while the
     first is open (`NotAllowedError`): no choice, and no second dialog
     (E2b-1 review #5).
+  - `unreadable` - `{ reason }`: picked, but gone before its read (moved,
+    deleted, a volume unmounted, PR #614 review); the page says so.
   - `picked` - `{ file, handle, writable }`; `writable` is false for a
     refused, dismissed or failing permission request, or a handle without
     one: the tour opens all the same and saves as a download.
