@@ -160,3 +160,27 @@ test("a tour with a photo still puts the button on a small phone's first screen"
   expect(l.button.bottom).toBeLessThanOrEqual(l.height);
   expect(l.title.bottom).toBeLessThanOrEqual(l.button.top);
 });
+
+test("five taps on the tour's name reload the page to record this visit", async ({
+  page,
+}) => {
+  // Why (QR-first plan §8, M1c): a visitor who scanned a printed code with
+  // any QR app had no way to turn the troubleshooting recording on, so the
+  // owner's field test could not be recorded. Five quick taps on the name
+  // ask for it; the count itself (four taps, slow taps) is unit-tested.
+  await openAsNewVisitor(page, SAMPLE);
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    { timeout: 15000 },
+  );
+  await expect(page.getByTestId("record-session")).toHaveCount(1);
+  for (let i = 0; i < 5; i += 1) {
+    await page.getByTestId("visitor-title").click();
+  }
+  await page.waitForURL(/[?&]record=1/);
+  const url = new URL(page.url());
+  expect(url.searchParams.get("debug")).toBe("1");
+  expect(url.searchParams.get("qr")).toBe(SAMPLE);
+  await expect(page.getByTestId("record-session")).toBeChecked();
+});

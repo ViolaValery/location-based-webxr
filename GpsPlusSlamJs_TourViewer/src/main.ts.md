@@ -44,6 +44,10 @@ listed in `index.html.md`. The concerns and their modules:
   wired before the open path).
 - `tour-viewer-session.ts` - the session object, the store factory and
   the hooks contract they share.
+- `recording-switch.ts` - the visitor's hidden switch (QR-first plan M1c):
+  five taps on `#visitor-title` within three seconds reload the page with
+  `debug=1&record=1`; with `record=1` (and debug) the recording box starts
+  ticked, through its own `change` event.
 - `authoring-recording.ts` / `recording-panel.ts` - the troubleshooting
   recording (authoring recording plan 2026-09-28-0953, M1a; a visitor's with
   `?debug=1` since M1b, tagged `tour-viewing`, its `tourViewing/*` log from
