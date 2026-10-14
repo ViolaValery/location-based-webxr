@@ -143,6 +143,16 @@ async function editorTour(options = { station: false }) {
   ]);
 }
 
+// The page prefers the browser's file picker (M6 E2b-1); these tests open
+// through the file input, so the picker is taken away before each - the
+// in-place tests put their own back after the page loads.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    // @ts-expect-error - the e2e takes the picker away on purpose.
+    delete window.showOpenFilePicker;
+  });
+});
+
 /** @param {import("@playwright/test").Page} page */
 async function answerTiles(page) {
   await page.route("https://tile.openstreetmap.org/**", (route) =>
@@ -326,11 +336,22 @@ test("the sample tour opens with its story's stations on the map", async ({
 /** A tour in the wrapped shape ("compress this folder"): a recorded photo
  *  whose image is the archive's entry name, and a code with no stored
  *  position. */
-async function wrappedTour() {
+async function wrappedTour(options = { pin: false }) {
   const id = await qrCodeId("https://gps.csutil.com/tour/?qr=wrapped");
   const manifest = {
     ...createEmptyTourManifest(),
     title: "Wrapped fixture",
+    objects: options.pin
+      ? [
+          {
+            id: "pin-wrapped",
+            kind: "pin",
+            label: "Wrapped pin",
+            createdAtIso: "2026-10-13T00:00:00.000Z",
+            geo: { ...geo(6, 6), headingDeg: 0 },
+          },
+        ]
+      : [],
     captureSpots: {
       fixes: 3,
       gpsAccuracyMedianM: 4,
@@ -817,4 +838,198 @@ test("the file chooser can be reached and opened from the keyboard", async ({
     buffer: await editorTour(),
   });
   await expect(page.locator("#tour-name")).toHaveText("Editor fixture");
+});
+
+/**
+ * A tour file in the page's origin-private file system, offered by a
+ * stand-in for the browser's file picker: a real FileSystemFileHandle, so
+ * the in-place write runs for real (E2b plan review #13).
+ * @param {import("@playwright/test").Page} page
+ * @param {Buffer} buffer
+ * @param {string} name
+ * @param {{ permission?: string }} [options] - a stand-in answer to the
+ *   write-permission request, else the handle's own
+ */
+async function offerOpfsFile(page, buffer, name, options = {}) {
+  await page.evaluate(
+    async ({ b64, fileName, permission }) => {
+      const root = await navigator.storage.getDirectory();
+      const handle = await root.getFileHandle(fileName, { create: true });
+      const w = await handle.createWritable();
+      await w.write(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+      await w.close();
+      const offered =
+        permission === undefined
+          ? handle
+          : {
+              kind: "file",
+              name: handle.name,
+              getFile: () => handle.getFile(),
+              createWritable: () => handle.createWritable(),
+              requestPermission: () => Promise.resolve(permission),
+            };
+      // @ts-expect-error - the e2e's own picker.
+      window.showOpenFilePicker = () => Promise.resolve([offered]);
+    },
+    { b64: buffer.toString("base64"), fileName: name, ...options },
+  );
+}
+
+/**
+ * A file of the page's origin-private file system, as a zip's texts.
+ * @param {import("@playwright/test").Page} page
+ * @param {string} name
+ */
+async function readOpfsTour(page, name) {
+  const b64 = await page.evaluate(async (fileName) => {
+    const root = await navigator.storage.getDirectory();
+    const file = await (await root.getFileHandle(fileName)).getFile();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let text = "";
+    for (const b of bytes) text += String.fromCharCode(b);
+    return btoa(text);
+  }, name);
+  const reader = new ZipReader(
+    new Uint8ArrayReader(new Uint8Array(Buffer.from(b64, "base64"))),
+  );
+  /** @type {Record<string, string>} */
+  const texts = {};
+  for (const entry of await reader.getEntries()) {
+    if (!entry.directory && entry.getData !== undefined) {
+      texts[entry.filename] = await entry.getData(new TextWriter());
+    }
+  }
+  await reader.close();
+  return texts;
+}
+
+test("saves in place to the file it opened, and keeps the walk recording", async ({
+  page,
+}) => {
+  // Why (M6 E2b-1, E2b plan review #1): where the browser allows it, Save
+  // writes the opened file itself - and since that may be the creator's
+  // only copy of the walk, an in-place save never leaves the walk out.
+  await page.goto("/edit.html");
+  await offerOpfsFile(page, await wrappedTour({ pin: true }), "wrapped.zip");
+  await page.locator("#choose-btn").click();
+  await expect(page.locator("#tour-name")).toHaveText("Wrapped fixture");
+  await expect(page.locator("#keep-walk")).toBeHidden();
+  await page.locator("#rail .row", { hasText: "Wrapped pin" }).click();
+  await page.locator("#card textarea").fill("Saved in place");
+  await page.locator("#save-btn").click();
+  await expect(page.locator("#save-status")).toHaveText("Saved to wrapped.zip");
+  const texts = await readOpfsTour(page, "wrapped.zip");
+  expect(texts["mytour/tour.json"]).toContain("Saved in place");
+  expect(Object.keys(texts)).toContain("mytour/actions/000001.json");
+  // The photos now read from the written file.
+  await page.locator("#rail .row", { hasText: "Recorded photo" }).click();
+  await expect(page.locator("#card img.card-photo")).toBeVisible();
+});
+
+test("refuses to write over a file that changed meanwhile, and offers the download", async ({
+  page,
+}) => {
+  // Why (E2b plan review #4): another program's write must never be
+  // overwritten; the creator's changes stay, and a download saves them.
+  await noSavePicker(page);
+  await page.goto("/edit.html");
+  await offerOpfsFile(page, await wrappedTour({ pin: true }), "wrapped.zip");
+  await page.locator("#choose-btn").click();
+  await expect(page.locator("#tour-name")).toHaveText("Wrapped fixture");
+  await page.locator("#rail .row", { hasText: "Wrapped pin" }).click();
+  await page.locator("#card textarea").fill("Saved first");
+  await page.locator("#save-btn").click();
+  await expect(page.locator("#save-status")).toHaveText("Saved to wrapped.zip");
+  await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const w = await (await root.getFileHandle("wrapped.zip")).createWritable();
+    await w.write("another program wrote this");
+    await w.close();
+  });
+  await page.locator("#card textarea").fill("Not over theirs");
+  await page.locator("#save-btn").click();
+  const refusal = page.locator(".toast", { hasText: "changed on disk" });
+  await expect(refusal).toBeVisible();
+  // Refused before the build: the change is still pending.
+  await expect(page.locator("#save-status")).toHaveText("1 change not saved");
+  const download = page.waitForEvent("download");
+  await refusal.locator("button", { hasText: "Download instead" }).click();
+  expect((await download).suggestedFilename()).toBe("wrapped.zip");
+  await expect(page.locator("#save-status")).toHaveText("Saved as wrapped.zip");
+  expect(
+    await page.evaluate(async () => {
+      const root = await navigator.storage.getDirectory();
+      return (await (await root.getFileHandle("wrapped.zip")).getFile()).text();
+    }),
+  ).toBe("another program wrote this");
+});
+
+test("opens a file it may not write and saves it as a download", async ({
+  page,
+}) => {
+  // Why (E2b plan review #8): a refused permission opens the tour all the
+  // same; Save then downloads, and the page says why.
+  await noSavePicker(page);
+  await page.goto("/edit.html");
+  await offerOpfsFile(page, await editorTour(), "editor-fixture.zip", {
+    permission: "denied",
+  });
+  await page.locator("#choose-btn").click();
+  await expect(
+    page.locator(".toast", { hasText: "did not allow saving to this file" }),
+  ).toBeVisible();
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  await page.locator("#card textarea").fill("As a download");
+  const saved = await saveAndRead(page);
+  expect(saved.name).toBe("editor-fixture.zip");
+});
+
+test("Ctrl+S saves, and the browser's own save never opens", async ({
+  page,
+}) => {
+  // Why (E2b plan review #10): on this page Ctrl+S means the tour; the
+  // browser's "Save page as" would save the editor itself.
+  await noSavePicker(page);
+  await page.goto("/edit.html");
+  const prevented = page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        window.addEventListener(
+          "keydown",
+          (event) => {
+            resolve(event.defaultPrevented);
+          },
+          { once: true },
+        );
+      }),
+  );
+  await page.keyboard.press("Control+s");
+  expect(await prevented).toBe(true);
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  await page.locator("#rail .row", { hasText: "Town hall" }).click();
+  await page.locator("#card textarea").fill("By keyboard");
+  const download = page.waitForEvent("download");
+  await page.keyboard.press("Control+s");
+  expect((await download).suggestedFilename()).toBe("editor-fixture.zip");
+});
+
+test("a second tab on a file of the same name saves a copy unless told to edit here", async ({
+  page,
+  context,
+}) => {
+  // Why (E2b plan review #6): two tabs writing one file would each
+  // overwrite the other's work; the second is told, and may still choose.
+  await page.goto("/edit.html");
+  await offerOpfsFile(page, await wrappedTour({ pin: true }), "wrapped.zip");
+  await page.locator("#choose-btn").click();
+  await expect(page.locator("#tour-name")).toHaveText("Wrapped fixture");
+  const second = await context.newPage();
+  await second.goto("/edit.html");
+  await offerOpfsFile(second, await wrappedTour({ pin: true }), "wrapped.zip");
+  await second.locator("#choose-btn").click();
+  const told = second.locator(".toast", { hasText: "Another tab is editing" });
+  await expect(told).toBeVisible();
+  await expect(
+    told.locator("button", { hasText: "Edit here anyway" }),
+  ).toBeVisible();
 });

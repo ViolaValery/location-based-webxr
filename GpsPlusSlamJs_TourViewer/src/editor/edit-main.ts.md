@@ -4,7 +4,9 @@
 
 The composition root of the desktop editor (`edit.html`, M6 E1): opens a
 tour (chosen, dropped, or the sample), builds its model and wires the map,
-the rail and the card in the chosen variant 1 layout, and edits it (E2a).
+the rail and the card in the chosen variant 1 layout, and edits it (E2a);
+where the browser allows it, it saves the opened file in place (E2b-1,
+`save-target.ts`).
 
 ## Behaviour
 
@@ -46,6 +48,28 @@ the rail and the card in the chosen variant 1 layout, and edits it (E2a).
   walk's recorded photos stay read-only.
   A refused undo (the delete already written) says so in a toast
   rather than doing nothing.
+- **In place (E2b-1).** "Choose…" and the drop box open the browser's
+  file picker where it exists (else the file input), asking for write
+  permission on that gesture. A granted file, held by this tab
+  (`holdEditorLock`), is saved by writing it: the status reads "Saved to
+  <name>", the walk always stays (it may be the creator's only copy, E2b
+  plan review #1) and the walk switch is hidden. The file is checked before
+  the build and again before the write; a changed, moved or unwritable file
+  is refused in a toast that keeps the changes and offers "Download
+  instead", which turns the tour's saves into downloads (still keeping the
+  walk). A refused permission, a dropped or input-chosen file, and a second
+  tab on a file of the same name (told, with "Edit here anyway") save as
+  downloads. Ctrl+S / Cmd+S saves, and the browser's own "Save page as"
+  never opens on this page.
+- After any save the card's photos read from the page's copy of what was
+  written (a read-only session over it), never from the opened file, whose
+  bytes may have been replaced (E2b plan review #2, #5). The page keeps that
+  copy rather than reading the file back: once something else rewrites the
+  file, a `File` read from it no longer reads, and the copy is what lets
+  "Download instead" still build (the review's memory point declined).
+  **Not covered:** a file changed on disk BEFORE the first save cannot be
+  rebuilt at all - its opened bytes are gone - so those edits cannot be
+  saved; the desktop's draft (E2c) is what would keep them.
 - **Save** builds the tour (`keepScan` from the "Keep the walk recording"
   switch, shown only for a tour that carries a walk) and downloads it
   through the framework's `downloadZip` under `finishedFileName`; the

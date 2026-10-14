@@ -4,7 +4,9 @@
  * sample), draws it in the chosen variant 1 layout (full map, the left
  * rail, the card beside the selected marker), and edits it: a pin's text,
  * Move and Delete with Undo, and a Save that downloads the tour to put in
- * place of the old file. Linked from nothing yet.
+ * place of the old file - or, where the browser allows it (Chromium's file
+ * picker, M6 E2b-1), writes the opened file in place. Linked from nothing
+ * yet.
  *
  * @see edit-main.ts.md
  */
@@ -15,7 +17,7 @@ import { FINISH_LABELS } from "../qr-author-mode.js";
 import { createTourViewerStore } from "../tour-viewer-session.js";
 import { describeIntegrityError } from "../open-errors.js";
 import { scanEntryNames } from "../tour-read-set.js";
-import type { TourSession } from "../tour-session.js";
+import { openTourFile, type TourSession } from "../tour-session.js";
 import {
   CARD_RESIZED,
   createEditorCard,
@@ -35,6 +37,15 @@ import {
   type EditorSession,
 } from "./editor-session.js";
 import { revealPadding, type Box } from "./popover-place.js";
+import {
+  createSaveTarget,
+  holdEditorLock,
+  pickTourFile,
+  TargetChangedError,
+  type PickerWindow,
+  type SaveTarget,
+  type WritableFileHandle,
+} from "./save-target.js";
 
 /** The committed sample tour (`public/samples/`), beside this page. */
 const SAMPLE_URL = "samples/marienplatz-tour.zip";
@@ -68,7 +79,8 @@ const modal = element("open-modal");
 const drop = element("drop");
 const zipInput = element<HTMLInputElement>("zip-input");
 /** The chooser's own button: the label and its hidden input are not in the
- *  tab order, so a keyboard user reaches the chooser here (PR #612 review). */
+ *  tab order, so a keyboard user reaches the chooser here (PR #612 review);
+ *  its click is the drop box's. */
 const chooseButton = element<HTMLButtonElement>("choose-btn");
 const openStatus = element("open-status");
 const openError = element("open-error");
@@ -82,6 +94,17 @@ const keepWalk = element("keep-walk");
 const keepWalkInput = element<HTMLInputElement>("keep-walk-input");
 
 let session: TourSession | null = null;
+/** The written file, for the card's photos once a save replaced the bytes
+ *  the opened file had (E2b plan review #2, #5): the rebuild keeps the
+ *  opened session, only the reads move. */
+let photoSession: TourSession | null = null;
+/** The opened file itself, when it may be written in place (E2b-1). */
+let target: SaveTarget | null = null;
+/** This tab's hold on the opened file's name (E2b plan review #6). */
+let lock: { release(): void } | null = null;
+/** The tour was opened to be saved in place: its saves keep the walk, even
+ *  after a refusal turned them into downloads (E2b plan review #1). */
+let keepsWalk = false;
 let editor: EditorSession | null = null;
 let model: EditorModel | null = null;
 let selected: string | null = null;
@@ -364,7 +387,7 @@ const card = createEditorCard(
   },
   {
     loadImage: (item) => {
-      const open = session;
+      const open = photoSession ?? session;
       const source = photoSource(item);
       if (open === null || source === null) {
         return Promise.reject(new Error("no tour is open"));
@@ -447,6 +470,17 @@ window.addEventListener("beforeunload", (event) => {
   if (unsavedWork()) event.preventDefault();
 });
 document.addEventListener("keydown", (event) => {
+  // Ctrl+S / Cmd+S saves the tour; the browser's "Save page as" never opens
+  // here, open tour or not (E2b plan review #10).
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey &&
+    event.code === "KeyS"
+  ) {
+    event.preventDefault();
+    if (modal.hidden) void runSave();
+    return;
+  }
   if (event.key !== "Escape") return;
   if (moving !== null) {
     cancelMove();
@@ -463,6 +497,17 @@ function setBusy(on: boolean, text: string): void {
   chooseButton.disabled = on;
   cancelButton.disabled = on;
   openStatus.textContent = text;
+}
+
+/** The opened file's hold and target, and the written bytes' session, go
+ *  with the tour they belong to. */
+function leaveFile(): void {
+  lock?.release();
+  lock = null;
+  target = null;
+  keepsWalk = false;
+  void photoSession?.close().catch(() => undefined);
+  photoSession = null;
 }
 
 function resetEditing(): void {
@@ -483,6 +528,7 @@ function dropTour(reason: string): void {
   editor = null;
   model = null;
   resetEditing();
+  leaveFile();
   void open?.close().catch(() => undefined);
   topbar.hidden = true;
   element("rail").hidden = true;
@@ -491,7 +537,49 @@ function dropTour(reason: string): void {
   openError.hidden = false;
 }
 
-async function openFile(file: File): Promise<void> {
+/**
+ * The page's own save target for a file picked with write permission: one
+ * tab per file name, and a second tab may still choose to edit here.
+ */
+async function attachTarget(
+  mine: EditorSession,
+  handle: WritableFileHandle,
+  file: File,
+): Promise<void> {
+  const held = await holdEditorLock(navigator.locks, file.name);
+  if (editor !== mine) {
+    held.release();
+    return;
+  }
+  const take = async (): Promise<void> => {
+    const made = await createSaveTarget(handle, file);
+    if (editor !== mine) return;
+    target = made;
+    keepsWalk = true;
+    keepWalk.hidden = true;
+    renderSaveState();
+  };
+  if (held.granted) {
+    lock = held;
+    await take();
+    return;
+  }
+  toast(
+    `Another tab is editing a file named ${file.name}. Saving here downloads a copy.`,
+    {
+      label: "Edit here anyway",
+      run: () => {
+        void take();
+      },
+    },
+    null,
+  );
+}
+
+async function openFile(
+  file: File,
+  handle: WritableFileHandle | null = null,
+): Promise<void> {
   if (busy) return;
   openError.hidden = true;
   setBusy(true, `Opening ${file.name}…`);
@@ -522,6 +610,7 @@ async function openFile(file: File): Promise<void> {
   session = outcome.session;
   void previous?.close().catch(() => undefined);
   resetEditing();
+  leaveFile();
   editor = createEditorSession({
     session: outcome.session,
     manifest: outcome.manifest,
@@ -549,14 +638,118 @@ async function openFile(file: File): Promise<void> {
   map.show(model, { left: free.left, top: free.top });
   renderSaveState();
   toast(`Opened ${outcome.fileName}: ${openedSummary(model)}`);
+  if (handle !== null) void attachTarget(editor, handle, file);
 }
 
-/** Hand `save` to the browser; whether it arrived. */
-async function deliver(save: EditorSave): Promise<boolean> {
+/** "Choose…" and the drop box: the browser's file picker where it exists,
+ *  for a file that can be saved in place, else the file input. */
+async function chooseTour(): Promise<void> {
+  if (busy) return;
+  const outcome = await pickTourFile(window as unknown as PickerWindow);
+  if (outcome.kind === "unavailable") {
+    zipInput.click();
+    return;
+  }
+  if (outcome.kind === "cancelled") return;
+  await openFile(outcome.file, outcome.writable ? outcome.handle : null);
+  if (!outcome.writable && editor !== null) {
+    toast(
+      "The browser did not allow saving to this file, so Save downloads a copy.",
+    );
+  }
+}
+
+/**
+ * An in-place save was refused (the file changed, moved, or could not be
+ * written). The changes stay; "Download instead" turns this tour's saves
+ * into downloads - the file on disk is no longer one this page may write
+ * over - and saves at once.
+ */
+function refuseInPlace(mine: EditorSession, name: string, why: string): void {
+  toast(
+    `Not saved to ${name}. ${why} Your changes are kept.`,
+    {
+      label: "Download instead",
+      run: () => {
+        if (editor !== mine) return;
+        lock?.release();
+        lock = null;
+        target = null;
+        void runSave();
+      },
+    },
+    null,
+  );
+}
+
+/** Photos read from what was written from now on (E2b plan review #2). */
+async function readPhotosFrom(
+  mine: EditorSession,
+  written: File,
+): Promise<void> {
+  try {
+    const next = await openTourFile(written);
+    if (editor !== mine) {
+      void next.close().catch(() => undefined);
+      return;
+    }
+    void photoSession?.close().catch(() => undefined);
+    photoSession = next;
+  } catch {
+    // The opened session stays; a photo that no longer reads says so.
+  }
+}
+
+/** Hand `save` to the browser as a download; whether it arrived. */
+async function download(save: EditorSave): Promise<boolean> {
   try {
     return await downloadZip(save.blob, save.filename);
   } catch {
     return false;
+  }
+}
+
+/**
+ * Deliver `save`: written over the opened file where the page may (the
+ * file then backs the next rebuild and the photos), else downloaded. A
+ * refused or failed in-place write keeps the save for "Save again" and
+ * offers the download.
+ */
+async function deliver(
+  mine: EditorSession,
+  save: EditorSave,
+): Promise<{ arrived: boolean; inPlace: boolean }> {
+  const into = target;
+  if (into === null) {
+    const arrived = await download(save);
+    if (arrived) {
+      await readPhotosFrom(
+        mine,
+        new File([save.blob], save.filename, { type: "application/zip" }),
+      );
+    }
+    return { arrived, inPlace: false };
+  }
+  try {
+    await into.write(save.blob);
+    // The photos read from this page's copy of what it wrote, never from
+    // the file on disk: once something else rewrites that file, a File
+    // read from it no longer reads. The copy is the one the next rebuild
+    // starts from anyway (the download path holds the same).
+    await readPhotosFrom(
+      mine,
+      new File([save.blob], save.filename, { type: "application/zip" }),
+    );
+    return { arrived: true, inPlace: true };
+  } catch (err) {
+    refuseInPlace(
+      mine,
+      into.name,
+      err instanceof TargetChangedError
+        ? err.message
+        : `It could not be written: ${err instanceof Error ? err.message : String(err)}.`,
+    );
+    return { arrived: false, inPlace: true };
   }
 }
 
@@ -583,11 +776,31 @@ async function runSave(): Promise<void> {
   endUndo();
   saving = true;
   renderSaveState();
+  // Checked BEFORE the build too: the build reads the opened file, which
+  // something else's write makes unreadable (E2b plan review #4).
+  const into = target;
+  if (into !== null) {
+    const state = await into.check().catch(() => "same" as const);
+    if (editor !== mine) {
+      abandon();
+      return;
+    }
+    if (state !== "same") {
+      saving = false;
+      renderSaveState();
+      refuseInPlace(mine, into.name, new TargetChangedError(state).message);
+      return;
+    }
+  }
   try {
     const save =
       undelivered !== null && mine.changeCount() === 0
         ? undelivered
-        : await mine.save({ keepScan: keepWalkInput.checked });
+        : // In place the walk always stays: the file written over may be
+          // the creator's only copy of it (E2b plan review #1).
+          await mine.save({
+            keepScan: keepsWalk || keepWalkInput.checked,
+          });
     if (editor !== mine) {
       abandon();
       return;
@@ -595,7 +808,7 @@ async function runSave(): Promise<void> {
     // A later save rebuilds from this one's bytes, so the walk switch can
     // no longer change anything (the phone's rule, E2a review #1).
     keepWalk.hidden = true;
-    const arrived = await deliver(save);
+    const { arrived, inPlace } = await deliver(mine, save);
     if (editor !== mine) {
       abandon();
       return;
@@ -606,11 +819,15 @@ async function runSave(): Promise<void> {
       const pending = new Set(mine.pendingIds());
       for (const id of [...moved]) if (!pending.has(id)) moved.delete(id);
       message = null;
-      saveStatus.dataset["saved"] = `Saved as ${save.filename}`;
+      saveStatus.dataset["saved"] = inPlace
+        ? `Saved to ${target?.name ?? save.filename}`
+        : `Saved as ${save.filename}`;
       // The Finish's own result sentences (E2a review #2).
       toast(
         [
-          `Saved as ${save.filename}. Put it in place of the old file, under the same name, so the printed codes keep opening it.`,
+          inPlace
+            ? `Saved to ${target?.name ?? save.filename}.`
+            : `Saved as ${save.filename}. Put it in place of the old file, under the same name, so the printed codes keep opening it.`,
           ...(save.scanLeftOut.length === 0
             ? []
             : [FINISH_LABELS.scanLeftOut(save.scanLeftOut.length)]),
@@ -619,7 +836,8 @@ async function runSave(): Promise<void> {
             : [FINISH_LABELS.photosNotPlaced(save.notPlaced)]),
         ].join(" "),
         undefined,
-        null,
+        // The download's result carries an instruction; in place it does not.
+        inPlace ? UNDO_MS : null,
       );
     }
   } catch (err) {
@@ -641,11 +859,13 @@ async function runSave(): Promise<void> {
 saveButton.addEventListener("click", () => {
   void runSave();
 });
-chooseButton.addEventListener("click", (event) => {
-  // A button inside the label does not forward its click to the input;
-  // preventDefault keeps it that way whatever the browser does.
+// One handler for the drop box and its "Choose…" button (a click on the
+// button reaches the label too). The input's own click - the fallback's -
+// must not be cancelled, or no file dialog opens.
+drop.addEventListener("click", (event) => {
+  if (event.target === zipInput) return;
   event.preventDefault();
-  if (!busy) zipInput.click();
+  void chooseTour();
 });
 zipInput.addEventListener("change", () => {
   const file = zipInput.files?.[0];
