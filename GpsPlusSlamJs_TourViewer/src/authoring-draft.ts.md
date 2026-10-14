@@ -13,6 +13,29 @@ asked. Pure - the OPFS mechanics are the framework's
   `deleted` holds the ids deleted on this device (tombstones, authoring
   plan 2026-09-28-0953 §3.4, M4).
 - `draftKeyForTour(tourUrl) -> string`.
+- **A newer edit elsewhere wins (M6 E2p, the E2 plan review #1, its
+  milestone review and re-review).** A draft may carry `bases`: per object
+  id a `DraftBase`, the versions this device knows as its own line, as
+  content keys - `seen` (versions it saw hosted: the tour as a page opened
+  it, a record found published) and `written` (versions its own Finishes
+  wrote, which the creator may upload from the same tab). Only facts, so
+  they only accumulate (`withBaseKey`, newest last, at most
+  `DRAFT_BASE_MAX_KEYS` = 32 per list). A record is SUPERSEDED when the
+  hosted version is in neither list, or the object is gone though a
+  version of it was SEEN hosted (a written-only placement may simply not
+  be uploaded): not offered, not keeping the draft alive
+  (`draftObjectsSuperseded`); the page says so (`supersededLine`, owner
+  question Q-E2-2's default). `draftObjectsPublished` names the records
+  the hosted zip carries with the same content not yet in `seen` - the page
+  adds them, so a later delete elsewhere is not undone. A draft without
+  bases (every draft before E2p) behaves as before. No hosted manifest
+  (`null`: no readable `tour.json`) supersedes nothing - it is no evidence
+  about any object (PR #612 review). Not covered: a phone deletion against
+  a newer edit elsewhere (the tombstone still deletes); and a hosted copy
+  OLDER than this device has seen but never seen by it (a rolled-back
+  upload) reads as made elsewhere and wins - telling older from newer
+  needs the signed series version, and whether to ask instead is owner
+  question Q-E2-2.
 - `draftObjectsNotYetHosted(draft, manifest) -> readonly TourObject[]` -
   the whole state machine in one function; see the invariants. Compares
   CONTENT (`objectContentKey`), not ids.

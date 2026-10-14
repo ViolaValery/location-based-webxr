@@ -31,12 +31,16 @@ import {
 } from "gps-plus-slam-app-framework/state";
 import { Vector3, type Object3D } from "three";
 
-import { applyObjectChanges } from "./authoring-draft.js";
 import {
-  objectListModel,
-  type ObjectListEntry,
-  type ObjectListView,
-} from "./object-list.js";
+  authoringObjects,
+  deleteObject,
+  pinTextEdit,
+  undoDelete as undoDeleteLists,
+  upsertPlaced,
+  type AuthoringObject as SharedAuthoringObject,
+  type DeletedRecord,
+} from "./object-edits.js";
+import { objectListModel, type ObjectListView } from "./object-list.js";
 import {
   objectDeleted,
   objectDeleteUndone,
@@ -52,52 +56,8 @@ import { planMove, type SettleAlignmentInput } from "./visit-settle.js";
 
 type PlacedEntry = TourViewerSession["placedObjects"][number];
 
-/** One object of the tour as the creator sees it now. */
-export interface AuthoringObject extends ObjectListEntry {
-  /** This device's entry for it (a placement, an edit, a move), if any. */
-  readonly placed: PlacedEntry | null;
-}
-
-/**
- * The tour's objects now: the manifest's, this device's replacing them by
- * id, new ones appended, deleted ones gone - the Finish's own rule
- * (`applyObjectChanges`), so the list, the previews and the zip can never
- * disagree about what the tour holds.
- */
-export function authoringObjects(
-  manifest: readonly TourObject[],
-  placed: readonly PlacedEntry[],
-  deleted: readonly string[],
-): AuthoringObject[] {
-  const hosted = new Set(manifest.map((o) => o.id));
-  const byId = new Map<string, PlacedEntry>();
-  for (const entry of placed) byId.set(entry.object.id, entry);
-  return applyObjectChanges(
-    manifest,
-    placed.map((p) => p.object),
-    deleted,
-  ).map((object) => {
-    const entry = byId.get(object.id) ?? null;
-    return {
-      object,
-      hosted: hosted.has(object.id),
-      changed: entry !== null,
-      placed: entry,
-    };
-  });
-}
-
-/** Replace the entry with `entry`'s id, or append it. */
-export function upsertPlaced(
-  placed: readonly PlacedEntry[],
-  entry: PlacedEntry,
-): PlacedEntry[] {
-  const index = placed.findIndex((p) => p.object.id === entry.object.id);
-  if (index < 0) return [...placed, entry];
-  const out = [...placed];
-  out[index] = entry;
-  return out;
-}
+/** One object of the tour as the creator sees it now (`object-edits.ts`). */
+export type AuthoringObject = SharedAuthoringObject<PlacedEntry>;
 
 export interface ObjectEditingDeps {
   /** Told after the selection changed (a tap, Done, a delete, a reset):
@@ -183,13 +143,7 @@ const NOT_BACKED_UP =
 export const OUTCOME_HOLD_MS = 8_000;
 
 /** What an Undo of a delete puts back, captured at the delete. */
-interface DeletedObject {
-  readonly object: TourObject;
-  /** This device's entry for it (an edit, a placement), or null. */
-  readonly placed: PlacedEntry | null;
-  /** Its place in `ctx.placedObjects`, so the Finish order is kept. */
-  readonly index: number;
-  readonly hosted: boolean;
+interface DeletedObject extends DeletedRecord<PlacedEntry> {
   /** "the photo" or the pin's quoted text. */
   readonly name: string;
 }
@@ -318,16 +272,18 @@ export function wireObjectEditing(deps: ObjectEditingDeps): ObjectEditing {
     if (found === undefined) return;
     const before = found.object;
     if (before.kind !== "pin") return;
-    const label = text.trim();
-    if (label === "") {
-      say("A pin needs some text - it was left as it was.");
+    // The shared rule (`object-edits.ts`), as the desktop editor uses it.
+    const edit = pinTextEdit(before, text);
+    if (edit.kind === "refused") {
+      say(edit.reason);
       return;
     }
-    if (label === before.label) {
+    if (edit.kind === "unchanged") {
       say("");
       return;
     }
-    const after: TourObject = { ...before, label };
+    const after = edit.after;
+    const label = after.kind === "pin" ? after.label : "";
     ctx.placedObjects = upsertPlaced(ctx.placedObjects, {
       ...(found.placed ?? {}),
       object: after,
@@ -451,11 +407,12 @@ export function wireObjectEditing(deps: ObjectEditingDeps): ObjectEditing {
     const found = find(id);
     if (found === undefined) return;
     const object = found.object;
-    const index = ctx.placedObjects.findIndex((p) => p.object.id === id);
-    ctx.placedObjects = ctx.placedObjects.filter((p) => p.object.id !== id);
-    if (found.hosted && !ctx.deletedObjectIds.includes(id)) {
-      ctx.deletedObjectIds = [...ctx.deletedObjectIds, id];
-    }
+    const gone = deleteObject(
+      { placed: ctx.placedObjects, deleted: ctx.deletedObjectIds },
+      found,
+    );
+    ctx.placedObjects = gone.placed;
+    ctx.deletedObjectIds = gone.deleted;
     if (selectedId === id) selectedId = null;
     arStore.dispatch(
       objectDeleted({
@@ -472,13 +429,7 @@ export function wireObjectEditing(deps: ObjectEditingDeps): ObjectEditing {
     // The row is gone at once; the in-progress state is the note until the
     // draft write settles.
     say(`Deleting ${name}…`);
-    const deleted: DeletedObject = {
-      object,
-      placed: found.placed,
-      index,
-      hosted: found.hosted,
-      name,
-    };
+    const deleted: DeletedObject = { ...gone.record, name };
     const manifest = ctx.tourManifest;
     const write = found.hosted
       ? deps.saveDraftDeletion(id)
@@ -513,17 +464,12 @@ export function wireObjectEditing(deps: ObjectEditingDeps): ObjectEditing {
   function undoDelete(deleted: DeletedObject): void {
     if (refusedDuringFinish()) return;
     const id = deleted.object.id;
-    if (deleted.hosted) {
-      ctx.deletedObjectIds = ctx.deletedObjectIds.filter((x) => x !== id);
-    }
-    if (
-      deleted.placed !== null &&
-      !ctx.placedObjects.some((p) => p.object.id === id)
-    ) {
-      const out = [...ctx.placedObjects];
-      out.splice(Math.min(deleted.index, out.length), 0, deleted.placed);
-      ctx.placedObjects = out;
-    }
+    const back = undoDeleteLists(
+      { placed: ctx.placedObjects, deleted: ctx.deletedObjectIds },
+      deleted,
+    );
+    ctx.placedObjects = back.placed;
+    ctx.deletedObjectIds = back.deleted;
     arStore.dispatch(
       objectDeleteUndone({
         object: deleted.object,

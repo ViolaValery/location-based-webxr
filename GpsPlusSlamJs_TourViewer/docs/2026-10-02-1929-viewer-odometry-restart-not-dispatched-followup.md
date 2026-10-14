@@ -23,6 +23,19 @@ GpsPlusSlamJs_TourViewer/src` finds nothing outside tests). Its own
   the alignment blends the two frames until the old fixes are outvoted. The
   placed tour drifts or jumps by the reset's offset for that time.
 
+## Since 2026-10-13: the restart callback exists, for the mesh only
+
+The AR config now passes the framework's `tracking.onRestarted`
+(`ar-mode.ts` `onTrackingRestarted`, polish-round follow-up F11), which
+clears the `?mesh=1` cursor's grid. It deliberately does NOT dispatch
+`odometryTrackingRestarted`: that is still this document's decision.
+Step 2 below needs more than a dispatch in that callback: `ar-mode.ts`
+drops the restart's payload and hands the app a `() => void`, so the
+payload must be forwarded; the guard
+`visit-alignment-picks.no-segments.test.ts` bans the action by name; and
+that guard's header asks for a segment notion in the alignment picks
+first (r837 review #5).
+
 ## What the moved-code check does about it today
 
 The check ends every pin at a frame change, and since M5c review M4 a reset
@@ -49,3 +62,8 @@ solve itself still blends frames.
 - `GpsPlusSlamJs_TourViewer/src/moved-code-check.ts.md` (Invariants)
 - `GpsPlusSlamJs_TourViewer/src/viewer-vote-sink.ts.md` (the re-feed)
 - `GpsPlusSlamJs_TourViewer/src/viewer-placement.ts.md` (the veto)
+- `GpsPlusSlamJs_TourViewer/src/visit-alignment-picks.no-segments.test.ts`
+  (the guard that bans the restart action, narrowed for F11)
+- Follow-up F11 (the mesh cursor's restart hook):
+  `GpsPlusSlamJs_Docs/docs/2026-10-12-0759-tour-viewer-m0c-followups.md`
+  in the `gps-plus-slam` repo

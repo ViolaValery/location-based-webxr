@@ -480,3 +480,28 @@ describe("creator-codes: every code this page holds (M4d)", () => {
     expect(codes.ids()).toEqual(["a", "b"]);
   });
 });
+
+describe("creator-codes: the page hears when the set of codes changes (follow-up F16)", () => {
+  // Why this test matters: the print panel numbers the next code after the
+  // tour's codes, but it read them once per open - codes restored from a
+  // draft or measured later left the numbering and the spelling behind, so
+  // a new poster could repeat a code's number.
+  it("says so when a code joins, by a measurement or a restored draft, and not otherwise", () => {
+    const ctx = createTourViewerSession();
+    let heard = 0;
+    const codes = wireCreatorCodes({
+      ctx,
+      onIdsChanged: () => {
+        heard += 1;
+      },
+    });
+    codes.setInHand({ id: "a", json: levelJson(47.5) }, MEASUREMENT);
+    expect(heard).toBe(1);
+    // The same code again: the set did not change.
+    codes.setInHand({ id: "a", json: levelJson(47.6) }, MEASUREMENT);
+    expect(heard).toBe(1);
+    codes.restoreLevels([{ id: "b", json: levelJson(47.7) }]);
+    expect(heard).toBe(2);
+    expect(codes.ids().sort()).toEqual(["a", "b"]);
+  });
+});

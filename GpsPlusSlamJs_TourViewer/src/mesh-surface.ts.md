@@ -28,8 +28,14 @@ now? }) → MeshSurface` - composes the framework's pieces:
     most once a second, a sample that fails to fold logged as a warning.
   - `pick()` - the surface point under the screen centre (world point and world normal),
     or null; also notes the frame gap (one pick per frame). One `Raycaster`, reused.
-  - `stats()` - `{ frame: FrameTimesSummary | null, triangles }` (the framework's
+  - `stats()` - `{ frame: FrameTimesSummary | null, triangles }` (the sink handle's
+    `triangleCount()`, and the framework's
     `createFrameTimes` over the last 120 gaps).
+  - `reset()` - clears the grid and the mesh (follow-up F11): after a
+    WebXR origin reset their cells sit in a frame that no longer exists.
+    The next samples build it anew; a worker response requested before
+    the reset is dropped by the sink (the framework's `clear()`, PR #609
+    review), so the old frame's mesh never comes back.
   - `dispose()` - stops the feed, frees the mesh and the worker (idempotent).
 - `surfacePointFromHit(hit)` - a raycast hit as a world point and the face's world normal,
   or null.
@@ -86,6 +92,8 @@ surface.dispose();
   - the frame-time readout; dispose once; `MESH_DEPTH`;
   - composed for real (grid, sink, synchronous mesher, subscriber): a floor fed twice
     through the store is picked within 3 cm of its height, facing up, and every mesh is
-    hidden.
+    hidden; after `reset()` nothing is picked, and a lower floor fed
+    after it is picked at its own height (mutation-checked: without the
+    grid's clear the old floor is hit).
 - `ar-entry.test.ts` / `playwright-tests/ar-mode.spec.js` - the wiring behind `?mesh=1`,
   including a throwing `startMeshSurface` that leaves the session running on the hit-test.

@@ -42,12 +42,17 @@ input, and the hooks, which fan out to each module's `endVisit` / `reset`.
 
 ## Crash-safe authoring and the Finish's file
 
+The object list's draft writes (`saveDraftObject`) go through
+`draft.writeObject`, which records the base from the tour as opened
+(M6 E2p; the rule is in `creator-draft.ts.md`).
+
 The on-device draft (second testing session, F13) is `creator-draft.ts`
 since the code book plan's M2 split; its sidecar holds the rules that
 were here. What stays is the Finish's side:
 
 - **The Finish's file** (what it writes, the baked photo spots, the walk
-  left out, the listed series continued): `creator-finish.ts`.
+  left out, the listed series continued): `creator-finish.ts`, its rules
+  in `finish-rebuild.ts` (M6 E0, shared with the desktop editor).
 - **The save cannot be forgotten** (UI round 1, U2, `finish-guard.ts`):
   after a Finish the save button is scrolled into view and focused; on a
   phone, Finish steps aside while the rebuilt file waits for its save
@@ -57,7 +62,9 @@ were here. What stays is the Finish's side:
 
 ## Public API
 
-- `wireCreatorSetup({ ctx, mode, arStore, arController, seams, wizard, dom, openDraftStore?, codeTour?, summary?, host? }): CreatorSetup`
+- `wireCreatorSetup({ ctx, mode, arStore, arController, seams, wizard, dom, openDraftStore?, codeTour?, summary?, host?, onCodesChanged? }): CreatorSetup`
+  - `onCodesChanged` - the set of codes changed (`creator-codes.ts`'s
+    `onIdsChanged`): `main.ts` re-presents the print step's codes (F16).
   - `host()` - the host chosen in step 1, handed to the hand-off for step
     6's replace steps (polish round M2).
   - `openDraftStore(key)` resolves this tour's draft namespace, or
@@ -84,8 +91,12 @@ were here. What stays is the Finish's side:
     manifest, so it cannot be asked earlier), `beginAuthorVisit`,
     `endAuthorVisit`, `finishNow` (polish round M3, Q-Done: the creator's
     Done in AR starts a Finish through `CreatorFinish.start`, or, while a
-    code is being measured, keeps the session and adds "tap Done again"
-    to the status - PR #598 review; in a session
+    code is being measured, keeps the session, LEADS the status with "the
+    tour saves as soon as it is measured" (first, so AR's two-line clamp
+    shows it; a flag every render reads, so the re-render after Done keeps
+    it), and starts the Finish itself when that measurement lands
+    (`measuringSettled`, the measuring's render) - PR #598 review, #599
+    review / F17, r837 review #1, #2, #6; in a session
     the panel's Finish is hidden, and comes back as the retry after a
     failed finish), and `selectInView` (M4: a tap in AR - an XR select
     the overlay did not cancel - selects the object the `pickObjectInView`

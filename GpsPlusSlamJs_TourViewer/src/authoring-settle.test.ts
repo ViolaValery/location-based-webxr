@@ -15,6 +15,7 @@
  * is stood in.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { objectContentKey } from "./authoring-draft.js";
 import {
   buildObjectPoints,
   projectViewPoint,
@@ -29,6 +30,7 @@ import { MIN_ALIGNMENT_SAMPLES } from "gps-plus-slam-app-framework/ar/qr/qr-mint
 import { parseQrLevel } from "gps-plus-slam-app-framework/ar/qr/qr-level";
 import {
   createEmptyTourManifest,
+  parseTourManifest,
   serializeTourManifest,
   type TourObject,
 } from "gps-plus-slam-app-framework/ar/tour-manifest";
@@ -55,6 +57,7 @@ import {
   objectKey,
   readDraft,
   visitKey,
+  parseDraftBase,
 } from "./draft-persistence.js";
 import type { SummaryModel } from "./summary-model.js";
 import type { SummaryPanel } from "./summary-panel.js";
@@ -355,6 +358,9 @@ function slowDraftStore() {
 function authoring(
   options: {
     store?: DraftFileStore;
+    /** Holds the draft's opening until it settles (the window between
+     *  the object list showing and the namespace being open). */
+    storeOpens?: Promise<void>;
     summary?: Pick<SummaryPanel, "show" | "hide">;
   } = {},
 ) {
@@ -498,7 +504,8 @@ function authoring(
       revealStep: () => undefined,
     } as never,
     dom: dom as unknown as CreatorSetupDom,
-    openDraftStore: () => Promise.resolve(options.store),
+    openDraftStore: () =>
+      (options.storeOpens ?? Promise.resolve()).then(() => options.store),
     ...(options.summary === undefined ? {} : { summary: options.summary }),
   });
   // AFTER the wiring, which writes the page's default into the field (as
@@ -1565,11 +1572,15 @@ describe(
       expect(a.ctx.finishError).toBeNull();
     });
 
-    it("a Done while a code is being measured keeps the session and says why, and finishes once it is measured (PR #598 review)", async () => {
+    it("a Done while a code is being measured keeps the session, says so first, and saves once it is measured (PR #598 review, F17, r837 review)", async () => {
       // Why: a finish waits for an in-flight measurement, so Done's
       // finishNow was false and the session ended with changes unsaved and
-      // nothing said in AR. Now Done stays, the status says so, and the
-      // next Done saves.
+      // nothing said in AR. Then the explanation was appended last and
+      // wiped by the re-render after Done (#599 review), and at the end of
+      // a status clamped to two lines in AR (r837 review #1). Now it LEADS
+      // the line, survives re-renders, and the save the creator asked for
+      // starts by itself when the measurement lands - a window of
+      // milliseconds is no time to read "tap again" (r837 review #2).
       const a = authoring();
       await openFinishableTour(a);
       await a.mint();
@@ -1593,19 +1604,26 @@ describe(
         });
         expect(a.setup.finishNow()).toBe(true);
         expect(a.ctx.finishing).toBe(false);
-        expect(a.dom.status.textContent).toMatch(
-          /code is being measured.*tap Done again/i,
-        );
+        const waits = /^A code is being measured - the tour saves as soon/;
+        expect(a.dom.status.textContent).toMatch(waits);
+        // `ar-entry.ts` re-renders right after Done (`renderArState`), and
+        // every store dispatch re-renders too.
+        a.setup.renderAuthorReadout();
+        expect(a.dom.status.textContent).toMatch(waits);
         idHold.gate = null;
         release();
         await vi.waitFor(() => {
           expect(measured()).toBeGreaterThan(before);
         });
-        await flush();
-        expect(a.setup.finishNow()).toBe(true);
-        expect(a.ctx.finishing).toBe(true);
+        // No second Done: the measurement's landing starts the save. Read
+        // from its result - an unheld archive finishes within a tick, so
+        // `finishing` may already be false again.
+        await vi.waitFor(() => {
+          expect(a.ctx.rebuiltZip).not.toBeNull();
+        });
         await finished(a.ctx);
         expect(a.ctx.finishError).toBeNull();
+        expect(a.dom.status.textContent).not.toMatch(waits);
       } finally {
         idHold.gate = null;
         idHold.held = 0;
@@ -2089,6 +2107,24 @@ describe(
       a.dom.objectList.listHandlers!.editText("h1", "   ");
       expect(a.ctx.placedObjects[0]?.object).toMatchObject({
         label: "The old mill",
+      });
+    });
+
+    it("records the hosted version an edit started from, once (M6 E2p)", async () => {
+      // Why: the base is what lets a newer edit elsewhere (the desktop
+      // editor) win over this draft; a second edit must not move it.
+      const { store, files } = memoryDraftStore();
+      const hosted = hostedPin("h1", "Gate");
+      const a = await withHostedTour([hosted], store);
+      a.pick.fn = () => "h1";
+      a.setup.selectInView(null);
+      a.dom.objectList.listHandlers!.editText("h1", "First");
+      await flush();
+      a.dom.objectList.listHandlers!.editText("h1", "Second");
+      await flush();
+      expect(parseDraftBase(files.get("base:h1") as string)).toEqual({
+        seen: [objectContentKey(hosted)],
+        written: [],
       });
     });
 
@@ -3137,6 +3173,175 @@ describe(
       expect(model?.codes[0]?.reference?.ringM).toBe(5);
       expect(model?.codes[0]?.estimateVerdict?.numbers?.visitCount).toBe(2);
       expect(model?.objects.map((o) => o.label)).toEqual(["Gate"]);
+    });
+
+    // M6 E2p review #1, #2, #4: the walks the pure rules could not see.
+    // Each loses the phone's own work if the base is taken from the wrong
+    // version: "replaced by a newer one" would be false, and the record
+    // would not be offered back.
+    describe("the draft's base comes from the tour as opened (M6 E2p review)", () => {
+      /** A pin the hosted zip carries. */
+      function hosted(id: string, label: string): TourObject {
+        return mintPin({
+          id,
+          label,
+          worldNuePosition: { x: 4, y: 400, z: 2 },
+          zero: ZERO,
+          nowIso: "2026-09-29T10:00:00.000Z",
+        })!;
+      }
+
+      /** One page load: the tour as hosted now, the draft presented. */
+      async function load(
+        store: DraftFileStore,
+        objects: TourObject[],
+      ): Promise<ReturnType<typeof authoring>> {
+        const a = authoring({ store });
+        await openFinishableTour(a);
+        a.ctx.tourManifest = { ...createEmptyTourManifest(), objects };
+        a.setup.presentDraftForTour(TOUR);
+        await flush();
+        return a;
+      }
+
+      it("offers a placement moved after a download-only Finish (review #2)", async () => {
+        const { store } = memoryDraftStore();
+        const a = await load(store, []);
+        a.setWalk(walk());
+        await a.mint();
+        await a.placePin("Gate", [2, 0, -1]);
+        a.endVisit();
+        await flush();
+        a.device.live = false;
+        a.dom.finishButton.click();
+        await finished(a.ctx);
+        // The page's manifest now holds the pin; the hosted zip does not.
+        const id = a.ctx.tourManifest!.objects[0]!.id;
+        a.dom.objectList.listHandlers!.editText(id, "Gate, edited");
+        await flush();
+        // The zip was never uploaded: the reload sees the tour without it.
+        const b = await load(store, []);
+        await vi.waitFor(() => {
+          expect(b.dom.draftOfferText.textContent).not.toBe("");
+        });
+        expect(b.dom.draftOfferText.textContent).toMatch(/1 thing you placed/);
+        expect(b.ctx.placementNote ?? "").not.toMatch(/replaced/);
+      });
+
+      it("offers a later edit of an object the phone itself published (review #1)", async () => {
+        const { store } = memoryDraftStore();
+        const a0 = hosted("h1", "Gate");
+        const a = await load(store, [a0]);
+        a.setWalk(walk());
+        await a.mint();
+        a.endVisit();
+        await flush();
+        a.dom.objectList.listHandlers!.editText("h1", "Gate, phone 1");
+        await flush();
+        // The creator uploaded that edit: the next load opens it hosted.
+        const a1 = { ...a0, label: "Gate, phone 1" } as TourObject;
+        const b = await load(store, [a1]);
+        b.dom.objectList.listHandlers!.editText("h1", "Gate, phone 2");
+        await flush();
+        // The tab dies before a Finish: the reload, still hosted at A1.
+        const c = await load(store, [a1]);
+        await vi.waitFor(() => {
+          expect(c.dom.draftOfferText.textContent).not.toBe("");
+        });
+        expect(c.dom.draftOfferText.textContent).toMatch(/1 change/);
+        expect(c.ctx.placementNote ?? "").not.toMatch(/replaced/);
+      });
+
+      // Why (re-review #1): the creator uploads this page's own Finish
+      // from the same tab and edits again. The version they uploaded is
+      // this device's work, so the later edit must be offered - a base
+      // decided once per page load called it "replaced" and deleted it.
+      it("offers an edit made after the creator uploaded this page's own Finish (re-review #1)", async () => {
+        const { store } = memoryDraftStore();
+        const a = await load(store, [hosted("h1", "Gate")]);
+        a.setWalk(walk());
+        await a.mint();
+        a.endVisit();
+        await flush();
+        a.dom.objectList.listHandlers!.editText("h1", "Gate, phone 1");
+        await flush();
+        a.device.live = false;
+        a.dom.finishButton.click();
+        await finished(a.ctx);
+        // As the next open reads it: parsed from the written file (third
+        // review #5), not the page's in-memory object.
+        const uploaded = parseTourManifest(
+          JSON.parse(serializeTourManifest(a.ctx.tourManifest!)),
+        ).objects.find((o) => o.id === "h1")!;
+        // Uploaded from this tab; the page stays open and edits again.
+        a.dom.objectList.listHandlers!.editText("h1", "Gate, phone 2");
+        await flush();
+        const c = await load(store, [uploaded]);
+        await vi.waitFor(() => {
+          expect(c.dom.draftOfferText.textContent).not.toBe("");
+        });
+        expect(c.dom.draftOfferText.textContent).toMatch(/1 change/);
+        expect(c.ctx.placementNote ?? "").not.toMatch(/replaced/);
+      });
+
+      // Why (re-review #2): an edit made while the draft is still opening
+      // is written when it opens; its base must still name the version the
+      // creator edited (the desktop's), or the next load drops it.
+      it("keeps an edit made while the draft opens, over a desktop edit (re-review #2)", async () => {
+        const { store } = memoryDraftStore();
+        const a0 = hosted("h1", "Gate");
+        const a = await load(store, [a0]);
+        a.setWalk(walk());
+        await a.mint();
+        a.endVisit();
+        await flush();
+        a.dom.objectList.listHandlers!.editText("h1", "Gate, phone");
+        await flush();
+        const desk = { ...a0, label: "Gate, desk" } as TourObject;
+        let open!: () => void;
+        const b = authoring({
+          store,
+          storeOpens: new Promise<void>((r) => {
+            open = r;
+          }),
+        });
+        await openFinishableTour(b);
+        b.ctx.tourManifest = { ...createEmptyTourManifest(), objects: [desk] };
+        b.setup.presentDraftForTour(TOUR);
+        b.dom.objectList.listHandlers!.editText("h1", "Gate, phone again");
+        await flush();
+        open();
+        await flush();
+        const c = await load(store, [desk]);
+        await vi.waitFor(() => {
+          expect(c.dom.draftOfferText.textContent).not.toBe("");
+        });
+        expect(c.dom.draftOfferText.textContent).toMatch(/1 change/);
+      });
+
+      it("says a desktop edit won once, and forgets the replaced record (review #4)", async () => {
+        const { store, files } = memoryDraftStore();
+        const a0 = hosted("h1", "Gate");
+        const a = await load(store, [a0]);
+        a.setWalk(walk());
+        await a.mint();
+        a.endVisit();
+        await flush();
+        a.dom.objectList.listHandlers!.editText("h1", "Gate, phone");
+        await flush();
+        // The desktop editor renamed it in the hosted file meanwhile.
+        const desk = { ...a0, label: "Gate, desk" } as TourObject;
+        const b = await load(store, [desk]);
+        await vi.waitFor(() => {
+          expect(b.ctx.placementNote ?? "").toMatch(/replaced by a newer one/);
+        });
+        await flush();
+        expect(files.has("object:h1")).toBe(false);
+        expect(files.has("base:h1")).toBe(false);
+        const c = await load(store, [desk]);
+        await flush();
+        expect(c.ctx.placementNote ?? "").not.toMatch(/replaced/);
+      });
     });
 
     it("brings a restored draft's visits back into the summary after a reload", async () => {

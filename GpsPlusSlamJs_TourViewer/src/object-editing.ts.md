@@ -9,12 +9,11 @@ Wired by `creator-setup.ts`, drawn by `object-list.ts`.
 
 ## Public API
 
-- `authoringObjects(manifest, placed, deleted): AuthoringObject[]` - the
-  tour's objects now: the manifest's, this device's records replacing
-  theirs by id, new ones appended, deleted ids gone - exactly
-  `applyObjectChanges` (the Finish's rule), plus per object `hosted`,
-  `changed` and this device's entry (`placed`).
-- `upsertPlaced(placed, entry)` - replace the entry with that id, or append.
+- `AuthoringObject` - one object as the creator sees it now. The list
+  functions (`authoringObjects`, `upsertPlaced`) and the rules for a pin's
+  text, a delete and its undo live in `object-edits.ts` since M6 E0c, shared
+  with the desktop editor; this file wires them to the page's state, the
+  store's log, the draft and the list's sentences.
 - `wireObjectEditing(deps): ObjectEditing` - binds the list's handlers.
   - `render()` - redraw the list (cheap when nothing changed).
   - `select(id | null)` - a tap in AR (the id `object-pick.ts` returned).

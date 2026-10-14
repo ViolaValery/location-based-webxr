@@ -16,9 +16,13 @@ test("a ?qr= launch opens the archive with no interaction", async ({
   page,
 }) => {
   await page.goto(`/?nocache=1&qr=${encodeURIComponent(RANGES_URL)}`);
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   // The resolved URL lands in the input so the visitor can see/share it.
   await expect(page.getByTestId("link-input")).toHaveValue(RANGES_URL);
   // ...and in the print panel, which a QR-launched open presents like any

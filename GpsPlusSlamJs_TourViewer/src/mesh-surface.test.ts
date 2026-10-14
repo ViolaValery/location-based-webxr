@@ -110,6 +110,7 @@ describe("createMeshSurface", () => {
     const sink = {
       sink: { refresh: vi.fn(), clear: vi.fn() },
       mesh: () => mesh ?? new Group(),
+      triangleCount: () => 12,
       dispose: vi.fn(),
     };
     const unsubscribe = vi.fn();
@@ -163,6 +164,9 @@ describe("createMeshSurface", () => {
     }
     const stats = s.surface.stats();
     expect(stats.frame).toMatchObject({ p50: 16, max: 50, count: 5 });
+    // The triangles are the sink's own count (PR #599 review, F17), not a
+    // structural read of the mesh's geometry: the fake mesh has none.
+    expect(stats.triangles).toBe(12);
   });
 
   it("disposes the sink and the subscription once", () => {
@@ -193,6 +197,18 @@ describe("createMeshSurface, composed for real (M5 review #1, #2, #3, #6)", () =
   // floor (a corner-fit mesh sat half a cell above it), face up, and the
   // mesh must hide nothing.
   it("meshes a floor fed through the store and picks it at its height", () => {
+    // Fake timers throughout: the re-mesh throttle (1 s) leaves a trailing
+    // refresh pending, and only a fake one can be advanced past.
+    expect.hasAssertions();
+    vi.useFakeTimers();
+    try {
+      meshFloorAndReset();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  function meshFloorAndReset(): void {
     const listeners = new Set<() => void>();
     let latest: ReturnType<typeof makeWorldPointSample> | null = null;
     const store = {
@@ -228,6 +244,27 @@ describe("createMeshSurface, composed for real (M5 review #1, #2, #3, #6)", () =
     });
     expect(meshes.length).toBeGreaterThan(0);
     expect(meshes.every((m) => !m.visible)).toBe(true);
+    // An origin reset (F11): the cells are in a frame that no longer
+    // exists, so the mesh starts again from nothing - no ghost to pick.
+    surface.reset();
+    expect(surface.pick()).toBeNull();
+    // ...and builds again from the next samples, once the re-mesh
+    // throttle (1 s) lets the next refresh through.
+    // The new frame's floor sits half a metre lower: a ghost of the old
+    // one at y = 0 would be hit first from above. Observed twice, the
+    // mesh's floor of two observations a cell.
+    const lower = floorPoints.map(
+      ([x, , z]) => [x, -0.5, z] as [number, number, number],
+    );
+    for (let i = 0; i < 2; i += 1) {
+      latest = makeWorldPointSample([0, 1.6, 0], lower);
+      for (const listener of listeners) listener();
+    }
+    vi.advanceTimersByTime(1000);
+    parent.updateMatrixWorld(true);
+    const rebuilt = surface.pick();
+    expect(rebuilt).not.toBeNull();
+    expect(Math.abs(rebuilt!.position.y + 0.5)).toBeLessThan(0.03);
     surface.dispose();
-  });
+  }
 });

@@ -117,8 +117,7 @@
       Isolated reproducer for the camera-access crash investigation. Pick a
       feature combination, tap <strong>Start AR</strong>, and observe. Checkbox
       state persists across reloads so a tab crash does not erase your last
-      selection. See
-      <code>2026-04-22-camera-access-reproducer-plan.md</code>.
+      selection. See <code>2026-04-22-camera-access-reproducer-plan.md</code>.
     </p>
 
     <fieldset>
@@ -175,22 +174,22 @@
       <label>
         <input type="checkbox" id="opt-projection-layer-workaround" />
         <span>
-          Delete <code>XRWebGLBinding.prototype.createProjectionLayer</code>
-          and <code>XRRenderState.prototype.layers</code> at script init
-          (forces three.js to <code>XRWebGLLayer</code>). Worked on Chrome
-          147–148, but stopped having any effect after Chrome
-          <code>148.0.7778.12</code>.
+          Delete <code>XRWebGLBinding.prototype.createProjectionLayer</code> and
+          <code>XRRenderState.prototype.layers</code> at script init (forces
+          three.js to <code>XRWebGLLayer</code>). Worked on Chrome 147–148, but
+          stopped having any effect after Chrome <code>148.0.7778.12</code>.
           <span id="workaround-status" style="color: #fcd34d"></span>
         </span>
       </label>
       <label>
         <input type="checkbox" id="opt-baselayer-persistence-workaround" />
         <span>
-          Additionally patch <code>XRSession.prototype.updateRenderState</code>
-          to persist the <code>baseLayer</code> reference (Chrome
-          <code>148.0.7778.12</code>+ stop-gap until M149). Enable
-          <em>together with</em> the projection-layer workaround above for the
-          full fix. May break Quest / projection-layer devices — opt-in only.
+          Additionally patch
+          <code>XRSession.prototype.updateRenderState</code> to persist the
+          <code>baseLayer</code> reference (Chrome <code>148.0.7778.12</code>+
+          stop-gap until M149). Enable <em>together with</em> the
+          projection-layer workaround above for the full fix. May break Quest /
+          projection-layer devices — opt-in only.
           <span id="baselayer-status" style="color: #fcd34d"></span>
         </span>
       </label>
@@ -297,9 +296,7 @@
             );
           };
           workaroundApplied.baseLayerPersistence = true;
-          console.log(
-            `${LOG_PREFIX} applied baseLayer-persistence workaround`
-          );
+          console.log(`${LOG_PREFIX} applied baseLayer-persistence workaround`);
         }
       } catch {
         /* ignore — workaround is best-effort */
@@ -475,8 +472,7 @@
       updatePayloadPreview();
       if (optWorkaround.checked) {
         workaroundStatus.textContent =
-          workaroundApplied.createProjectionLayer ||
-          workaroundApplied.layers
+          workaroundApplied.createProjectionLayer || workaroundApplied.layers
             ? ' — applied this load'
             : ' — enabled but globals absent on this device';
       }
@@ -667,10 +663,7 @@
       startBtn.addEventListener('click', rebuildArButton);
 
       log(`ready. Three.js r${THREE.REVISION}`, 'ok');
-      if (
-        workaroundApplied.createProjectionLayer ||
-        workaroundApplied.layers
-      ) {
+      if (workaroundApplied.createProjectionLayer || workaroundApplied.layers) {
         log(
           `Chromium projection-layer workaround active (deleted: ${[
             workaroundApplied.createProjectionLayer && 'createProjectionLayer',

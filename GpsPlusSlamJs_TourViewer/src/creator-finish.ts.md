@@ -10,6 +10,17 @@ on the page; plus the keep-the-walk switch. Split out of
 (`GpsPlusSlamJs_Docs/docs/2026-10-06-1601-tour-viewer-code-book-refactor-plan.md`);
 M4 makes it write every code of the book, not only the one in hand.
 
+Since M6 E0 the page-free rules below - the manifest with the edits, the
+title, the files written and removed, the series successor, the newest
+bytes as input, the session's budget - run in `finish-rebuild.ts`
+(`rebuildFinishedTour`), shared with the desktop editor; since E0b also
+the photo-spot rule (`captureSpotsForRebuild`, this file passes its
+progress line) and the bookkeeping after a write (`pendingAfterRebuild`). This file keeps
+the page: readiness, the settle, the capture-spot bake, progress, the
+re-checks of `ctx.session`, what the written zip changes on the page, and
+the hand-off. The rules are described here as the Finish's behaviour; the
+module's sidecar states them as its contract.
+
 ## Public API
 
 - `wireCreatorFinish({ ctx, arStore, arController, wizard, codes, dom, measuring, settle, handoff, previews, draft, sessionLive, render }): CreatorFinish`
@@ -98,6 +109,7 @@ M4 makes it write every code of the book, not only the one in hand.
     manifest naming photos the archive does not contain. Both halves are
     needed, and the e2e finishes twice in one open tour to hold them.
 - **The rebuilt zip is named after the hosted file** -
+  `finishedFileName` (`finish-rebuild.ts`, shared with the desktop editor):
   `session.hostedFileName()`, else `archiveFileName(url)` - because Drive
   offers "Replace" only for the same name (Drive replace plan §2
   decision 3).
@@ -148,6 +160,10 @@ M4 makes it write every code of the book, not only the one in hand.
   rejects duplicates: one already-hosted object would otherwise make every
   finish throw for as long as the draft was restored, with no escape inside
   the app.
+- The objects it wrote are reported to the draft (`draft.finished`, M6
+  E2p): their versions in this file are this device's own, so a creator
+  who uploads it from this tab and edits again is not told the edit was
+  replaced by a newer one.
 
 ## Tests
 

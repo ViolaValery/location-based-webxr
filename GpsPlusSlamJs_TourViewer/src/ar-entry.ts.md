@@ -25,7 +25,9 @@ since the flows plan M6.
     same way (a recorded one keeps `RECORDING_DEPTH`: the recording's byte
     estimate assumes it), starts `seams.startMeshSurface` under the world
     group, hands the reticle its `pick`, puts its frame time and triangles in
-    the `?debug=1` block, and frees it at the session end. The readout's
+    the `?debug=1` block, starts it again from nothing when tracking
+    restarts at a new origin (`onTrackingRestarted`, follow-up F11), and
+    frees it at the session end. The readout's
     "recording" stays a recorded entry's only.
   - `mode` (`"creator" | "visitor"`, guided-setup plan DEC-N1) replaces the
     flows plan's `authorMode`; creator mode runs the author pipeline. The

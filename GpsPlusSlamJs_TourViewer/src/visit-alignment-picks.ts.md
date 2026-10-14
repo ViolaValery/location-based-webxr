@@ -107,10 +107,15 @@ lives here.
   older picks map the new odometry wrongly and the walked distance gains a
   jump. It is safe only because the Tour Viewer never puts either into its
   store: it neither dispatches `odometryTrackingRestarted` /
-  `arLoopClosureDetected` nor wires the hooks that would (`onRestarted`,
-  the framework's live loop-closure handler). Guarded by
-  `visit-alignment-picks.no-segments.test.ts` (a source scan); the day the
-  Tour Viewer handles either, the picks need segments first.
+  `arLoopClosureDetected` nor wires the framework's live loop-closure
+  handler. The session hook `onRestarted` is wired in `ar-mode.ts` only,
+  and only TELLS (the `?mesh=1` cursor clears its raw-WebXR grid -
+  follow-up F11, owner 2026-10-13): it drops the restart's payload and
+  hands the app a `() => void`, so no action can be built from it, and the
+  two actions stay banned by name (r837 review #4).
+  Guarded by `visit-alignment-picks.no-segments.test.ts` (a source scan);
+  the day the Tour Viewer dispatches either action, the picks need
+  segments first.
 
 ## Examples
 

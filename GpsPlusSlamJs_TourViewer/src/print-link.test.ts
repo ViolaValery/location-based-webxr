@@ -192,6 +192,33 @@ describe("the printed text on the levels (F2)", () => {
     ]);
   });
 
+  it("hashes every code at once, keeping the codes' order (PR #600 review, F17)", async () => {
+    // Why: one awaited hash and decode per code, one after another, on
+    // every tour open made the wait grow with the tour. Not capped
+    // instead: a cap would drop the higher numbers, and the next print
+    // would repeat them.
+    const codes = [
+      await level(DRIVE_FS, 1),
+      await level(DRIVE_FS, 2),
+      await level(DRIVE_FS, 3),
+    ];
+    const pending: (() => void)[] = [];
+    const held = (text: string) =>
+      new Promise<string>((resolve) => {
+        pending.push(() => {
+          void qrCodeId(text).then(resolve);
+        });
+      });
+    const result = printedCodes(codes, held);
+    await Promise.resolve();
+    expect(pending).toHaveLength(3);
+    // Released last-first: the order is the codes', not the hashes'.
+    for (const release of [...pending].reverse()) release();
+    await expect(result).resolves.toEqual(
+      codes.map((c, i) => ({ id: c.id, link: DRIVE_FS, index: i + 1 })),
+    );
+  });
+
   it("ignores a text that is not its level's own, and one that is not a launch URL", async () => {
     const two = await level(DRIVE_FS, 2);
     const one = await level(DRIVE_FS, 1);

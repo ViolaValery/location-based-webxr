@@ -72,18 +72,16 @@ const RANGES_ARCHIVE = "http://127.0.0.1:5197/ranges-ok/tour.zip";
 
 /** The visitor's way in (DEC-N1): a `?qr=` launch, which opens the tour on
  *  boot and shows the visitor screen instead of the setup. */
-async function openAsVisitor(
-  page,
-  url,
-  imageCount = 8,
-  { debug = false } = {},
-) {
+async function openAsVisitor(page, url, { debug = false } = {}) {
   // `debug`: the technical status line (frames, votes, fixes) a visitor
   // reads only with ?debug=1 since UI round 1; tests of the pipeline's
   // internals read it there, the plain line has its own test.
   await page.goto(`/?qr=${encodeURIComponent(url)}${debug ? "&debug=1" : ""}`);
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(
-    imageCount,
+  // Open (follow-up F14): a visitor's page no longer fills its hidden
+  // gallery, so the count of its images is no readiness signal.
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
     { timeout: 15000 },
   );
 }
@@ -287,7 +285,7 @@ test("visitor mode boots to running: session started, alignment bound, capture a
 test("camera frames flow through the foundation and surface in the status line", async ({
   page,
 }) => {
-  await openAsVisitor(page, RANGES_ARCHIVE, 8, { debug: true });
+  await openAsVisitor(page, RANGES_ARCHIVE, { debug: true });
   await enterAr(page);
   await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
 
@@ -402,9 +400,13 @@ test("the creator measures the code, finishes, and downloads a rebuilt zip that 
   await page.goto("/");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   // F11: the AR controls belong to the AR session. With step 4 open but no
   // session running they must NOT be on the page - on a desktop they were a
   // row of greyed-out buttons under "AR not supported". The status line is
@@ -768,9 +770,13 @@ test("a first measurement of a code the tour does not store is minted into the r
   await page.goto("/");
   await page.getByTestId("link-input").fill(PLAIN_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await enterAr(page);
   await page.evaluate((text) => {
     /** @type {any} */ (window).__tourViewerTest.armQrDetection(text);
@@ -926,9 +932,13 @@ test("two new codes 20 m apart, measured in one visit, both reach the zip with o
   await page.goto("/");
   await page.getByTestId("link-input").fill(PLAIN_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await enterAr(page);
   await page.evaluate((text) => {
     /** @type {any} */ (window).__tourViewerTest.armQrDetection(text);
@@ -1046,9 +1056,13 @@ test("the creator's AR visit first asks for the tour's code, and stops asking on
   await page.goto("/");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await enterAr(page);
   await expect(page.getByTestId("setup-status")).toHaveText(
     /^First, point the camera at the code you scanned to open this tour\./,
@@ -1087,9 +1101,13 @@ test("a failed finish says so with priority and can be retried; the panel shows 
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await enterAr(page);
   await page.evaluate((text) => {
     /** @type {any} */ (window).__tourViewerTest.armQrDetection(text);
@@ -1161,7 +1179,7 @@ test("a recording-carrying tour places photos at CAPTURE SPOTS, not the ring", a
   // silent decline that still shows a ring is exactly the failure the
   // taxonomy exists to make visible.
   const ARCHIVE = "http://127.0.0.1:5197/ranges-ok/recording-tour.zip";
-  await openAsVisitor(page, ARCHIVE, 2, { debug: true });
+  await openAsVisitor(page, ARCHIVE, { debug: true });
 
   await enterAr(page);
   await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
@@ -1263,9 +1281,9 @@ test("a tour whose photo spots were baked at its Finish places them without any 
   // its photos' spots in tour.json and no walk at all, so the viewer must
   // place from the baked spots - never replay the walk the copy kept for
   // a co-author - and report the BAKED quality (7 fixes; the walk has
-  // none). Its gallery shows the 2 baked photos, not the unbaked third.
+  // none).
   const ARCHIVE = "http://127.0.0.1:5197/ranges-ok/baked-tour.zip";
-  await openAsVisitor(page, ARCHIVE, 2, { debug: true });
+  await openAsVisitor(page, ARCHIVE, { debug: true });
   await enterAr(page);
   await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
   await page.evaluate(() => {
@@ -1288,10 +1306,9 @@ test("a tour whose photo spots were baked at its Finish places them without any 
     )
     .toMatch(/2 photos at capture spots \(7 fixes/);
   await expect(page.getByTestId("ar-status")).not.toContainText("photo ring");
-  // Long after the gallery finished: still the two baked photos (the count
-  // checked on open could pass on its way to three).
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(2);
-  await expect(page.getByTestId("gallery")).not.toContainText("frame-2.png");
+  // A visitor's page decodes no photo for its hidden gallery at all
+  // (follow-up F14), so the walk's frame is not read either.
+  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(0);
 });
 
 /** Force the tracking-quality slice to `ok` (→ onboarding `ready`). The
@@ -1322,7 +1339,7 @@ test("a tour with no recording and no printed codes says so, instead of scanning
   // Why this matters (feedback F3): the reporter's zip could not carry a
   // code, and the old line promised one forever.
   const ARCHIVE = "http://127.0.0.1:5197/ranges-ok/plain-tour.zip";
-  await openAsVisitor(page, ARCHIVE, 8, { debug: true });
+  await openAsVisitor(page, ARCHIVE, { debug: true });
   await enterAr(page);
   await forceTrackingReady(page);
   await expect
@@ -1360,7 +1377,7 @@ test("the visitor's content and ring wait for the lock; the escape after its clo
   // and the ring follows the vote. A second visitor never locks: the clock
   // (fired by the fake, no frames needed) offers the escape, which places
   // by GPS and says so.
-  await openAsVisitor(page, RANGES_ARCHIVE, 8, { debug: true });
+  await openAsVisitor(page, RANGES_ARCHIVE, { debug: true });
   await enterAr(page);
   await seedAlignment(page);
   await forceTrackingReady(page);
@@ -1591,7 +1608,7 @@ test("without a QR detector the photos still land at capture spots (review #2)",
     seams.createQrFrontEnd = () => null;
   });
   const ARCHIVE = "http://127.0.0.1:5197/ranges-ok/recording-tour.zip";
-  await openAsVisitor(page, ARCHIVE, 2, { debug: true });
+  await openAsVisitor(page, ARCHIVE, { debug: true });
   await enterAr(page);
   await seedAlignment(page);
   await forceTrackingReady(page);
@@ -1612,7 +1629,7 @@ test("a re-entered session places the tour again once ITS tracking is ready (rev
   page,
 }) => {
   const ARCHIVE = "http://127.0.0.1:5197/ranges-ok/recording-tour.zip";
-  await openAsVisitor(page, ARCHIVE, 2, { debug: true });
+  await openAsVisitor(page, ARCHIVE, { debug: true });
   for (const entry of [1, 2]) {
     await enterAr(page);
     await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
@@ -1668,7 +1685,7 @@ test("viewer mode relocalizes against the tour's level: budgeted votes, marker, 
       refusedAdds.push(message.text());
     }
   });
-  await openAsVisitor(page, ARCHIVE, 8, { debug: true });
+  await openAsVisitor(page, ARCHIVE, { debug: true });
 
   await enterAr(page);
   await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
@@ -1878,9 +1895,13 @@ test("opening a tour shows the code and the link it carries, without asking agai
   await expect(page.getByTestId("print-url")).toBeHidden();
   await page.getByTestId("link-input").fill(ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   // F7: shown, not asked for.
   await expect(page.getByTestId("print-url-shown")).toHaveText(ARCHIVE);
   await expect(page.getByTestId("print-url-ask")).toBeHidden();
@@ -1984,9 +2005,13 @@ test("a refused AR entry explains itself on the page, with no session to explain
   await page.goto("/");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   // Clearing the size is the real way in: the field ships with a default,
   // and `min` never fires outside a form submit. It sits in the closed
   // "Settings" block (r820 feedback R7), which is closed again afterwards:
@@ -2137,9 +2162,13 @@ test("the print step builds a real PDF of numbered codes", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await page.getByTestId("print-count").fill("3");
   await page.getByTestId("print-pdf").click();
   await expect(page.getByTestId("print-info")).toContainText(/saved/i, {
@@ -2224,9 +2253,13 @@ test("a failed open puts the page back to having no tour, not to showing the old
   await page.goto("/");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await expect(page.getByTestId("print-url-shown")).toHaveText(RANGES_ARCHIVE);
   await expect(page.getByTestId("print-url-ask")).toBeHidden();
 
@@ -2268,9 +2301,13 @@ test("the PDF button shows it is working, says when nothing was saved, and conti
   await page.goto("/");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
 
   // The dismissed-picker path first (the async-UI rule's failure branch).
   // The save is HELD open rather than raced: eight QR encodes finish in a
@@ -2372,9 +2409,13 @@ test("a crash does not lose the walk: placed content survives a reload and lands
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await measureTheCode(page);
   await page.getByTestId("setup-pin").click();
   await page.getByTestId("pin-label").fill("The old gate");
@@ -2387,9 +2428,13 @@ test("a crash does not lose the walk: placed content survives a reload and lands
   await page.reload();
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
 
   // OFFERED, not applied: a draft can be days old and can be one the
   // creator believes they discarded. Silent restoration would append
@@ -2431,9 +2476,13 @@ test("Done says Saving… while the zip is written, and a tap on it then leaves 
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await measureTheCode(page);
   await page.getByTestId("setup-pin").click();
   await page.getByTestId("pin-label").fill("Saved later");
@@ -2472,9 +2521,13 @@ test("Done on a visit that only measured the stored code leaves AR without writi
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await measureTheCode(page);
   await expect(page.getByTestId("setup-status")).toContainText(
     /Saved position kept/,
@@ -2502,9 +2555,13 @@ test("a session that ends without a Finish keeps the work: the pin is still list
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await measureTheCode(page);
   await page.getByTestId("setup-pin").click();
   await page.getByTestId("pin-label").fill("Kept by the exit");
@@ -2539,9 +2596,13 @@ test("a session that ends without a Finish keeps the work: the pin is still list
   // The open has to finish first: it opens the remembered step itself, and
   // a summary tap that lands after the helper read the step as closed then
   // closes it again (red three times in a row on CI, PR #580).
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await openMeasureStep(page);
   await expect(page.getByTestId("draft-offer")).toBeVisible({ timeout: 15000 });
   await expect(page.getByTestId("draft-offer-text")).toContainText("1 thing");
@@ -2558,9 +2619,13 @@ test("a draft is offered again after Not now, and gone after Delete it", async (
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await measureTheCode(page);
   await page.getByTestId("setup-pin").click();
   await page.getByTestId("pin-label").fill("A pin to abandon");
@@ -2573,9 +2638,13 @@ test("a draft is offered again after Not now, and gone after Delete it", async (
     await page.reload();
     await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
     await page.getByTestId("open-button").click();
-    await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-      timeout: 15000,
-    });
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-tour-open",
+      "settled",
+      {
+        timeout: 15000,
+      },
+    );
     await openMeasureStep(page);
   };
 
@@ -2656,9 +2725,13 @@ test("placing after Delete it is still saved: a discard ends the draft, not the 
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await measureTheCode(page);
   await page.getByTestId("setup-pin").click();
   await page.getByTestId("pin-label").fill("From the first session");
@@ -2673,9 +2746,13 @@ test("placing after Delete it is still saved: a discard ends the draft, not the 
   await page.reload();
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await openMeasureStep(page);
   await expect(page.getByTestId("draft-offer")).toBeVisible({ timeout: 15000 });
   await measureTheCode(page);
@@ -2694,9 +2771,13 @@ test("placing after Delete it is still saved: a discard ends the draft, not the 
   await page.reload();
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await openMeasureStep(page);
   await expect(page.getByTestId("draft-offer")).toBeVisible({ timeout: 15000 });
   // The visibility alone does NOT isolate the pin: `draftIsSpent` is false
@@ -2732,9 +2813,13 @@ test("a pin placed BEFORE Delete it survives too: the discard rejects the old dr
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await measureTheCode(page);
   await page.getByTestId("setup-pin").click();
   await page.getByTestId("pin-label").fill("From the first session");
@@ -2747,9 +2832,13 @@ test("a pin placed BEFORE Delete it survives too: the discard rejects the old dr
   await page.reload();
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await openMeasureStep(page);
   await expect(page.getByTestId("draft-offer")).toBeVisible({ timeout: 15000 });
   await measureTheCode(page);
@@ -2827,9 +2916,13 @@ test("a pin placed BEFORE Delete it survives too: the discard rejects the old dr
   await page.reload();
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await openMeasureStep(page);
   await expect(page.getByTestId("draft-offer")).toBeVisible({ timeout: 15000 });
   await expect(page.getByTestId("draft-offer-text")).toContainText(
@@ -2857,9 +2950,13 @@ test("a draft accumulates ACROSS finishes: both batches land in the zip", async 
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await measureTheCode(page);
 
   // Batch one.
@@ -2888,9 +2985,13 @@ test("a draft accumulates ACROSS finishes: both batches land in the zip", async 
   await page.reload();
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await expect(page.getByTestId("draft-offer")).toBeVisible({ timeout: 15000 });
   // BOTH batches are still on offer - the hosted zip has neither.
   await expect(page.getByTestId("draft-offer-text")).toContainText("2 things");
@@ -2935,17 +3036,25 @@ test("a measurement alone survives a crash - the draft is not deleted for having
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(PLAIN_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await measureTheCode(page);
   // Nothing placed. The crash.
   await page.reload();
   await page.getByTestId("link-input").fill(PLAIN_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
 
   await expect(page.getByTestId("draft-offer")).toBeVisible({ timeout: 15000 });
   await expect(page.getByTestId("draft-offer-text")).toContainText(
@@ -2972,9 +3081,13 @@ test("the draft offer reveals step 4 rather than hiding inside it", async ({
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await measureTheCode(page);
   await page.getByTestId("setup-pin").click();
   await page.getByTestId("pin-label").fill("Somewhere");
@@ -2995,9 +3108,13 @@ test("the draft offer reveals step 4 rather than hiding inside it", async ({
   });
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   // The wizard put the creator on step 2, so step 4 is closed...
   await expect(page.getByTestId("print-panel")).toHaveAttribute("open", "");
   // ...and the offer is visible anyway, without any help from the test.
@@ -3071,9 +3188,13 @@ async function measureAndFinish(page, url) {
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(url);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await measureTheCode(page);
   // Something to write: Done on a visit that changed nothing just leaves
   // (polish round M3 review #4).
@@ -3181,9 +3302,13 @@ test("an opted-in authoring session is recorded across the finish and saved as i
   await page.goto("/?nocache=1&debug=1");
   await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await openMeasureStep(page);
   // Nothing is recorded behind the creator's back: no marker, no Save.
   await expect(page.getByTestId("recording-marker")).toBeHidden();
@@ -3441,14 +3566,18 @@ test("a visitor records only with ?debug=1 and the switch: the scan lock, its vo
   // which votes, and what the ring was placed around - tagged tour-viewing
   // for the Recorder's replay.
   const ARCHIVE = "http://127.0.0.1:5197/ranges-ok/tour.zip";
-  await openAsVisitor(page, ARCHIVE, 8);
+  await openAsVisitor(page, ARCHIVE);
   await expect(page.getByTestId("recording-block")).toBeHidden();
   await expect(page.getByTestId("record-session")).toBeHidden();
 
   await page.goto(`/?qr=${encodeURIComponent(ARCHIVE)}&debug=1`);
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await expect(page.getByTestId("record-session")).toBeVisible();
   await expect(page.getByTestId("recording-privacy")).toHaveText(
     "The recording holds the tour link, your GPS track and the 3D shape of the surroundings.",
@@ -3570,7 +3699,7 @@ test("a code hung far from its saved spot is ignored after a minute of walking: 
   const degPerMLat = 8.9832e-6;
   const degPerMLon = 1.32966e-5; // at lat 47.5
   const CODE = { n: 11, e: 50 };
-  await openAsVisitor(page, RANGES_ARCHIVE, 8, { debug: true });
+  await openAsVisitor(page, RANGES_ARCHIVE, { debug: true });
   await enterAr(page);
   await expect(page.getByTestId("enter-ar")).toHaveText("Exit AR");
   const t0 = Date.now();

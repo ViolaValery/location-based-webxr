@@ -1,5 +1,33 @@
 # Changelog
 
+## [Unreleased]
+
+## [1.28.0] - 2026-10-14
+
+### Added
+
+- **`OccluderSinkHandle.triangleCount()`** (`visualization/occluder-sink`):
+  the mesh's triangle count, 0 once disposed, for a readout (Tour Viewer
+  follow-up F17). A required member: a handle built by hand (a test fake)
+  needs it too.
+
+### Fixed
+
+- **An occluder mesh result from before `clear()` is dropped**
+  (`visualization/occluder-sink`): a worker result requested before a clear
+  (a tracking restart) arrived after it and put the old mesh back, so a
+  raycast against the mesh could pick a surface from before the restart
+  (Tour Viewer PR #609 review).
+- **`downloadBlob` and `syncToExternalZip` abort a failed write**
+  (`storage/zip-export`): both wrote through the save picker or the external
+  handle without `abort()`, so a failed write left the writable open, holding
+  the lock and the temporary file. They use `writeFileOrAbort`
+  (Tour Viewer M6 E2 plan review #7).
+- **`copyWithFeedback` never rejects** (`utils/copy-with-feedback`): a
+  hook that throws is logged as a warning and the copy's outcome stands.
+  1.27.0 rejected then, and its call sites discard the promise, so the
+  throw was an unhandled rejection (Tour Viewer follow-up F17).
+
 ## [1.27.0] - 2026-10-13
 
 ### Changed

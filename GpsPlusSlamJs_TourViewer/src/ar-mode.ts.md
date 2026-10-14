@@ -46,6 +46,11 @@ identical here — they diverge in M3/M4.
   here, and the tracking-quality phase the placement trigger reads is
   derived from those dispatches. The viewer had mounted that slice since its
   creation and never fed it (the recorder's 2026-05-23 lesson, re-learned).
+  The optional `onTrackingRestarted()` becomes `callbacks.tracking.onRestarted`
+  (follow-up F11): the framework calls it when WebXR reset its origin after
+  a tracking loss. It only TELLS - the restart is not dispatched to the
+  solver, which is the open decision of
+  `../docs/2026-10-02-1929-viewer-odometry-restart-not-dispatched-followup.md`.
 - `startTourArRuntime(store, deps): { ok: true } | { ok: false; error }` —
   deps: `{ getArWorldGroup, enableArWorldGroupAlignment,
 startCameraFrameCapture, now }` (seam-injected).

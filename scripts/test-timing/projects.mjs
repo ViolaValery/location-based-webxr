@@ -102,7 +102,7 @@ const BUILD_OSM_STAGE = Object.freeze({
 // command match. `--no-error-on-unmatched-pattern` keeps it a no-op for the
 // packages that have no `scripts/` directory.
 const APP_FORMAT_COMMAND =
-  'prettier --log-level warn --write --cache --cache-strategy content --ignore-unknown --no-error-on-unmatched-pattern "src" "config" "playwright-tests" "scripts" index.html README.md package.json';
+  'prettier --log-level warn --write --cache --cache-strategy content --ignore-unknown --no-error-on-unmatched-pattern "src" "config" "playwright-tests" "scripts" "*.html" README.md package.json';
 
 /**
  * The stage set shared verbatim by the four uniform demo apps (AnchorStarter,

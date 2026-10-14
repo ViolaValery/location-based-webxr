@@ -56,9 +56,13 @@ for (const viewport of PHONES) {
     await page.goto("/?debug=1");
     await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
     await page.getByTestId("open-button").click();
-    await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-      timeout: 15000,
-    });
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-tour-open",
+      "settled",
+      {
+        timeout: 15000,
+      },
+    );
     const step = page.getByTestId("step-measure");
     if (!(await step.evaluate((el) => /** @type {any} */ (el).open))) {
       await page.getByTestId("station-measure").click();
@@ -146,9 +150,13 @@ for (const viewport of PHONES) {
     await page.goto("/?debug=1");
     await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
     await page.getByTestId("open-button").click();
-    await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-      timeout: 15000,
-    });
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-tour-open",
+      "settled",
+      {
+        timeout: 15000,
+      },
+    );
     const step = page.getByTestId("step-measure");
     if (!(await step.evaluate((el) => /** @type {any} */ (el).open))) {
       await page.getByTestId("station-measure").click();
@@ -221,9 +229,13 @@ for (const viewport of [
     await page.goto("/");
     await page.getByTestId("link-input").fill(RANGES_ARCHIVE);
     await page.getByTestId("open-button").click();
-    await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-      timeout: 15000,
-    });
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-tour-open",
+      "settled",
+      {
+        timeout: 15000,
+      },
+    );
     if (
       !(await page
         .getByTestId("step-measure")

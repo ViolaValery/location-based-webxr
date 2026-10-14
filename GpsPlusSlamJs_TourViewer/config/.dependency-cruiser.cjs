@@ -21,5 +21,17 @@ module.exports = {
       from: {},
       to: { circular: true },
     },
+
+    // The desktop editor (`src/editor/`, its own page) imports Leaflet
+    // statically; the visitor page must never reach it, or every visitor
+    // downloads the map library. `summary-map-lazy.test.ts` scans only the
+    // top level of `src/`, so this rule closes the gap (M6 E1 plan review
+    // #5).
+    {
+      name: "viewer-not-to-editor",
+      severity: "error",
+      from: { path: "^src/[^/]+\\.ts$", pathNot: "\\.test\\.ts$" },
+      to: { path: "^src/editor/" },
+    },
   ],
 };

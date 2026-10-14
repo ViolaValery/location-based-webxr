@@ -28,6 +28,9 @@ export default defineConfig({
         // (`write-probe.html.md`). An entry so that it is built and therefore
         // reachable on a deployed branch preview; nothing imports it.
         writeProbe: fileURLToPath(new URL("write-probe.html", import.meta.url)),
+        // The desktop editor (M6 E1, `edit.html.md`): its own page, linked
+        // from nothing until the phone's draft gives way to its edits (E2p).
+        edit: fileURLToPath(new URL("edit.html", import.meta.url)),
       },
     },
   },

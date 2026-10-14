@@ -130,7 +130,10 @@ never needs to know about them.
 2. File paths in ZIP match OPFS paths (relative to session root)
 3. Binary data (frames) is preserved exactly
 4. Download uses `showSaveFilePicker` when available, falls back to `<a download>`
-5. `syncToExternalZip` writes to external file handle via `createWritable()`
+5. `syncToExternalZip` writes to the external file handle through
+   `writeFileOrAbort` (a failed write is aborted, so the last good ZIP stays);
+   so does `downloadBlob`'s save-picker path (Tour Viewer M6 E2 plan review
+   #7, DEC-A3: both were hand-rolled without `abort()`).
 6. Files are streamed one at a time into the ZipWriter (not accumulated in memory first). This keeps peak memory proportional to a single file, avoiding OOM on large recordings with many frames.
 7. App-specific subdirs are appended via the `ZipExportContributor` seam after the framework-owned files; each contributor is confined to its declared subdir.
 

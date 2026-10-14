@@ -41,6 +41,8 @@ async function openArchive(page, url) {
   await page.getByTestId("open-button").click();
 }
 
+// Every page here opens with ?debug=1: the gallery this spec watches
+// stream in is filled only while it is shown (follow-up F14).
 async function expectGalleryStreamedIn(page) {
   const images = page.getByTestId("gallery").locator("img");
   await expect(images).toHaveCount(8, { timeout: 15000 });
@@ -51,7 +53,7 @@ async function expectGalleryStreamedIn(page) {
 
 /** Cache API state is per browser context, but start each test clean anyway. */
 test.beforeEach(async ({ page }) => {
-  await page.goto("/?nocache=1");
+  await page.goto("/?nocache=1&debug=1");
   await page.evaluate(async () => {
     for (const key of await caches.keys()) await caches.delete(key);
   });
@@ -64,7 +66,7 @@ test("streams the gallery from range requests without downloading the whole arch
   const res = await request.get(RANGES_URL);
   const totalSize = Buffer.byteLength(await res.body());
 
-  await page.goto("/?nocache=1");
+  await page.goto("/?nocache=1&debug=1");
   const tally = trackArchiveTraffic(page, RANGES_URL);
   await openArchive(page, RANGES_URL);
   await expectGalleryStreamedIn(page);
@@ -78,7 +80,7 @@ test("streams the gallery from range requests without downloading the whole arch
 test("falls back to a full download when the host ignores Range, and still renders", async ({
   page,
 }) => {
-  await page.goto("/?nocache=1");
+  await page.goto("/?nocache=1&debug=1");
   await openArchive(page, NO_RANGES_URL);
   await expectGalleryStreamedIn(page);
 });
@@ -86,7 +88,7 @@ test("falls back to a full download when the host ignores Range, and still rende
 test("second visit serves from the cache: no archive GETs, only revalidation", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?debug=1");
   await openArchive(page, RANGES_URL);
   await expectGalleryStreamedIn(page);
   // Wait until the background warm download has persisted the copy.
@@ -104,7 +106,7 @@ test("second visit serves from the cache: no archive GETs, only revalidation", a
     )
     .toBe(true);
 
-  await page.goto("/");
+  await page.goto("/?debug=1");
   const tally = trackArchiveTraffic(page, RANGES_URL);
   await openArchive(page, RANGES_URL);
   await expectGalleryStreamedIn(page);
@@ -124,7 +126,7 @@ test("an overwritten archive (changed ETag) is evicted and refetched, not served
   const FLIPPABLE_URL = `${ARCHIVE_HOST}/flippable/tour.zip`;
   await request.get(`${ARCHIVE_HOST}/flip?etag=v1`);
   try {
-    await page.goto("/");
+    await page.goto("/?debug=1");
     await openArchive(page, FLIPPABLE_URL);
     await expectGalleryStreamedIn(page);
     await expect
@@ -144,7 +146,7 @@ test("an overwritten archive (changed ETag) is evicted and refetched, not served
     // The "author" overwrites the archive: same URL, new ETag.
     await request.get(`${ARCHIVE_HOST}/flip?etag=v2`);
 
-    await page.goto("/");
+    await page.goto("/?debug=1");
     const tally = trackArchiveTraffic(page, FLIPPABLE_URL);
     const heads = [];
     page.on("response", (response) => {
@@ -178,7 +180,7 @@ test("an overwritten archive (changed ETag) is evicted and refetched, not served
 test("clear cache empties the store and the next open goes to the network again", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?debug=1");
   await openArchive(page, RANGES_URL);
   await expectGalleryStreamedIn(page);
 
@@ -195,7 +197,7 @@ test("clear cache empties the store and the next open goes to the network again"
     timeout: 5000,
   });
 
-  await page.goto("/");
+  await page.goto("/?debug=1");
   const tally = trackArchiveTraffic(page, RANGES_URL);
   await openArchive(page, RANGES_URL);
   await expectGalleryStreamedIn(page);
@@ -208,9 +210,9 @@ test("without a cache store the Storage section is hidden, not just its button",
   // Why this matters (flows plan review #14): the section's sentence
   // explains a cache; under ?nocache=1 that sentence would describe a
   // feature that is off.
-  await page.goto("/?nocache=1");
+  await page.goto("/?nocache=1&debug=1");
   await expect(page.getByTestId("storage-panel")).toBeHidden();
-  await page.goto("/");
+  await page.goto("/?debug=1");
   await expect(page.getByTestId("storage-panel")).toBeVisible();
 });
 
@@ -230,7 +232,7 @@ test("clear cache during an in-flight warm download settles at once, and the sto
   const SLOW_WARM_URL = `${ARCHIVE_HOST}/slow-warm/tour.zip`;
   await request.get(`${ARCHIVE_HOST}/warm-gate?state=hold`);
   try {
-    await page.goto("/");
+    await page.goto("/?debug=1");
     await openArchive(page, SLOW_WARM_URL);
     await expectGalleryStreamedIn(page); // ranges flow; the warm GET is held
 
@@ -250,7 +252,7 @@ test("clear cache during an in-flight warm download settles at once, and the sto
 
     // Durably empty: the next visit must hit the network again — a
     // repopulated store would serve it with zero GETs.
-    await page.goto("/");
+    await page.goto("/?debug=1");
     const tally = trackArchiveTraffic(page, SLOW_WARM_URL);
     await openArchive(page, SLOW_WARM_URL);
     await expectGalleryStreamedIn(page);

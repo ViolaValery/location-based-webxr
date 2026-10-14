@@ -22,9 +22,10 @@ variables in every teardown path" pattern that produced several leak-class revie
   `createOccluderMeshWorker(() => new Worker(new URL(...)))`, because the worker file's URL
   resolves against the app's source) and an optional `createMesh` (tests).
 - `OccluderMeshWorker` — `{ driver, dispose() }`, what `createWorker` returns.
-- `OccluderSinkHandle` — `{ sink, mesh(), dispose() }`. `mesh()` is the depth-only
+- `OccluderSinkHandle` — `{ sink, mesh(), triangleCount(), dispose() }`. `mesh()` is the depth-only
   mesh, for a raycast (the Tour Viewer's mesh cursor; `colorWrite: false` does not stop the
-  raycaster). `dispose()` releases worker + mesh and turns
+  raycaster). `triangleCount()` is the mesh's own count (0 once disposed), for a readout.
+  `dispose()` releases worker + mesh and turns
   the sink callbacks into no-ops; **idempotent**, safe from any teardown path.
 - `OccluderSink` — `{ refresh(grid, pose?), clear() }`, the shape
   `wireOccupancyGridSubscribers`' `occluder` option drives.
@@ -81,7 +82,9 @@ The Tour Viewer's mesh cursor passes `occlude: false` and casts against `handle.
 - `occluder-sink.test.ts` - construction knobs (mode/debug style/parent, `occlude: false`
   hides the mesh), unbounded vs windowed snapshot selection, non-finite-pose degradation,
   geometry application + clear, and the dispose contract (idempotent; post-dispose
-  refresh/clear/late-response no-ops).
+  refresh/clear/late-response no-ops). A worker result requested before a
+  `clear()` is dropped when it arrives (a tracking restart must not put the
+  old mesh back, PR #609 review); one requested after is applied.
 - The RecorderApp's live/replay integration stays covered by its
   `main.occupancy-cubes-wiring.test.ts`, which mocks only the app's worker client
   (`./visualization/occluder-mesh-worker-client`); the framework mesh and this factory run

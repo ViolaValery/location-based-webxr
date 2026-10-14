@@ -213,9 +213,13 @@ test("a map that cannot load says so, and the verdict stays", async ({
 test("a visitor's page never loads Leaflet", async ({ page }) => {
   const urls = await watchRequests(page);
   await page.goto(`/?qr=${encodeURIComponent(E2E_QR_ARCHIVE)}`);
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   const enter = page.getByTestId("enter-ar");
   await expect(enter).toBeEnabled({ timeout: 10000 });
   await enter.click();

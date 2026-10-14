@@ -33,7 +33,10 @@ printed in.
   (`level-printed.ts`), read back into `{ id, link, index }` through the
   boot's own parse (`code-tour.ts` `launchPayload`, the framework's
   `resolveQrPayload`; no `n` is number 1). A text counts only when its
-  hash is its level's id; one that is not a launch URL is skipped.
+  hash is its level's id; one that is not a launch URL is skipped. The
+  codes are hashed and decoded concurrently, the result in the levels'
+  order, and never capped: a code left out would be a number the next
+  print repeats (PR #600 review, F17).
 - `spellingOfRecord(url, measuredIds, idOf, limit, printed?)` - the
   stored texts decide first: among those naming this tour (the same Drive
   file in any spelling, else the same link), the spelling with the most

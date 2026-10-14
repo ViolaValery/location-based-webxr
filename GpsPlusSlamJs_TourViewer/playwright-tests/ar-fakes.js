@@ -514,6 +514,7 @@ export async function installTourViewerArFakes(page, options = {}) {
           return {
             pick: () => null,
             stats: () => ({ frame: null, triangles: 0 }),
+            reset: () => undefined,
             dispose: () => {
               test.meshSurfaceDisposals += 1;
             },
@@ -541,9 +542,13 @@ export async function openFixtureTour(page) {
   await page.goto("/?nocache=1");
   await page.getByTestId("link-input").fill(E2E_QR_ARCHIVE);
   await page.getByTestId("open-button").click();
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   const step = page.getByTestId("step-measure");
   if (!(await step.evaluate((el) => /** @type {any} */ (el).open))) {
     // The card shows one step; step 5's station dot opens it (M2b).

@@ -30,11 +30,15 @@ import {
   photoKey,
   readDraft,
   removeDraftObject,
+  addDraftBaseKey,
+  parseDraftBase,
+  writeDraftEdit,
   writeDraftDeletion,
   writeDraftMeta,
   writeDraftObject,
 } from "./draft-persistence.js";
 import type { VisitLogEntry } from "./visit-log.js";
+import { objectContentKey } from "./authoring-draft.js";
 
 /** An in-memory store with the same contract as the OPFS one. */
 function memoryStore(): DraftFileStore & { files: Map<string, Blob | string> } {
@@ -673,5 +677,130 @@ describe("a draft written before format version 2 (tour kit plan K1, §8 D7)", (
     );
     expect(finished).toMatchObject({ version: 1 });
     expect(parseTourManifest(finished).objects).toEqual(stored?.draft.objects);
+  });
+});
+
+describe("the bases of a draft's objects (M6 E2p)", () => {
+  // Why: a base says which hosted version the phone's record started from
+  // (or reached), so a newer edit elsewhere wins over it; it must survive
+  // a reload, go with its object, and be absent - not empty - in a draft
+  // from before E2p, which then behaves as before.
+  it("round-trips a base beside its object, and drops it with the object", async () => {
+    const store = memoryStore();
+    await writeDraftMeta(store, META);
+    await writeDraftObject(store, pin("a"));
+    expect(await addDraftBaseKey(store, "a", "seen", "the-hosted-key")).toBe(
+      true,
+    );
+    expect(await addDraftBaseKey(store, "a", "written", "a-finish-key")).toBe(
+      true,
+    );
+    const read = await readDraft(store);
+    expect(read?.draft.bases?.get("a")).toEqual({
+      seen: ["the-hosted-key"],
+      written: ["a-finish-key"],
+    });
+    await removeDraftObject(store, "a");
+    expect([...store.files.keys()].some((k) => k.endsWith(":a"))).toBe(false);
+  });
+
+  it("has no bases at all in a draft from before E2p", async () => {
+    const store = memoryStore();
+    await writeDraftMeta(store, META);
+    await writeDraftObject(store, pin("a"));
+    expect((await readDraft(store))?.draft.bases).toBeUndefined();
+  });
+});
+
+describe("writeDraftEdit (M6 E2p)", () => {
+  // Why: every write of an object adds the version the page opened as
+  // seen; the list only grows, so two edits in one load or across loads
+  // can never forget a version this device knew (re-review #1, #2).
+  it("adds the given seen version, keeps the earlier ones, and adds none on undefined", async () => {
+    const store = memoryStore();
+    await writeDraftMeta(store, META);
+    const hosted = pin("a");
+    const later = { ...hosted, label: "a later version" };
+    await writeDraftEdit(
+      store,
+      { ...hosted, label: "one" },
+      undefined,
+      objectContentKey(hosted),
+    );
+    await writeDraftEdit(
+      store,
+      { ...hosted, label: "two" },
+      undefined,
+      objectContentKey(later),
+    );
+    await writeDraftEdit(
+      store,
+      { ...hosted, label: "three" },
+      undefined,
+      undefined,
+    );
+    const read = await readDraft(store);
+    expect(read?.draft.bases?.get("a")?.seen).toEqual([
+      objectContentKey(hosted),
+      objectContentKey(later),
+    ]);
+    expect(read?.draft.objects[0]).toMatchObject({ label: "three" });
+    await writeDraftEdit(store, pin("new"), undefined, undefined);
+    expect((await readDraft(store))?.draft.bases?.has("new")).toBe(false);
+  });
+
+  // Why (review #6): the result is the record's write. A base that did not
+  // land must not report the edit itself as lost.
+  it("reports the record's write, not the base's", async () => {
+    const inner = memoryStore();
+    const store: DraftFileStore = {
+      ...inner,
+      put: (key, data) =>
+        key.startsWith("base:") ? Promise.resolve(false) : inner.put(key, data),
+    };
+    await writeDraftMeta(store, META);
+    expect(await writeDraftEdit(store, pin("a"), undefined, "k")).toBe(true);
+  });
+});
+
+describe("addDraftBaseKey (M6 E2p, third review #2)", () => {
+  // Why: an older base left beside a newer record can call this device's
+  // own work "replaced" and remove it; a base that could not be updated is
+  // removed instead, and no base is never superseded.
+  it("removes the base when its update does not land", async () => {
+    const inner = memoryStore();
+    await writeDraftMeta(inner, META);
+    await addDraftBaseKey(inner, "a", "seen", "v0");
+    const store: DraftFileStore = {
+      ...inner,
+      put: (key, data) =>
+        key.startsWith("base:") ? Promise.resolve(false) : inner.put(key, data),
+    };
+    expect(await addDraftBaseKey(store, "a", "seen", "v1")).toBe(false);
+    expect(inner.files.has("base:a")).toBe(false);
+  });
+});
+
+describe("parseDraftBase (M6 E2p)", () => {
+  // Why: a base that does not read must behave as NO base - never
+  // superseded - so a damaged file can only offer too much, never drop
+  // the creator's work.
+  it("reads a base and refuses everything else", () => {
+    expect(parseDraftBase('{"seen":["k"],"written":[]}')).toEqual({
+      seen: ["k"],
+      written: [],
+    });
+    for (const bad of [
+      undefined,
+      "",
+      "not json",
+      "null",
+      '"k"',
+      '{"seen":"k","written":[]}',
+      '{"seen":[1],"written":[]}',
+      '{"seen":[],"written":[]}',
+    ]) {
+      expect(parseDraftBase(bad)).toBeUndefined();
+    }
   });
 });

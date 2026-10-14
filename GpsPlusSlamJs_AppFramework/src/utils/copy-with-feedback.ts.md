@@ -12,9 +12,9 @@ the button usable again in every case.
 - `copyWithFeedback(button, text, write, labels) → Promise<boolean>` -
   `write` is normally `navigator.clipboard.writeText` (undefined where the
   page has none); `labels` is `{ busy, done, failed, onDone?, onFailed? }`.
-  Resolves `true` when copied, `false` otherwise. A failed write never
-  rejects it; a hook that throws does (the button is enabled again either
-  way), so the hooks stay plain assignments.
+  Resolves `true` when copied, `false` otherwise, and NEVER rejects: a
+  hook that throws is logged as a warning (`[Copy]`) and the copy's outcome
+  stands, because the call sites discard the promise (PR #600 review, F17).
 - `CopyButton` - `{ disabled, textContent }`, structural so unit tests pass
   a plain object.
 - `CopyFeedback` - the labels and the two hooks.
@@ -50,7 +50,8 @@ void copyWithFeedback(button, location.href, seams.copyText, {
 ## Tests
 
 `copy-with-feedback.test.ts`: busy then done; a rejecting write; a write
-that throws at once; no write at all; the done hook after its label; and a
+that throws at once; no write at all; the done hook after its label; a
+throwing hook that does not reject the promise; and a
 property that every kind of write ends enabled on one of the two outcome
 labels.
 

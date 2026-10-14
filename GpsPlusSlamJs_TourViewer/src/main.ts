@@ -20,6 +20,11 @@ import {
 } from "gps-plus-slam-app-framework/state";
 import { debugUiEnabledFromSearch } from "gps-plus-slam-app-framework/utils/debug-flag";
 import {
+  createTapCounter,
+  wantsRecording,
+  withRecordingFlags,
+} from "./recording-switch.js";
+import {
   BoundedLocalCacheStore,
   CacheApiStore,
   packFilesAsZip,
@@ -477,6 +482,12 @@ if (mode === "creator") {
 const setup = wireCreatorSetup({
   ctx,
   mode,
+  // A code measured or restored from a draft after the open: the print
+  // step continues the numbering past it (follow-up F16). Through the
+  // hook, which the print panel fills in once it is wired.
+  onCodesChanged: () => {
+    hooks.presentTourCodes();
+  },
   renderArEntry: () => {
     hooks.renderArEntry();
   },
@@ -575,6 +586,22 @@ hooks.presentDraftForTour = setup.presentDraftForTour;
 // polish round M3, Q-Data); wired before the AR entry that asks them at
 // each entry. One save at a time across the block: "Save the recording"
 // and the offer share a guard.
+// The visitor's hidden switch (QR-first plan M1c): five taps on the tour's
+// name within three seconds reload the page with the debug readout and the
+// recording asked for - a field test after a scan with any QR app.
+if (mode === "visitor") {
+  const tap = createTapCounter({
+    taps: 5,
+    windowMs: 3000,
+    now: () => Date.now(),
+  });
+  element("visitor-title").addEventListener("click", () => {
+    if (!tap()) return;
+    const next = withRecordingFlags(location.href);
+    if (next !== location.href) location.replace(next);
+  });
+}
+
 const recordingSaveGuard = createSaveGuard();
 const recordingPanel = recordingControls
   ? wireRecordingPanel({
@@ -609,6 +636,13 @@ const recordingPanel = recordingControls
     })
   : null;
 if (recordingPanel !== null) {
+  // Opened through the hidden switch (`record=1`, QR-first plan M1c): the
+  // box starts ticked, as if the visitor had ticked it.
+  if (wantsRecording(location.search, debug)) {
+    const optIn = element<HTMLInputElement>("record-session");
+    optIn.checked = true;
+    optIn.dispatchEvent(new Event("change"));
+  }
   arController.subscribe(() => {
     recordingPanel.render();
   });
@@ -802,6 +836,7 @@ const archive = wireArchiveOpen({
     errorBox,
     linkStatus: element("link-status"),
     gallery: element("gallery"),
+    readiness: document.body,
     storagePanel: element("storage-panel"),
     clearCacheButton: element("clear-cache"),
   },

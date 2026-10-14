@@ -187,6 +187,11 @@ export interface ArEnableHooks {
    *  (decision D4): requests the depth feature and receives its samples.
    *  Absent, depth stays off as for every other entry. */
   onDepthSample?: (sample: DepthSample) => void;
+  /** WebXR reset its origin after a tracking loss: raw-WebXR geometry
+   *  (the mesh cursor's grid) is in a frame that no longer exists
+   *  (follow-up F11). Only told; the restart is not dispatched to the
+   *  solver (the 2026-10-02 follow-up's decision). */
+  onTrackingRestarted?: () => void;
 }
 
 /**
@@ -205,7 +210,16 @@ export function buildArEnableConfig(hooks: ArEnableHooks): EnableGpsArConfig {
     // The framework's own poseReceived/poseLost dispatch path (the recorder
     // learned on 2026-05-23 that a store not handed in here never leaves
     // `initializing`; the viewer re-learned it in the flows plan review).
-    tracking: { store: hooks.trackingStore },
+    tracking: {
+      store: hooks.trackingStore,
+      ...(hooks.onTrackingRestarted === undefined
+        ? {}
+        : {
+            onRestarted: () => {
+              hooks.onTrackingRestarted?.();
+            },
+          }),
+    },
     onSessionEnd: () => {
       hooks.onSessionEnd();
     },

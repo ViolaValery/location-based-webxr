@@ -67,7 +67,7 @@ entirely after confirming they were only transitively pulled in.
     `dist/*.d.ts`, which do.
   - **Both ways of "obeying" it fail, and both were tried:**
     - remove the ignore only → CI fails with `Unused dependencies (1): redux`;
-    - remove the ignore *and* the dependency → knip then reports `redux` as an
+    - remove the ignore _and_ the dependency → knip then reports `redux` as an
       **unlisted** import in three `dist/*.d.ts` files, i.e. the emitted types
       no longer resolve for a consumer.
   - It also does not reproduce locally while the `link:` override is active,
@@ -112,6 +112,11 @@ entirely after confirming they were only transitively pulled in.
   makes that import 404 and the smoke fail at once, so the ignore hides
   nothing; it is an exact string, so a second such import must be added on
   purpose. Found by the root dead-code check before the r759 publish.
+- **GpsPlusSlamJs_TourViewer** - `src/editor/edit-main.ts` is an entry:
+  knip follows `index.html` to `src/main.ts` but not the second Vite input,
+  `edit.html` (the desktop editor, M6 E1), so without it the whole editor
+  read as unused files. Found by the root dead-code check before the r841
+  publish.
 - **GpsPlusSlamJs_Globe** - `scripts/fetch-globe-assets.mjs` is an entry
   and `scripts/**/*.mjs` is in `project`: the script is run by hand (never
   by a build or a test), so nothing imports it, yet it is the only user of

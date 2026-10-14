@@ -101,6 +101,31 @@ describe('copyWithFeedback', () => {
     expect(seen).toEqual(['Copied']);
   });
 
+  it('never rejects, even when a hook throws (PR #600 review, F17)', async () => {
+    // Why: both Tour Viewer call sites discard the promise with `void`, so
+    // a throwing hook was an unhandled rejection. The copy's own outcome
+    // still stands, and the button is usable again.
+    const boom = (): never => {
+      throw new Error('hook');
+    };
+    const done = button();
+    await expect(
+      copyWithFeedback(done, 'text', () => Promise.resolve(), {
+        ...LABELS,
+        onDone: boom,
+      })
+    ).resolves.toBe(true);
+    expect(done).toEqual({ disabled: false, textContent: 'Copied' });
+    const failed = button();
+    await expect(
+      copyWithFeedback(failed, 'text', undefined, {
+        ...LABELS,
+        onFailed: boom,
+      })
+    ).resolves.toBe(false);
+    expect(failed).toEqual({ disabled: false, textContent: 'Copy failed' });
+  });
+
   it('for any text and any kind of write, writes that text and ends enabled on the matching label (property)', async () => {
     await fc.assert(
       fc.asyncProperty(

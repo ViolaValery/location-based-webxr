@@ -5,10 +5,10 @@
  * 15-30 s off the main thread if the final one is slow).
  *
  * WHAT IS MEASURED. `rebuildZipWithEntries`, the call the Finish makes
- * (`creator-finish.ts`), on a stored zip of 10 / 50 / 200 MB made of 2 MB
- * entries (photos and a recording's frames are that kind of file), adding
- * what a Finish adds: a manifest and three 1.5 MB photos. Three runs per
- * size; the median is reported. Node on the dev machine, so the PHONE is a
+ * (`finish-rebuild.ts`, from `creator-finish.ts`), on a stored zip of
+ * 10 / 50 / 200 MB made of 2 MB entries (photos and a recording's frames
+ * are that kind of file), adding what a Finish adds: a manifest and three
+ * 1.5 MB photos. Three runs per size; the median is reported. Node on the dev machine, so the PHONE is a
  * projection, not a measurement - see the verdict in the polish-round plan
  * ("Q-Save measured").
  *

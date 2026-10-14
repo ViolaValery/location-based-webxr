@@ -92,6 +92,10 @@ export interface MeshSurface {
   /** The surface point under the screen centre, or null (no mesh there). */
   pick(): SurfacePoint | null;
   stats(): MeshSurfaceStats;
+  /** Start again from nothing: the grid and the mesh are cleared (a
+   *  tracking origin reset left their cells in a frame that no longer
+   *  exists - follow-up F11); the next samples build it anew. */
+  reset(): void;
   /** Stop feeding, free the mesh and the worker (idempotent). */
   dispose(): void;
 }
@@ -184,13 +188,15 @@ export function createMeshSurface(deps: {
       );
     },
     stats() {
-      const geometry = (
-        handle.mesh() as { geometry?: { index?: { count: number } | null } }
-      ).geometry;
       return {
         frame: frames.summary(),
-        triangles: Math.floor((geometry?.index?.count ?? 0) / 3),
+        triangles: handle.triangleCount(),
       };
+    },
+    reset() {
+      if (disposed) return;
+      grid.clear();
+      handle.sink.clear();
     },
     dispose() {
       if (disposed) return;

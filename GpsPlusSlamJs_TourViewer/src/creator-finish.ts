@@ -3,72 +3,40 @@
  * `creator-setup.ts` unchanged): the open tour rebuilt in the browser
  * (DEC-N6) with the measured level, the manifest and the photos, a listed
  * tour's series continued, the walk left out unless kept, and what the
- * written zip changes on the page; plus the keep-the-walk switch.
+ * written zip changes on the page; plus the keep-the-walk switch. The
+ * rebuild's rules are `finish-rebuild.ts`, shared with the desktop editor
+ * (M6 E0); this file is the phone page around them.
  *
  * @see creator-finish.ts.md
  */
 
-import { TOUR_MANIFEST_ENTRY } from "gps-plus-slam-app-framework/ar/tour-archive";
 import {
   createEmptyTourManifest,
-  serializeTourManifest,
   type TourCaptureSpots,
   type TourManifest,
 } from "gps-plus-slam-app-framework/ar/tour-manifest";
-import {
-  serializeSignedTourManifest,
-  signedManifestFilesOf,
-  successorManifest,
-  TourIntegrityError,
-  type SignedTourManifest,
-  type TourFileRecord,
-} from "gps-plus-slam-app-framework/ar/tour-signed-manifest";
-import {
-  ArchiveLimitError,
-  rebuildZipWithEntries,
-} from "gps-plus-slam-app-framework/storage";
-import { sha256Hex } from "gps-plus-slam-app-framework/utils/sha256-hex";
-import {
-  applyObjectChanges,
-  contentEntriesToRemove,
-  objectContentKey,
-} from "./authoring-draft.js";
-import { bakeCaptureSpots } from "./capture-bake.js";
-import {
-  downloadSafeName,
-  nameSurvivesDownload,
-} from "./content-disposition.js";
 import type { CreatorCodes } from "./creator-codes.js";
 import type { CreatorDraft } from "./creator-draft.js";
 import type { CreatorHandoff } from "./creator-handoff.js";
 import type { CreatorMeasuring } from "./creator-measuring.js";
 import type { CreatorPreviews } from "./creator-previews.js";
 import type { CreatorSettle } from "./creator-settle.js";
-import { finishEntries, type FinishEntry } from "./finish-entries.js";
+import {
+  captureSpotsForRebuild,
+  finishedFileName,
+  pendingAfterRebuild,
+  rebuildFinishedTour,
+} from "./finish-rebuild.js";
 import { FINISH_LABELS, finishReadiness } from "./qr-author-mode.js";
 import { authoringFinished } from "./tour-authoring-actions.js";
 import { scanEntryNames } from "./tour-read-set.js";
-import { archiveFileName, type TourSession } from "./tour-session.js";
+import type { TourSession } from "./tour-session.js";
 import type {
   ArController,
   TourViewerSession,
   TourViewerStore,
 } from "./tour-viewer-session.js";
 import type { Wizard } from "./wizard.js";
-
-/** A written entry's record for `manifest.json`: the SHA-256 and size of
- *  the bytes the zip will hold (a string is written as UTF-8). */
-async function fileRecordOf(
-  data: Blob | Uint8Array | string,
-): Promise<TourFileRecord> {
-  const bytes =
-    typeof data === "string"
-      ? new TextEncoder().encode(data)
-      : data instanceof Uint8Array
-        ? data
-        : new Uint8Array(await data.arrayBuffer());
-  return { sha256: await sha256Hex(bytes), size: bytes.length };
-}
 
 /** The elements the Finish reads and owns, in step 4. */
 export interface CreatorFinishDom {
@@ -95,17 +63,6 @@ export interface CreatorFinish {
   renderKeepScan(): void;
 }
 
-/** The title a finished tour carries: the name typed in step 3 when it
- *  says something, else the title the tour had (polish round M4a: the
- *  visitor's start page leads with it). */
-function finishTitle(
-  current: string | undefined,
-  typed: string | null,
-): string | undefined {
-  const name = typed?.trim() ?? "";
-  return name === "" ? current : name;
-}
-
 export function wireCreatorFinish(deps: {
   ctx: TourViewerSession;
   arStore: Pick<TourViewerStore, "dispatch">;
@@ -124,7 +81,7 @@ export function wireCreatorFinish(deps: {
   >;
   handoff: Pick<CreatorHandoff, "save" | "offer">;
   previews: Pick<CreatorPreviews, "keepFinishedPhoto" | "sync">;
-  draft: Pick<CreatorDraft, "saveMeta">;
+  draft: Pick<CreatorDraft, "saveMeta" | "finished">;
   sessionLive: () => boolean;
   /** The tour's name as typed in step 3; a non-empty one becomes the
    *  manifest's `title` (polish round M4a). */
@@ -171,42 +128,20 @@ export function wireCreatorFinish(deps: {
       deps.sessionLive() || ctx.rebuiltZip !== null || scanMemo.count === 0;
   }
 
-  /**
-   * The recorded photos' spots for this Finish (scan-pass plan S1, S-D11):
-   * the tour's own when it carries them, else baked from its recording,
-   * else none - the tour then keeps the visitor's live join, as before S1,
-   * and `notPlaced` says why for the creator. A recording that cannot be
-   * read or joined never fails the Finish; a cap's refusal and a failed
-   * integrity check do, as every read's does.
-   */
-  async function captureSpotsForFinish(
+  /** The recorded photos' spots for this Finish: the shared rule
+   *  (`finish-rebuild.ts` `captureSpotsForRebuild`, M6 E0b) with this
+   *  page's progress line and its re-open check. */
+  function captureSpotsForFinish(
     current: TourSession,
     manifest: TourManifest,
   ): Promise<{ spots?: TourCaptureSpots; notPlaced?: string }> {
-    if (manifest.captureSpots !== undefined) {
-      return { spots: manifest.captureSpots };
-    }
-    if (!current.hasRecording) return {};
-    try {
-      const bake = await bakeCaptureSpots(current, {
-        shouldContinue: () => ctx.session === current,
-        onChunk: (done, total) => {
-          ctx.finishProgress = FINISH_LABELS.placingPhotos(done, total);
-          deps.render();
-        },
-      });
-      return bake.kind === "baked"
-        ? { spots: bake.spots }
-        : { notPlaced: bake.reason };
-    } catch (err) {
-      if (err instanceof ArchiveLimitError) throw err;
-      if (err instanceof TourIntegrityError) throw err;
-      return {
-        notPlaced: `reading the recording failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      };
-    }
+    return captureSpotsForRebuild(current, manifest, {
+      shouldContinue: () => ctx.session === current,
+      onChunk: (done, total) => {
+        ctx.finishProgress = FINISH_LABELS.placingPhotos(done, total);
+        deps.render();
+      },
+    });
   }
 
   function readiness(): ReturnType<typeof finishReadiness> {
@@ -287,145 +222,40 @@ export function wireCreatorFinish(deps: {
         // Assembled INSIDE the try (M4 review #1): a manifest the reader
         // rejects (a duplicate id) must fail the finish visibly, not throw
         // past `finishing = true` and freeze the panel.
-        const entryNames = current.entries.map((e) => e.filename);
-        // The session derived this prefix when it opened the zip; deriving
-        // it a second time here is how the writer and the reader drifted
-        // apart in the first place (PR #435 review).
-        const wrap = current.manifestWrap;
-        const manifestPath = `${wrap}${TOUR_MANIFEST_ENTRY}`;
-        // The manifest: what the zip carried, with this device's records
-        // REPLACING theirs by id (an edit or a move of a hosted object),
-        // the new ones appended and the deleted ones filtered out (plan
-        // §3.4, M4); the photos' bytes become content entries next to it.
         const manifest = ctx.tourManifest ?? createEmptyTourManifest();
         const photos = await captureSpotsForFinish(current, manifest);
-        const captureSpots = photos.spots;
         if (ctx.session !== current) return; // re-opened meanwhile
         const deleted = [...ctx.deletedObjectIds];
-        const title = finishTitle(manifest.title, deps.tourTitle?.() ?? null);
-        const written: TourManifest = {
-          ...manifest,
-          ...(title === undefined ? {} : { title }),
-          ...(captureSpots === undefined ? {} : { captureSpots }),
-          // Never an id twice, and not for tidiness: the serializer REJECTS
-          // duplicates, so one restored object that is already in the
-          // manifest would make every finish throw - for as long as the
-          // draft is restored, with no escape inside the app (M5 review #4).
-          objects: applyObjectChanges(
-            manifest.objects,
-            ctx.placedObjects.map((p) => p.object),
-            deleted,
-          ),
-        };
-        // A deleted photo takes its content file with it. A signature over
-        // the old list cannot cover the files this Finish rewrites, so it
-        // goes - the output is unsigned until K2 signs on export. The list
-        // itself CONTINUES for a listed tour (K1 milestone review R7, below);
-        // anything else carrying the name is dropped with it.
-        const [listName, ...signatureNames] = signedManifestFilesOf(entryNames);
-        const listed =
-          current.integrity.kind === "listed" && listName !== undefined
-            ? { integrity: current.integrity, entry: listName }
-            : null;
-        // The published copy carries only what visitors read unless the
-        // creator keeps the walk (S-D10): the walk, its unbaked frames, depth.
-        // Never without baked spots (S1 milestone review #2): the walk is
-        // then the only way a viewer can place the photos, and the hosted
-        // file may be the creator's only copy of it.
-        const scanLeftOut =
-          dom.keepScanInput.checked || written.captureSpots === undefined
-            ? []
-            : scanEntryNames(entryNames, written, wrap);
-        const removed = [
-          ...contentEntriesToRemove(manifest.objects, deleted, wrap),
-          ...scanLeftOut,
-          ...signatureNames,
-          ...(listed === null && listName !== undefined ? [listName] : []),
-        ];
-        // The level replaced where the zip holds it (also wrapped), a new
-        // one inside a listed tour's folder or at the root
-        // (`finish-entries.ts`), then the manifest and the photos.
-        const entries: FinishEntry[] = finishEntries({
-          entryNames,
-          levels,
-          wrap,
-          listed: listed !== null,
-          manifestPath,
-          manifestJson: serializeTourManifest(written),
-          photos: ctx.placedObjects.flatMap((p) =>
-            p.object.kind === "photo" && p.blob !== undefined
-              ? [{ image: p.object.image, blob: p.blob }]
-              : [],
-          ),
-        });
-        // The input is the NEWEST bytes for this tour: a previous finish's
-        // rebuild when there is one, because it already carries that
-        // batch's content entries - rebuilding from the hosted zip again
-        // would write a manifest referencing photos the archive does not
-        // contain (PR #435 review, the second half of the second-finish
-        // bug). A tour close clears the rebuilt zip, so a re-opened tour
-        // starts from what is actually hosted.
+        // The Finish's rules, shared with the desktop editor (M6 E0,
+        // `finish-rebuild.ts`): the edits applied, the files written and
+        // removed, a listed tour's series continued, from the newest bytes.
         const previous = ctx.rebuiltZip;
-        const input = previous?.blob ?? (await current.readWholeArchive());
-        if (ctx.session !== current) return; // re-opened meanwhile
-        // The series' list, continued: the same series id, the next
-        // version, and the hash of every file this zip will hold - the
-        // kept ones from the list the input carries (checked at open and
-        // as a whole by readWholeArchive, or written by the last Finish),
-        // the written ones hashed here. Without it the series id's only
-        // home was dropped (R7).
-        let signedManifest: SignedTourManifest | undefined;
-        if (listed !== null) {
-          signedManifest = successorManifest(
-            listed.integrity.manifest,
-            listed.entry,
-            {
-              ...(previous?.signedManifest === undefined
-                ? {}
-                : { baseFiles: previous.signedManifest.files }),
-              removed,
-              written: new Map(
-                await Promise.all(
-                  entries.map(
-                    async (e) => [e.path, await fileRecordOf(e.data)] as const,
-                  ),
-                ),
-              ),
-              createdAt: new Date().toISOString(),
-            },
-          );
-          entries.push({
-            path: listed.entry,
-            data: serializeSignedTourManifest(signedManifest),
-          });
-        }
-        const blob = await rebuildZipWithEntries(input, entries, {
-          remove: removed,
-          // The open archive is untrusted, so its rebuild inflates under
-          // the session's own budget (K0 milestone review R1). A previous
-          // Finish's zip is this page's own output, stored and bounded:
-          // the rebuild sizes a budget for it itself.
-          ...(previous === null ? { budget: current.budget } : {}),
+        const finished = await rebuildFinishedTour({
+          tour: current,
+          manifest,
+          // A snapshot: placements land in this list during the rebuild.
+          placed: [...ctx.placedObjects],
+          deleted,
+          levels,
+          title: deps.tourTitle?.() ?? null,
+          ...(photos.spots === undefined ? {} : { captureSpots: photos.spots }),
+          keepScan: dom.keepScanInput.checked,
+          previous,
+          shouldContinue: () => ctx.session === current,
           onProgress: (done, total) => {
             ctx.finishProgress = FINISH_LABELS.rebuilding(done, total);
             deps.render();
           },
         });
-        if (ctx.session !== current) return;
-        const hosted = current.hostedFileName();
+        if (finished === null || ctx.session !== current) return;
+        const { blob, written, signedManifest, scanLeftOut } = finished;
         ctx.rebuiltZip = {
           blob,
           ...(signedManifest === undefined ? {} : { signedManifest }),
-          // The hosted file's own name first: Drive offers "Replace" only
-          // for the same name (Drive replace plan §2 decision 3) - made safe
-          // to save where a phone would change it, and the Drive steps then
-          // ask for the same rename on Drive (§5 #7).
-          filename:
-            hosted === null
-              ? archiveFileName(current.archive.url)
-              : nameSurvivesDownload(hosted)
-                ? hosted
-                : downloadSafeName(hosted),
+          // The hosted file's own name, made safe (`finishedFileName`, the
+          // rule the desktop editor shares); the Drive steps then ask for the
+          // same rename on Drive (Drive replace plan §5 #7).
+          filename: finishedFileName(current),
         };
         madeZip = ctx.rebuiltZip;
         // The Finish's result sentences: they stay on the line under the
@@ -461,24 +291,30 @@ export function wireCreatorFinish(deps: {
         // waits for the next Finish (M2c review #6). A photo that leaves
         // keeps its bytes here for its preview: the hosted zip does not
         // have them until the creator uploads this one.
-        const inZip = new Map(
-          written.objects.map((o) => [o.id, objectContentKey(o)]),
+        // The shared rule (`pendingAfterRebuild`, M6 E0b), on the lists
+        // as they are NOW: a placement that landed during the rebuild stays.
+        const pending = pendingAfterRebuild(
+          { placed: ctx.placedObjects, deleted: ctx.deletedObjectIds },
+          written,
+          deleted,
         );
-        const kept: typeof ctx.placedObjects = [];
-        for (const p of ctx.placedObjects) {
-          if (inZip.get(p.object.id) !== objectContentKey(p.object)) {
-            kept.push(p);
-          } else if (p.blob !== undefined) {
+        for (const p of pending.finished) {
+          if (p.blob !== undefined) {
             deps.previews.keepFinishedPhoto(p.object.id, p.blob);
           }
         }
-        ctx.placedObjects = kept;
+        ctx.placedObjects = pending.placed;
+        // Their versions in this file are this device's own (M6 E2p): a
+        // creator who uploads it from this tab must not see a later edit
+        // called "replaced by a newer one".
+        deps.draft.finished(
+          pending.finished.map((p) => p.object.id),
+          written,
+        );
         // The deletions are applied: the manifest no longer carries them.
         // (Their tombstones stay in the draft until the hosted zip lacks
         // them too - the same proof the objects wait for.)
-        ctx.deletedObjectIds = ctx.deletedObjectIds.filter(
-          (id) => !deleted.includes(id),
-        );
+        ctx.deletedObjectIds = pending.deleted;
         deps.previews.sync();
         wroteZip = true;
         deps.codes.finished(levels);

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tour editor</title>
+  </head>
+  <body>
+    <div id="map" aria-label="Tour map"></div>
+
+    <header id="topbar" class="panel" hidden>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">T</div>
+        <div class="brand-text">
+          <div class="tour-name" id="tour-name"></div>
+          <div class="tour-file" id="tour-file"></div>
+        </div>
+      </div>
+      <div class="topbar-spacer"></div>
+      <label class="keep-walk" id="keep-walk" hidden>
+        <input type="checkbox" id="keep-walk-input" />
+        Keep the walk recording in the saved file
+      </label>
+      <span id="save-status" role="status" aria-live="polite" data-state="clean"
+        >No changes</span
+      >
+      <button class="btn primary" id="save-btn" type="button" disabled>
+        Save
+      </button>
+      <button
+        class="btn"
+        id="open-another"
+        type="button"
+        aria-label="Open another tour"
+      >
+        <span class="label-long">Open another tour</span
+        ><span class="label-short">Open</span>
+      </button>
+    </header>
+
+    <aside id="rail" class="panel" hidden aria-label="Objects in this tour">
+      <div class="rail-head">
+        <h2>In this tour</h2>
+        <button
+          class="btn ghost icon-btn"
+          id="collapse-btn"
+          type="button"
+          aria-label="Collapse the list"
+          title="Collapse the list"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path id="collapse-icon" d="M15 6l-6 6 6 6" />
+          </svg>
+        </button>
+      </div>
+      <div class="rail-mini" id="rail-mini"></div>
+      <div class="rail-search">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="6" />
+          <path d="M20 20l-4.5-4.5" />
+        </svg>
+        <input
+          id="filter"
+          type="search"
+          placeholder="Find a code or note"
+          aria-label="Find a code or note"
+        />
+      </div>
+      <div class="rail-body" id="rail-body"></div>
+    </aside>
+
+    <section
+      id="card"
+      class="panel"
+      role="dialog"
+      aria-label="The selected object"
+      hidden
+    >
+      <div class="arrow"></div>
+      <div id="card-inner"></div>
+    </section>
+
+    <div id="offscreen-chip" class="panel" hidden>
+      <span id="offscreen-text"></span>
+      <button class="btn small" id="offscreen-show" type="button">
+        Show it
+      </button>
+    </div>
+
+    <div id="toasts" aria-live="polite"></div>
+
+    <div class="backdrop" id="open-modal">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="open-title"
+      >
+        <h1 id="open-title">Open a tour</h1>
+        <p class="lede">
+          See what your phone created on a map: every printed code, pin and
+          photo, and fix a text, move a pin or remove a note.
+        </p>
+        <label class="drop" id="drop">
+          <span class="drop-text">
+            <span class="drop-title">Choose the tour file (.zip)</span>
+            <span class="drop-sub"
+              >The file your phone's Finish saved. You can also drop it
+              here.</span
+            >
+          </span>
+          <button class="btn small" id="choose-btn" type="button">
+            Choose…
+          </button>
+          <input
+            type="file"
+            id="zip-input"
+            accept=".zip,application/zip"
+            hidden
+          />
+        </label>
+        <div id="open-status" role="status" aria-live="polite"></div>
+        <div id="open-error" role="alert" hidden></div>
+        <div class="modal-actions">
+          <button class="btn" id="open-cancel" type="button" hidden>
+            Cancel
+          </button>
+          <button class="btn ghost" id="sample-btn" type="button">
+            Use the sample tour
+          </button>
+        </div>
+        <p class="fineprint">
+          The file stays on this computer: nothing is uploaded. Save gives you a
+          new copy of the tour to put in place of the old one.
+        </p>
+      </div>
+    </div>
+
+    <script type="module" src="/src/editor/edit-main.ts"></script>
+  </body>
+</html>

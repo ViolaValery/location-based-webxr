@@ -25,7 +25,11 @@ import {
 import { isWritableQrLevelId } from "gps-plus-slam-app-framework/ar/qr/qr-level-archive";
 import type { DraftFileStore } from "gps-plus-slam-app-framework/storage";
 
-import type { AuthoringDraft } from "./authoring-draft.js";
+import {
+  withBaseKey,
+  type AuthoringDraft,
+  type DraftBase,
+} from "./authoring-draft.js";
 import {
   parseVisitLogEntry,
   serializeVisitLogEntry,
@@ -73,6 +77,13 @@ const OBJECT_PREFIX = "object:";
 const PHOTO_PREFIX = "photo:";
 const DELETED_PREFIX = "deleted:";
 const VISIT_PREFIX = "visit:";
+const BASE_PREFIX = "base:";
+
+/** An object's base (M6 E2p): its known versions (`DraftBase`) as JSON.
+ *  Its own file, so a draft from before E2p reads unchanged. */
+function baseKey(id: string): string {
+  return `${BASE_PREFIX}${id}`;
+}
 
 /** A placed object's file key. */
 export function objectKey(id: string): string {
@@ -121,6 +132,69 @@ export async function removeDraftObject(
   await store.remove(photoKey(id));
   await store.remove(deletedKey(id));
   await store.remove(visitKey(id));
+  await store.remove(baseKey(id));
+}
+
+/**
+ * Record a placement or an edit, and - when `seen` is given - that this
+ * device saw that version of the object hosted (M6 E2p): the tour as the
+ * page opened it. The result is the record's write: a base that did not
+ * land is removed, which falls back to the behaviour before E2p (review #6,
+ * third review #2). Both writes
+ * run at once; callers queue an id's writes, so the base's read and write
+ * are not raced.
+ */
+export async function writeDraftEdit(
+  store: DraftFileStore,
+  object: TourObject,
+  blob: Blob | undefined,
+  seen: string | undefined,
+): Promise<boolean> {
+  const [wrote] = await Promise.all([
+    writeDraftObject(store, object, blob),
+    seen === undefined
+      ? Promise.resolve(true)
+      : addDraftBaseKey(store, object.id, "seen", seen),
+  ]);
+  return wrote;
+}
+
+/** Parse a stored base; `undefined` for anything else, which then
+ *  behaves as no base (never superseded - the safe direction). */
+export function parseDraftBase(
+  text: string | undefined,
+): DraftBase | undefined {
+  if (text === undefined || text === "") return undefined;
+  try {
+    const value: unknown = JSON.parse(text);
+    if (value === null || typeof value !== "object") return undefined;
+    const { seen, written } = value as Record<string, unknown>;
+    const strings = (v: unknown): v is string[] =>
+      Array.isArray(v) && v.every((k) => typeof k === "string");
+    if (!strings(seen) || !strings(written)) return undefined;
+    return seen.length + written.length === 0 ? undefined : { seen, written };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Add one key to an object's base (M6 E2p), read and written in place;
+ *  a key already there writes nothing, and a write that fails removes the
+ *  base. */
+export async function addDraftBaseKey(
+  store: DraftFileStore,
+  id: string,
+  list: keyof DraftBase,
+  key: string,
+): Promise<boolean> {
+  const before = parseDraftBase(await store.getText(baseKey(id)));
+  const after = withBaseKey(before, list, key);
+  if (after === before) return true;
+  if (await store.put(baseKey(id), JSON.stringify(after))) return true;
+  // An older base left beside a newer record could call this device's own
+  // work "replaced" (third review #2); no base is never superseded.
+  await store.remove(baseKey(id));
+  return false;
 }
 
 /**
@@ -342,6 +416,7 @@ export async function readDraft(
           PHOTO_PREFIX,
           DELETED_PREFIX,
           VISIT_PREFIX,
+          BASE_PREFIX,
         ]) {
           if (key.startsWith(prefix)) return [key.slice(prefix.length)];
         }
@@ -391,6 +466,15 @@ export async function readDraft(
     (a, b) =>
       a.createdAtIso.localeCompare(b.createdAtIso) || a.id.localeCompare(b.id),
   );
+  // The bases (M6 E2p), unless rejected; none at all in an older draft.
+  const bases = new Map<string, DraftBase>();
+  for (const key of keys) {
+    if (!key.startsWith(BASE_PREFIX)) continue;
+    const id = key.slice(BASE_PREFIX.length);
+    if (rejected.has(id)) continue;
+    const base = parseDraftBase(await store.getText(key));
+    if (base !== undefined) bases.set(id, base);
+  }
   const visits = await readVisits(store, keys, rejected);
   const onDisk = new Set(storedIds);
   return {
@@ -409,6 +493,7 @@ export async function readDraft(
           : [meta.level],
       objects,
       deleted: deleted.sort(),
+      ...(bases.size === 0 ? {} : { bases }),
     },
     photos,
     rejectedIds: [...rejected].filter((id) => onDisk.has(id)),

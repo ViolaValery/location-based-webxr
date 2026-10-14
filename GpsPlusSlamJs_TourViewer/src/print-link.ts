@@ -114,14 +114,17 @@ export async function printedCodes(
   levels: readonly { readonly id: string; readonly text: string }[],
   hash: (text: string) => Promise<string> = qrCodeId,
 ): Promise<PrintedCode[]> {
-  const codes: PrintedCode[] = [];
-  // One at a time: a hash and a decode each, on the main thread.
-  for (const { id, text } of levels) {
-    if ((await hash(text)) !== id) continue;
-    const code = await printedCodeOf(text);
-    if (code !== null) codes.push({ id, ...code });
-  }
-  return codes;
+  // All at once, in the levels' order: the wait is one hash and one decode,
+  // not one per code. Not capped - a code left out would be a number the
+  // next print repeats (PR #600 review, F17).
+  const read = await Promise.all(
+    levels.map(async ({ id, text }): Promise<PrintedCode | null> => {
+      if ((await hash(text)) !== id) return null;
+      const code = await printedCodeOf(text);
+      return code === null ? null : { id, ...code };
+    }),
+  );
+  return read.filter((code): code is PrintedCode => code !== null);
 }
 
 /** Whether `link` names the same tour as `url`: the same Drive file in

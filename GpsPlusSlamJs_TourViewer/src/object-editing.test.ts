@@ -13,7 +13,7 @@ import fc from "fast-check";
 import type { TourObject } from "gps-plus-slam-app-framework/ar/tour-manifest";
 
 import { applyObjectChanges } from "./authoring-draft.js";
-import { authoringObjects, upsertPlaced } from "./object-editing.js";
+import { authoringObjects, upsertPlaced } from "./object-edits.js";
 
 function pin(id: string, label = `pin ${id}`): TourObject {
   return {

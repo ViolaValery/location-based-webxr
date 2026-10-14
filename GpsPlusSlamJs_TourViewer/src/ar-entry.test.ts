@@ -136,6 +136,7 @@ function harness(
       frame: { p50: 16, p95: 30, p99: 38, max: 40, count: 120 },
       triangles: 1200,
     }),
+    reset: vi.fn(),
     dispose: vi.fn(),
   };
   const entry = wireArEntry({
@@ -777,12 +778,28 @@ describe("the creator's mesh cursor behind ?mesh=1 (polish round M5)", () => {
     expect(
       (h.seams.startHitTestReticle.mock.calls[0] as unknown[])[2],
     ).toBeUndefined();
+    // The restart hook is the mesh cursor's alone (F11, r837 review #7):
+    // without the flag nothing listens for a restart.
+    expect(h.enabledConfig()!.callbacks?.tracking?.onRestarted).toBeUndefined();
   });
 
   it("never builds a mesh for a visitor", async () => {
     const h = harness({ enableOk: true, meshCursor: true });
     await h.enter();
     expect(h.seams.startMeshSurface).not.toHaveBeenCalled();
+    expect(h.enabledConfig()!.callbacks?.tracking?.onRestarted).toBeUndefined();
+  });
+
+  // Why (M5 review #9, follow-up F11): the grid's cells are raw WebXR
+  // coordinates. After an origin reset they sit in a frame that no longer
+  // exists, and the ring - and a pin placed on it - would snap to ghost
+  // surfaces. The mesh starts again from nothing.
+  it("starts the mesh again from nothing when tracking restarts at a new origin", async () => {
+    const h = harness({ mode: "creator", enableOk: true, meshCursor: true });
+    await h.enter();
+    expect(h.enabledConfig()!.callbacks?.tracking?.onRestarted).toBeDefined();
+    h.enabledConfig()!.callbacks!.tracking!.onRestarted!({} as never);
+    expect(h.meshSurface.reset).toHaveBeenCalledTimes(1);
   });
 
   it("frees the mesh and stops the sampler when the session ends", async () => {

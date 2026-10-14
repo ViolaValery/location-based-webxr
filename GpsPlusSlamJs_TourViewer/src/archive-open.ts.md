@@ -11,7 +11,12 @@ DOM glue, its own module since the flows plan M6.
 ## Public API
 
 - `wireArchiveOpen({ ctx, dom, cacheStore, corsProxyBaseUrl, hooks, mode }): ArchiveOpen`
-  - `ArchiveOpenDom { form; linkInput; openButton; openFileButton; fileInput; fileAdvice; openFileAdviceButton; fileStatus; statsPanel; statsHeadline; statsDetail; errorBox; linkStatus; gallery; storagePanel; clearCacheButton }`
+  - `ArchiveOpenDom { form; linkInput; openButton; openFileButton; fileInput; fileAdvice; openFileAdviceButton; fileStatus; statsPanel; statsHeadline; statsDetail; errorBox; linkStatus; gallery; readiness?; storagePanel; clearCacheButton }`
+    - `readiness` carries `data-tour-open`: `opening` while an open runs,
+      `settled` once that open's manifest and levels continuations have
+      run (and the gallery's fill, while shown) - never set by an older
+      open after a newer one began - and `failed` for an open that failed
+      (follow-up F14; the e2e's "the tour is open").
     - **Step 2's link check (polish round M2, A13/A16).** A submit, a paste
       (deferred a turn, since the value lands after the event) or a
       `change` with a new link runs the open and writes its outcome to
@@ -133,6 +138,9 @@ DOM glue, its own module since the flows plan M6.
   once the whole-file download stops, and read as stuck (UI round 1, U1,
   review F11). The trust line is hidden when
   it has no line for the audience (`trustLines`).
+- The gallery fills ONLY while it is shown (a `?debug=1` creator,
+  follow-up F14): hidden, it used to read, decode and keep a URL for every
+  photo on every open, for nothing.
 - The gallery streams SEQUENTIALLY; a newer open supersedes an in-flight
   fill per entry; object URLs are revoked on teardown.
 - **The gallery waits for `tour.json` and leaves out the creator's walk**

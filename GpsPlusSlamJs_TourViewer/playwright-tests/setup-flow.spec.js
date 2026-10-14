@@ -133,11 +133,19 @@ test("the gallery and the transfer numbers show only with ?debug=1", async ({
     await page.goto(query);
     await page.getByTestId("link-input").fill(ARCHIVE);
     await page.getByTestId("open-button").click();
-    // Filled either way (the count works on hidden nodes): only the
-    // showing depends on the flag.
-    await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-      timeout: 15000,
-    });
+    // Filled only while shown (follow-up F14): without the flag a creator's
+    // open decodes no photo at all - the gallery stays empty once the
+    // open has settled; with it, all eight stream in.
+    await expect(page.locator("body")).toHaveAttribute(
+      "data-tour-open",
+      "settled",
+      {
+        timeout: 15000,
+      },
+    );
+    await expect(page.getByTestId("gallery").locator("img")).toHaveCount(
+      shown ? 8 : 0,
+    );
     await expect(page.getByTestId("stats")).not.toHaveText("");
     for (const id of ["gallery", "stats"]) {
       if (shown) await expect(page.getByTestId(id)).toBeVisible();

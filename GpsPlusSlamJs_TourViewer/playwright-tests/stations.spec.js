@@ -26,10 +26,15 @@ test.beforeEach(async ({ page }) => {
 /** Open the stations tour as a visitor and start AR on an aligned store. */
 async function startTheTour(page) {
   await page.goto(`/?qr=${encodeURIComponent(STATIONS_ARCHIVE)}`);
-  // One image entry (the knight's figure) streams into the gallery.
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(1, {
-    timeout: 15000,
-  });
+  // The tour is open (follow-up F14: a visitor's hidden gallery is not
+  // filled any more, so its one image is no readiness signal).
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   const button = page.getByTestId("enter-ar");
   await expect(button).toBeEnabled({ timeout: 10000 });
   await button.click();

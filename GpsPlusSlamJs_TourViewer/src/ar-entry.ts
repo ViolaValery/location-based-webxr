@@ -578,6 +578,15 @@ export function wireArEntry(deps: {
         onOrientation: (orientation) => {
           updateDeviceOrientation(orientation);
         },
+        // The mesh cursor's grid is raw WebXR: an origin reset leaves its
+        // cells in a dead frame, so it starts again (F11).
+        ...(authorMode && deps.meshCursor === true
+          ? {
+              onTrackingRestarted: () => {
+                meshSurface?.reset();
+              },
+            }
+          : {}),
         ...depth.hooks,
       }),
     );

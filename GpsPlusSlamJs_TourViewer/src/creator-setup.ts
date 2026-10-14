@@ -62,7 +62,6 @@ import type { SelectTargetRay } from "gps-plus-slam-app-framework/ar";
 import {
   removeDraftDeletion,
   writeDraftDeletion,
-  writeDraftObject,
 } from "./draft-persistence.js";
 
 import type { SummaryPanel } from "./summary-panel.js";
@@ -92,9 +91,10 @@ import {
 import type { Wizard } from "./wizard.js";
 import { writeSideM } from "./printed-side.js";
 
-/** What a Done says while a code is being measured (PR #598 review). */
+/** What a Done says while a code is being measured (PR #598 review); the
+ *  save then starts by itself (r837 review #2). */
 const DONE_WAITS_FOR_MEASURING =
-  "A code is being measured - tap Done again in a moment to save.";
+  "A code is being measured - the tour saves as soon as it is measured.";
 
 /**
  * Whether an AR session is live, from the controller's status.
@@ -208,6 +208,8 @@ export interface CreatorSetup {
 export function wireCreatorSetup(deps: {
   ctx: TourViewerSession;
   mode: ViewerMode;
+  /** The set of codes changed: the print step re-reads them (F16). */
+  onCodesChanged?: () => void;
   arStore: TourViewerStore;
   arController: ArController;
   seams: TourViewerSeams;
@@ -258,7 +260,10 @@ export function wireCreatorSetup(deps: {
    *  which restarts at 0 on every load (`newVisitId`). */
   const pageId = newObjectId();
   /** The one owner of the codes (`creator-codes.ts`, plan M4a). */
-  const codes = wireCreatorCodes({ ctx });
+  const codes = wireCreatorCodes({
+    ctx,
+    onIdsChanged: () => deps.onCodesChanged?.(),
+  });
   /** The running visit's per-moment alignments (owner decision D33,
    *  `creator-alignment-picks.ts`). */
   const alignmentPicks = wireCreatorAlignmentPicks({
@@ -343,8 +348,8 @@ export function wireCreatorSetup(deps: {
       gpsAccuracyM: authorAlignmentInfo().gpsAccuracyM,
     }),
     codes: () => codes.storedPoses(),
-    saveDraftObject: (object, blob) =>
-      draft.write(object.id, (store) => writeDraftObject(store, object, blob)),
+    // With its base, decided by the draft from the tour as opened (M6 E2p).
+    saveDraftObject: (object, blob) => draft.writeObject(object, blob),
     saveDraftDeletion: (id) =>
       draft.write(id, (store) => writeDraftDeletion(store, id)),
     forgetDraftDeletion: (id) =>
@@ -433,6 +438,15 @@ export function wireCreatorSetup(deps: {
    * starts clamped; the page is never clamped.
    */
   let statusExpanded = false;
+
+  /** A Done tapped while a code was being measured. The readout leads with
+   *  `DONE_WAITS_FOR_MEASURING` while the measurement runs - first, so the
+   *  two-line clamp in AR shows it, and read by every render, so the one
+   *  right after Done keeps it (PR #599 review, F17; r837 review #1). When
+   *  the measurement lands the save the creator asked for starts by itself
+   *  (`measuringSettled`, r837 review #2): a window of milliseconds left
+   *  no time to read a "tap again". */
+  let doneWaits = false;
   dom.status.addEventListener("click", () => {
     statusExpanded = !statusExpanded;
     renderAuthorReadout();
@@ -527,6 +541,9 @@ export function wireCreatorSetup(deps: {
     // notice fires at tour open, before any measuring - so Save never
     // unlocked (scan-to-open plan §5 #13).
     const lead =
+      (doneWaits && measuring.inFlight()
+        ? `${DONE_WAITS_FOR_MEASURING} · `
+        : "") +
       entryLead() +
       settle.refusalLead() +
       (ctx.placementNote === null ? "" : `${ctx.placementNote} · `);
@@ -586,6 +603,21 @@ export function wireCreatorSetup(deps: {
     }
   }
 
+  /** The measuring's render: a Done that waited for this measurement now
+   *  starts the save (r837 review #2), which renders itself; otherwise -
+   *  nothing to save any more, or the finish blocked - the readout says
+   *  why. Consumed here, never in the readout, so an early-returning
+   *  render cannot leave it set for a later measurement (review #6). */
+  function measuringSettled(): void {
+    if (doneWaits && !measuring.inFlight()) {
+      doneWaits = false;
+      if (sessionLive() && changedSinceFinish(guardInput()) && finish.start()) {
+        return;
+      }
+    }
+    renderAuthorReadout();
+  }
+
   /** Placing a pin or a photo in AR (`creator-placement.ts`). */
   const placement = wireCreatorPlacement({
     objectSelected: () => editing.selected() !== null,
@@ -626,7 +658,7 @@ export function wireCreatorSetup(deps: {
       settle.placeEarlierObjects();
     },
     render: () => {
-      renderAuthorReadout();
+      measuringSettled();
     },
   });
 
@@ -710,8 +742,8 @@ export function wireCreatorSetup(deps: {
       // would end the visit with its changes unsaved and nothing said in
       // AR, so Done stays and says so (PR #598 review).
       if (measuring.inFlight()) {
+        doneWaits = true;
         renderAuthorReadout();
-        dom.status.textContent += ` · ${DONE_WAITS_FOR_MEASURING}`;
         return true;
       }
       return finish.start();
@@ -747,12 +779,15 @@ export function wireCreatorSetup(deps: {
       codes.endVisit();
       settle.endVisit();
       statusExpanded = false;
+      doneWaits = false;
       // What the previews were made from, and the earlier visits' frame.
       previews.endVisit();
       // An AR selection means nothing on the page.
       editing.reset();
     },
     resetFinishStep: () => {
+      // A Done waiting for a measurement was for the closing tour.
+      doneWaits = false;
       // The code in hand and the book belonged to the closing tour (M5
       // review #9). First, so nothing reset below reads them.
       codes.reset();

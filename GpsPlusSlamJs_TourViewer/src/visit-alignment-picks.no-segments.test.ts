@@ -14,6 +14,15 @@
  * does both). No type check or behavioural test sees that invariant, so
  * the source is read: the day the Tour Viewer starts handling either, this
  * fails, and the picks need a segment notion first (see the sidecar).
+ *
+ * Narrowed with the owner's yes (2026-10-13, follow-up F11): the session
+ * hook `onRestarted` may be wired in `ar-mode.ts` alone, where it only
+ * TELLS the app (the mesh cursor clears its raw-WebXR grid). What keeps
+ * the store free of segments is not that file's test (it checks only the
+ * wrapper): `ar-mode.ts` drops the restart's payload and hands the app a
+ * `() => void`, so nothing can build the action from it, and the two
+ * actions and the loop-closure handler, which would put a segment into
+ * the store, stay banned by name everywhere (r837 review #4).
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -27,8 +36,11 @@ const SEGMENTING = [
   "odometryTrackingRestarted",
   "arLoopClosureDetected",
   "createLoopClosureHandler",
-  "onRestarted",
 ];
+
+/** The session hook that only tells, and the one file that may wire it. */
+const RESTART_HOOK = "onRestarted";
+const RESTART_HOOK_HOME = "ar-mode.ts";
 
 function productionFiles(): string[] {
   return readdirSync(SRC).filter(
@@ -43,9 +55,11 @@ describe("the Tour Viewer never starts a new odometry segment (R8 of D33)", () =
     expect(files).toContain("visit-alignment-picks.ts");
     const hits = files.flatMap((f) => {
       const source = readFileSync(join(SRC, f), "utf8");
-      return SEGMENTING.filter((name) => source.includes(name)).map(
-        (name) => `${f}: ${name}`,
-      );
+      const banned =
+        f === RESTART_HOOK_HOME ? SEGMENTING : [...SEGMENTING, RESTART_HOOK];
+      return banned
+        .filter((name) => source.includes(name))
+        .map((name) => `${f}: ${name}`);
     });
     expect(hits).toEqual([]);
   });

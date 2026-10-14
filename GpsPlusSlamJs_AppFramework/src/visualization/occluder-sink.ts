@@ -70,6 +70,9 @@ export interface OccluderSinkHandle {
   /** The occluder's mesh, for a raycast (the Tour Viewer's mesh cursor,
    *  polish round M5c). Depth-only, but the raycaster still hits it. */
   mesh(): Object3D;
+  /** Triangles in the mesh as last applied (a readout's number); 0 once
+   *  disposed. */
+  triangleCount(): number;
   /**
    * Dispose the mesh + worker and turn the sink callbacks into no-ops.
    * Idempotent — safe from any teardown path.
@@ -120,12 +123,16 @@ export function createOccluderSink(
   // refreshes, worker responses) and must no-op after dispose — the flag
   // replaces the old module-variable `?.` re-read pattern.
   let disposed = false;
+  // Bumped by `clear`: a worker result requested before a clear (a
+  // tracking restart) must not put the old mesh back (PR #609 review).
+  let epoch = 0;
 
   const sink: OccluderSink = {
     refresh: (g: OccupancyGrid, pose?: ViewerPose): void => {
       if (disposed) {
         return;
       }
+      const requestedIn = epoch;
       worker.driver.request(
         radiusM > 0 && pose && pose.cameraPos.every(Number.isFinite)
           ? g.getOccupiedCellsWithinFlat(
@@ -138,7 +145,7 @@ export function createOccluderSink(
         mode,
         (cell) => g.getCellPoint(cell),
         (positions, indices) => {
-          if (!disposed) {
+          if (!disposed && requestedIn === epoch) {
             mesh.applyMeshData(positions, indices);
           }
         }
@@ -146,6 +153,7 @@ export function createOccluderSink(
     },
     clear: (): void => {
       if (!disposed) {
+        epoch += 1;
         mesh.clear();
       }
     },
@@ -154,6 +162,7 @@ export function createOccluderSink(
   return {
     sink,
     mesh: () => mesh.getMesh(),
+    triangleCount: () => (disposed ? 0 : mesh.getTriangleCount()),
     dispose: (): void => {
       if (disposed) {
         return;
