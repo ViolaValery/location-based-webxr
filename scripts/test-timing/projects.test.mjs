@@ -419,3 +419,26 @@ describe('format stages use Prettier\'s content cache', () => {
     }
   });
 });
+
+describe('the format stage sees every page of a package (Tour Viewer follow-up F18)', () => {
+  // Why this test matters: the shared app format command named
+  // `index.html` alone, so a second page (`edit.html`, the RecorderApp's
+  // test pages) drifted out of style while the gate stayed green - the
+  // drift the 2026-08-17 lesson describes for a package with no format
+  // stage at all. Every top-level page a package carries must be one the
+  // format stage would reach.
+  it('names a top-level *.html glob wherever a package has pages beside index.html', () => {
+    for (const project of PROJECTS) {
+      if (project.dir === '.') continue;
+      const dir = path.join(WORKSPACE_ROOT, project.dir);
+      const pages = readdirSync(dir).filter((name) => name.endsWith('.html'));
+      if (pages.length < 2) continue;
+      const format = project.stages.find((stage) => stage.name === 'format');
+      expect(format, `${project.dir} has no format stage`).toBeDefined();
+      expect(
+        format?.command.includes('"*.html"'),
+        `${project.dir} has ${pages.join(', ')} but formats only some of them`
+      ).toBe(true);
+    }
+  });
+});
