@@ -6,7 +6,10 @@
  * @see save-target.ts.md
  */
 
-import { writeFileOrAbort } from "gps-plus-slam-app-framework/storage";
+import {
+  DEFAULT_ARCHIVE_LIMITS,
+  writeFileOrAbort,
+} from "gps-plus-slam-app-framework/storage";
 
 /** The tail of the file a sync client's touch leaves alone: compared when
  *  only the modified time differs, so a touched file is not "changed". */
@@ -65,10 +68,18 @@ export async function pickTourFile(win: PickerWindow): Promise<PickOutcome> {
       multiple: false,
     });
   } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      return { kind: "cancelled" };
+    // Only a picker this page may not use (an iframe's SecurityError, a
+    // TypeError) falls back to the file input. Anything else - a dismissed
+    // picker, or a second one refused while the first is open
+    // (NotAllowedError) - is no choice, and no second dialog (E2b-1 review
+    // #5).
+    if (
+      err instanceof TypeError ||
+      (err instanceof DOMException && err.name === "SecurityError")
+    ) {
+      return { kind: "unavailable" };
     }
-    return { kind: "unavailable" };
+    return { kind: "cancelled" };
   }
   const handle = handles[0];
   if (handle === undefined) return { kind: "cancelled" };
@@ -88,15 +99,17 @@ async function askToWrite(handle: WritableFileHandle): Promise<boolean> {
 }
 
 /** Why an in-place write was refused: the file on disk is not the one this
- *  page last opened or wrote. */
-export class TargetChangedError extends Error {
-  constructor(readonly kind: "changed" | "gone") {
+ *  page last opened or wrote, or the tour grew past what may be opened. */
+export class InPlaceRefusal extends Error {
+  constructor(readonly kind: "changed" | "gone" | "too-large") {
     super(
       kind === "gone"
         ? "The file was moved, renamed or deleted since it was opened."
-        : "The file changed on disk since it was opened.",
+        : kind === "too-large"
+          ? "The saved tour would be larger than a tour may be, so it was not written over the file."
+          : "The file changed on disk since it was opened.",
     );
-    this.name = "TargetChangedError";
+    this.name = "InPlaceRefusal";
   }
 }
 
@@ -106,11 +119,11 @@ export interface SaveTarget {
   /** Whether the file on disk is still the one opened or last written. */
   check(): Promise<"same" | "changed" | "gone">;
   /**
-   * Write `blob` over the file - unless it changed meanwhile, which throws
-   * `TargetChangedError` and writes nothing. Returns the file as written
-   * (disk-backed, so the page need not keep its own copy of the bytes).
+   * Write `blob` over the file - unless it changed meanwhile or is larger
+   * than a tour may be, which throws `InPlaceRefusal` and writes nothing.
+   * Resolves once the write landed.
    */
-  write(blob: Blob): Promise<File>;
+  write(blob: Blob): Promise<void>;
 }
 
 interface Baseline {
@@ -138,7 +151,13 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 export async function createSaveTarget(
   handle: WritableFileHandle,
   opened: File,
+  options: {
+    /** The largest file written over the original: the open cap, so the
+     *  file stays one the pages can open (E2b-1 review #2). */
+    readonly maxBytes?: number;
+  } = {},
 ): Promise<SaveTarget> {
+  const maxBytes = options.maxBytes ?? DEFAULT_ARCHIVE_LIMITS.maxArchiveBytes;
   let base: Baseline = {
     size: opened.size,
     lastModified: opened.lastModified,
@@ -166,11 +185,13 @@ export async function createSaveTarget(
     name: handle.name,
     check,
     async write(blob) {
+      // The rebuild stores entries uncompressed, so a deflated tour grows.
+      if (blob.size > maxBytes) throw new InPlaceRefusal("too-large");
       // Checked again right before the write: the build may have taken
       // seconds. Another program writing DURING our write is not caught;
       // the check and the write are not one step.
       const state = await check();
-      if (state !== "same") throw new TargetChangedError(state);
+      if (state !== "same") throw new InPlaceRefusal(state);
       await writeFileOrAbort(handle, blob);
       const written = await handle.getFile();
       // The baseline moves only once the write landed.
@@ -179,7 +200,6 @@ export async function createSaveTarget(
         lastModified: written.lastModified,
         tail: await tailOf(blob),
       };
-      return written;
     },
   };
 }
@@ -191,25 +211,52 @@ export async function createSaveTarget(
  * the request fails, it grants: there is nothing to coordinate with, and
  * refusing would only stop this tab from saving.
  */
+/** One tab's hold on a file's name. */
+export interface EditorLock {
+  readonly granted: boolean;
+  release(): void;
+  /** Settles once the hold has let go - a new request for the same name
+   *  made before that is refused (E2b-1 review #3). */
+  readonly released: Promise<void>;
+}
+
 export function holdEditorLock(
   locks: LockManager | undefined,
   fileName: string,
-): Promise<{ readonly granted: boolean; release(): void }> {
-  const none = { granted: true, release: () => undefined };
-  if (locks === undefined) return Promise.resolve(none);
+): Promise<EditorLock> {
+  const free: EditorLock = {
+    granted: true,
+    release: () => undefined,
+    released: Promise.resolve(),
+  };
+  if (locks === undefined) return Promise.resolve(free);
   return new Promise((resolve) => {
+    let markReleased: () => void = () => undefined;
+    const released = new Promise<void>((settle) => {
+      markReleased = settle;
+    });
     locks
       .request(`${LOCK_PREFIX}${fileName}`, { ifAvailable: true }, (lock) => {
         if (lock === null) {
-          resolve({ granted: false, release: () => undefined });
+          resolve({
+            granted: false,
+            release: () => undefined,
+            released: Promise.resolve(),
+          });
           return undefined;
         }
         return new Promise<void>((done) => {
-          resolve({ granted: true, release: () => done() });
+          resolve({ granted: true, release: () => done(), released });
         });
       })
-      .catch(() => {
-        resolve(none);
-      });
+      .then(
+        () => {
+          markReleased();
+        },
+        () => {
+          markReleased();
+          resolve(free);
+        },
+      );
   });
 }

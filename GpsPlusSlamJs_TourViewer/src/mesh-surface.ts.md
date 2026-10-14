@@ -33,9 +33,9 @@ now? }) → MeshSurface` - composes the framework's pieces:
     `createFrameTimes` over the last 120 gaps).
   - `reset()` - clears the grid and the mesh (follow-up F11): after a
     WebXR origin reset their cells sit in a frame that no longer exists.
-    The next samples build it anew. A worker response already in flight
-    may still apply the old frame's mesh until the next re-mesh (at most
-    a second later), which replaces it.
+    The next samples build it anew; a worker response requested before
+    the reset is dropped by the sink (the framework's `clear()`, PR #609
+    review), so the old frame's mesh never comes back.
   - `dispose()` - stops the feed, frees the mesh and the worker (idempotent).
 - `surfacePointFromHit(hit)` - a raycast hit as a world point and the face's world normal,
   or null.

@@ -222,6 +222,17 @@ export function createEditorRail(
         if (title) title.textContent = item.title;
         if (meta) meta.textContent = item.meta;
       }
+      // The counts are of ALL items, not the shown ones: a note deleted
+      // while the search hides it leaves the rows as they were (PR #613
+      // review).
+      for (const group of GROUPS) {
+        const count = dom.body.querySelector(
+          `.group[data-kind="${group.kind}"] .count`,
+        );
+        if (count !== null) {
+          count.textContent = String(next.counts[group.kind]);
+        }
+      }
       drawMini();
     },
     select(id) {

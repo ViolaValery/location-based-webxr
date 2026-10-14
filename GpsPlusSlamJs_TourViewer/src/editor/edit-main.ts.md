@@ -52,24 +52,37 @@ where the browser allows it, it saves the opened file in place (E2b-1,
   file picker where it exists (else the file input), asking for write
   permission on that gesture. A granted file, held by this tab
   (`holdEditorLock`), is saved by writing it: the status reads "Saved to
-  <name>", the walk always stays (it may be the creator's only copy, E2b
-  plan review #1) and the walk switch is hidden. The file is checked before
+  <name>". A tour opened to be written keeps its walk in EVERY save, from
+  the open on - a download before "Edit here anyway" too, or that walk-less
+  build would later be written over the original (E2b plan review #1,
+  E2b-1 review #1) - and the walk switch is hidden. The file is checked before
   the build and again before the write; a changed, moved or unwritable file
   is refused in a toast that keeps the changes and offers "Download
   instead", which turns the tour's saves into downloads (still keeping the
-  walk). A refused permission, a dropped or input-chosen file, and a second
+  walk) - unless no save of the tour has landed yet: the rebuild then reads
+  the opened file, which no longer reads, so the toast says the edits
+  cannot be saved here (E2b-1 review #4). A save checks against the target
+  it started with, even if one was attached while it was built. A refused permission, a dropped or input-chosen file, and a second
   tab on a file of the same name (told, with "Edit here anyway") save as
-  downloads. Ctrl+S / Cmd+S saves, and the browser's own "Save page as"
-  never opens on this page.
+  downloads. A second click while the picker is open opens nothing. The
+  same file opened again in this tab waits for its old hold to let go.
+  Ctrl+S / Cmd+S saves (matched by the key's letter, by its position only
+  for a non-Latin layout), and the browser's own "Save page as" never opens
+  on this page. Toasts about the file go when another tour is opened.
 - After any save the card's photos read from the page's copy of what was
   written (a read-only session over it), never from the opened file, whose
-  bytes may have been replaced (E2b plan review #2, #5). The page keeps that
-  copy rather than reading the file back: once something else rewrites the
-  file, a `File` read from it no longer reads, and the copy is what lets
-  "Download instead" still build (the review's memory point declined).
-  **Not covered:** a file changed on disk BEFORE the first save cannot be
-  rebuilt at all - its opened bytes are gone - so those edits cannot be
-  saved; the desktop's draft (E2c) is what would keep them.
+  bytes may have been replaced (E2b plan review #2, #5). The page does not
+  read the file back from disk: once something else rewrites it, a `File`
+  read from it no longer reads. It is the editor session's own copy of the
+  last build (`previous`) that lets "Download instead" still build; the
+  photos' copy shares those bytes (the review's memory point declined).
+  **Not covered:** a file changed on disk BEFORE the first save - even only
+  touched, a new modified time with the same bytes, which Chromium's
+  snapshot check on the opened `File` refuses - cannot be rebuilt: those
+  edits cannot be saved, and the status says to open the file again; the
+  desktop's draft (E2c) is what would keep them. Each save opens a session
+  over the written copy, whose whole-archive check hashes a listed tour
+  again in the background (E2b-1 review #9, for E2b-2's autosave to weigh).
 - **Save** builds the tour (`keepScan` from the "Keep the walk recording"
   switch, shown only for a tour that carries a walk) and downloads it
   through the framework's `downloadZip` under `finishedFileName`; the

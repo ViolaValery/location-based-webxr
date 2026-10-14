@@ -13,25 +13,35 @@ build plan, re-cut" and its cold review
 
 - `pickTourFile(win): Promise<PickOutcome>` - `showOpenFilePicker` for one
   `.zip`, then `requestPermission({ mode: "readwrite" })`, then the file.
-  - `unavailable` - no picker, or one that refuses (an iframe): the page
-    uses its file input.
-  - `cancelled` - the picker dismissed (`AbortError`), never an error.
+  - `unavailable` - no picker, or one this page may not use (an iframe's
+    `SecurityError`, a `TypeError`): the page uses its file input.
+  - `cancelled` - the picker dismissed, or a second one refused while the
+    first is open (`NotAllowedError`): no choice, and no second dialog
+    (E2b-1 review #5).
   - `picked` - `{ file, handle, writable }`; `writable` is false for a
     refused, dismissed or failing permission request, or a handle without
     one: the tour opens all the same and saves as a download.
-- `createSaveTarget(handle, opened): Promise<SaveTarget>` - the baseline
-  (size, modified time, the last 64 KiB) is read from `opened` at once.
-  - `check()` - `"same"`, `"changed"` (another size, or the same size and
-    time with another tail) or `"gone"` (`NotFoundError`: moved, renamed or
-    deleted). A file only touched (same size, same tail, a new time - a
-    sync client) is `"same"`, and the new time is adopted.
-  - `write(blob)` - checks again, then `writeFileOrAbort`; a refusal throws
-    `TargetChangedError` (`kind`) and writes nothing. Returns the file as
-    written; the baseline moves only once the write landed.
-- `holdEditorLock(locks, fileName)` - `{ granted, release }`: an exclusive
-  Web Lock `gps-plus-slam/tour-viewer-editor/<name>`, `ifAvailable`, held
-  until `release` or the page goes.
-- `TargetChangedError`, `WritableFileHandle`, `PickerWindow`, `PickOutcome`,
+- `createSaveTarget(handle, opened, { maxBytes? }): Promise<SaveTarget>` -
+  the baseline (size, modified time, the last 64 KiB) is read from `opened`
+  at once; `maxBytes` defaults to the open cap
+  (`DEFAULT_ARCHIVE_LIMITS.maxArchiveBytes`).
+  - `check()` - `"same"` when size and time match; a new time with the same
+    size and the same tail (a sync client's touch) is `"same"` too, and the
+    new time is adopted; another size, or another tail, is `"changed"`;
+    `NotFoundError` (moved, renamed, deleted) is `"gone"`.
+  - `write(blob)` - refuses a blob over `maxBytes` (the rebuild stores
+    entries uncompressed, so a deflated tour grows; written over the
+    original past the cap it would open nowhere, E2b-1 review #2), checks
+    again, then `writeFileOrAbort`. A refusal throws `InPlaceRefusal`
+    (`kind`: `changed`, `gone`, `too-large`) and writes nothing; the
+    baseline moves only once the write landed.
+- `holdEditorLock(locks, fileName)` - an `EditorLock` (`granted`,
+  `release`, `released`): an exclusive Web Lock
+  `gps-plus-slam/tour-viewer-editor/<name>`, `ifAvailable`, held until `release` or the page goes. `released` settles
+  once the hold has let go: the same name asked before that is refused, so
+  the page waits for it before opening the same file again (E2b-1 review
+  #3).
+- `InPlaceRefusal`, `EditorLock`, `WritableFileHandle`, `PickerWindow`, `PickOutcome`,
   `SaveTarget`.
 
 ## Invariants & assumptions
@@ -54,7 +64,7 @@ build plan, re-cut" and its cold review
 const picked = await pickTourFile(window as unknown as PickerWindow);
 if (picked.kind === "picked" && picked.writable) {
   const target = await createSaveTarget(picked.handle, picked.file);
-  await target.write(rebuilt); // throws TargetChangedError when changed
+  await target.write(rebuilt); // throws InPlaceRefusal when refused
 }
 ```
 

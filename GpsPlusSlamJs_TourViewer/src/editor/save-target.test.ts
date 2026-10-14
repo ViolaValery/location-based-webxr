@@ -11,7 +11,7 @@ import {
   createSaveTarget,
   holdEditorLock,
   pickTourFile,
-  TargetChangedError,
+  InPlaceRefusal,
   type WritableFileHandle,
 } from "./save-target.js";
 
@@ -76,6 +76,26 @@ describe("pickTourFile", () => {
     expect(outcome).toEqual({ kind: "cancelled" });
   });
 
+  // Why (E2b-1 review #5): a second click while the picker is open is
+  // refused with NotAllowedError; read as "no picker", it opened the file
+  // input as well - a second dialog.
+  it("treats a refused second picker as a cancel; only a blocked picker is unavailable", async () => {
+    const refuse = (name: string) => ({
+      showOpenFilePicker: () => Promise.reject(new DOMException("no", name)),
+    });
+    expect(await pickTourFile(refuse("NotAllowedError"))).toEqual({
+      kind: "cancelled",
+    });
+    expect(await pickTourFile(refuse("SecurityError"))).toEqual({
+      kind: "unavailable",
+    });
+    expect(
+      await pickTourFile({
+        showOpenFilePicker: () => Promise.reject(new TypeError("no")),
+      }),
+    ).toEqual({ kind: "unavailable" });
+  });
+
   it("asks for write permission before it reads the file (review #8)", async () => {
     const { handle, state } = fakeHandle("zip bytes");
     const outcome = await pickTourFile({
@@ -104,9 +124,8 @@ describe("createSaveTarget", () => {
     const { handle, state } = fakeHandle("version one");
     const target = await createSaveTarget(handle, await handle.getFile());
     expect(await target.check()).toBe("same");
-    const written = await target.write(new Blob(["version two"]));
+    await target.write(new Blob(["version two"]));
     expect(state.bytes).toBe("version two");
-    expect(await written.text()).toBe("version two");
     // Its own write is not "changed by something else".
     expect(await target.check()).toBe("same");
   });
@@ -140,8 +159,24 @@ describe("createSaveTarget", () => {
     state.gone = true;
     expect(await target.check()).toBe("gone");
     const err = await target.write(new Blob(["mine"])).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(TargetChangedError);
-    expect((err as TargetChangedError).kind).toBe("gone");
+    expect(err).toBeInstanceOf(InPlaceRefusal);
+    expect((err as InPlaceRefusal).kind).toBe("gone");
+  });
+
+  // Why (E2b-1 review #2): the rebuild stores entries uncompressed, so a
+  // deflated tour grows; written over the original past the open cap, it
+  // would leave a file no page can open again.
+  it("refuses to write a tour larger than a tour may be, and writes nothing", async () => {
+    const { handle, state } = fakeHandle("version one");
+    const target = await createSaveTarget(handle, await handle.getFile(), {
+      maxBytes: 20,
+    });
+    await expect(
+      target.write(new Blob(["far more than twenty bytes"])),
+    ).rejects.toMatchObject({ kind: "too-large" });
+    expect(state.bytes).toBe("version one");
+    await target.write(new Blob(["fits"]));
+    expect(state.bytes).toBe("fits");
   });
 
   it("keeps its baseline when a write fails, so the next check is honest", async () => {
@@ -188,6 +223,17 @@ describe("holdEditorLock", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(held.has("gps-plus-slam/tour-viewer-editor/tour.zip")).toBe(false);
+    expect((await holdEditorLock(locks, "tour.zip")).granted).toBe(true);
+  });
+
+  // Why (E2b-1 review #3): the same file opened again in the same tab
+  // asked for its lock before the old hold had let go, and was told
+  // another tab was editing it. `released` settles once it has.
+  it("grants the name again once a released hold has let go", async () => {
+    const { locks } = fakeLocks();
+    const first = await holdEditorLock(locks, "tour.zip");
+    first.release();
+    await first.released;
     expect((await holdEditorLock(locks, "tour.zip")).granted).toBe(true);
   });
 

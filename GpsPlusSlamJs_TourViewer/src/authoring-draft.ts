@@ -209,7 +209,11 @@ export function draftObjectsPublished(
   });
 }
 
-/** The draft's deletions the hosted zip still carries: not yet published. */
+/** The draft's deletions the hosted zip still carries: not yet published.
+ *  A deletion has no base (M6 E2p): it is offered back even when the
+ *  hosted object was edited elsewhere since, and a restore then deletes
+ *  that newer edit. Named as not covered; whether a phone deletion should
+ *  yield too is part of owner question Q-E2-2 (PR #613 review). */
 export function draftDeletionsNotYetHosted(
   draft: AuthoringDraft,
   manifest: TourManifest | null,

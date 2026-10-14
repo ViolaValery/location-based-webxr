@@ -1033,3 +1033,123 @@ test("a second tab on a file of the same name saves a copy unless told to edit h
     told.locator("button", { hasText: "Edit here anyway" }),
   ).toBeVisible();
 });
+
+test("a second tab that edits anyway keeps the walk, in its copy and in place", async ({
+  page,
+  context,
+}) => {
+  // Why (E2b-1 review #1): the second tab saved a download without the
+  // walk, and "Edit here anyway" then wrote that walk-less build over the
+  // creator's only copy. A tour opened to be written keeps its walk from
+  // the start.
+  await page.goto("/edit.html");
+  await offerOpfsFile(page, await wrappedTour({ pin: true }), "wrapped.zip");
+  await page.locator("#choose-btn").click();
+  await expect(page.locator("#tour-name")).toHaveText("Wrapped fixture");
+  const second = await context.newPage();
+  await noSavePicker(second);
+  await second.goto("/edit.html");
+  await offerOpfsFile(second, await wrappedTour({ pin: true }), "wrapped.zip");
+  await second.locator("#choose-btn").click();
+  const told = second.locator(".toast", { hasText: "Another tab is editing" });
+  await expect(told).toBeVisible();
+  await expect(second.locator("#keep-walk")).toBeHidden();
+  await second.locator("#rail .row", { hasText: "Wrapped pin" }).click();
+  await second.locator("#card textarea").fill("A copy first");
+  const download = second.waitForEvent("download");
+  await second.locator("#save-btn").click();
+  const copy = await (await download).path();
+  const reader = new ZipReader(
+    new Uint8ArrayReader(new Uint8Array(readFileSync(copy))),
+  );
+  const names = (await reader.getEntries()).map((e) => e.filename);
+  await reader.close();
+  expect(names).toContain("mytour/actions/000001.json");
+  await told.locator("button", { hasText: "Edit here anyway" }).click();
+  await second.locator("#card textarea").fill("Then in place");
+  await second.locator("#save-btn").click();
+  await expect(second.locator("#save-status")).toHaveText(
+    "Saved to wrapped.zip",
+  );
+  const texts = await readOpfsTour(second, "wrapped.zip");
+  expect(texts["mytour/tour.json"]).toContain("Then in place");
+  expect(Object.keys(texts)).toContain("mytour/actions/000001.json");
+});
+
+test("a write that fails keeps the changes and offers the download", async ({
+  page,
+}) => {
+  // Why (E2b-1 review #10): the page's failed-write path, not only the
+  // refusals the check makes.
+  await noSavePicker(page);
+  await page.goto("/edit.html");
+  await offerOpfsFile(page, await wrappedTour({ pin: true }), "wrapped.zip");
+  await page.evaluate(() => {
+    // @ts-expect-error - the e2e's own picker, around the real handle.
+    const real = window.showOpenFilePicker;
+    // @ts-expect-error - the e2e's own picker.
+    window.showOpenFilePicker = async () => {
+      const [handle] = await real();
+      return [
+        {
+          kind: "file",
+          name: handle.name,
+          getFile: () => handle.getFile(),
+          requestPermission: () => Promise.resolve("granted"),
+          createWritable: () =>
+            Promise.resolve({
+              write: () => Promise.reject(new Error("the disk is full")),
+              close: () => Promise.resolve(),
+              abort: () => Promise.resolve(),
+            }),
+        },
+      ];
+    };
+  });
+  await page.locator("#choose-btn").click();
+  await expect(page.locator("#tour-name")).toHaveText("Wrapped fixture");
+  await page.locator("#rail .row", { hasText: "Wrapped pin" }).click();
+  await page.locator("#card textarea").fill("Not written");
+  await page.locator("#save-btn").click();
+  const refusal = page.locator(".toast", { hasText: "the disk is full" });
+  await expect(refusal).toBeVisible();
+  const download = page.waitForEvent("download");
+  await refusal.locator("button", { hasText: "Download instead" }).click();
+  expect((await download).suggestedFilename()).toBe("wrapped.zip");
+});
+
+test("the same file opened again in the same tab is still saved in place", async ({
+  page,
+}) => {
+  // Why (E2b-1 review #3): the new lock was asked before the old hold let
+  // go, so the tab was told another tab was editing its own file.
+  await page.goto("/edit.html");
+  await offerOpfsFile(page, await wrappedTour({ pin: true }), "wrapped.zip");
+  await page.locator("#choose-btn").click();
+  await expect(page.locator("#tour-name")).toHaveText("Wrapped fixture");
+  await page.locator("#open-another").click();
+  await page.locator("#choose-btn").click();
+  await expect(page.locator("#tour-name")).toHaveText("Wrapped fixture");
+  await page.locator("#rail .row", { hasText: "Wrapped pin" }).click();
+  await page.locator("#card textarea").fill("Opened twice");
+  await page.locator("#save-btn").click();
+  await expect(page.locator("#save-status")).toHaveText("Saved to wrapped.zip");
+  await expect(
+    page.locator(".toast", { hasText: "Another tab is editing" }),
+  ).toHaveCount(0);
+});
+
+test("a group's count follows a delete while the search hides the deleted note", async ({
+  page,
+}) => {
+  // Why (PR #613 review): with the same rows shown, the rail updated them
+  // in place and left the group's count of ALL notes as it was.
+  await page.goto("/edit.html");
+  await openThroughChooser(page, await editorTour(), "editor-fixture.zip");
+  const photos = page.locator('.group[data-kind="photo"] .count');
+  await expect(photos).toHaveText("2");
+  await page.locator("#rail .row", { hasText: "Too big" }).click();
+  await page.locator("#filter").fill("Fountain");
+  await page.locator("#card button", { hasText: "Delete" }).click();
+  await expect(photos).toHaveText("1");
+});
