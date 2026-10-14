@@ -1003,3 +1003,8 @@ element<HTMLButtonElement>("open-another").addEventListener("click", () => {
   }
   showModal(true);
 });
+
+// Everything above is wired: the open dialog's controls answer from here
+// on (a keyboard press before the module ran would go nowhere - the e2e
+// waits for this).
+document.body.dataset["editor"] = "ready";

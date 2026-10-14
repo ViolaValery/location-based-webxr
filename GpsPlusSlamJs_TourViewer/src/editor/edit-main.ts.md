@@ -105,6 +105,10 @@ where the browser allows it, it saves the opened file in place (E2b-1,
 - Builds a store first: the library's geo maths (the distance lines) runs
   only once one exists.
 
+- Once everything is wired the page sets `body[data-editor="ready"]`;
+  the keyboard e2e waits for it (a press before the module ran went
+  nowhere - a flaky run under load).
+
 ## Tests
 
 The modules it wires have their own unit tests; the page is pinned by

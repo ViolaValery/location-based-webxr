@@ -825,6 +825,9 @@ test("the file chooser can be reached and opened from the keyboard", async ({
   // a hidden input, none of which is in the tab order, so a keyboard user
   // could open only the sample.
   await page.goto("/edit.html");
+  // The button answers once the page script is wired; before, Enter on a
+  // button inside a label does nothing.
+  await expect(page.locator("body")).toHaveAttribute("data-editor", "ready");
   const choose = page.locator("#choose-btn");
   await choose.focus();
   await expect(choose).toBeFocused();
