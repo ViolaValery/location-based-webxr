@@ -31,3 +31,19 @@ describe("the open marks the manifest pending before it places the tour", () => 
     expect(pending).toBeLessThan(trigger);
   });
 });
+
+describe("only the open in place marks the tour settled (follow-up F14)", () => {
+  // Why: the e2e read "settled" as "this tour is open". An older open whose
+  // continuations end after a newer open began must not mark the newer
+  // one settled before its own work has run; the open's session is mocked
+  // away in the behavioural tests, so the guard is pinned in the source.
+  it("guards the settled mark with the open's own session", () => {
+    const mark = source.indexOf('markReadiness("settled")');
+    expect(mark).toBeGreaterThan(-1);
+    const before = source.slice(Math.max(0, mark - 120), mark);
+    expect(before).toContain("if (ctx.session === opened)");
+    // And it waits for both continuations, never only one of them.
+    const wait = source.lastIndexOf("Promise.allSettled([", mark);
+    expect(source.slice(wait, mark)).toContain("manifestDone, levelsDone");
+  });
+});

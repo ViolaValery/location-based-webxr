@@ -94,6 +94,13 @@ export interface ArchiveOpenDom {
    *  check found, in plain words. */
   linkStatus: HTMLElement;
   gallery: HTMLUListElement;
+  /** Carries `data-tour-open`: "opening" while an open runs, "settled"
+   *  once its own work has (the manifest's and the levels' continuations,
+   *  and the gallery's fill while shown), "failed" for an open that failed
+   *  (follow-up F14: the readiness the e2e reads, which used to be "the
+   *  gallery holds N images"). Optional: the composition root passes the
+   *  page's body. */
+  readiness?: HTMLElement;
   storagePanel: HTMLDetailsElement;
   clearCacheButton: HTMLButtonElement;
 }
@@ -255,7 +262,15 @@ export function wireArchiveOpen(deps: {
 
   /** Sequentially stream image entries into the gallery — each image pops
    *  in as its bytes arrive, which is the visible proof of range streaming. */
+  function markReadiness(state: "opening" | "settled" | "failed"): void {
+    if (dom.readiness !== undefined) dom.readiness.dataset["tourOpen"] = state;
+  }
+
   async function fillGallery(current: TourSession): Promise<void> {
+    // Only while it is shown (a `?debug=1` creator, follow-up F14): a
+    // hidden gallery read, decoded and kept a URL for every photo of the
+    // tour on every open, on a phone, for nothing.
+    if (dom.gallery.hidden) return;
     // Never the creator's walk (scan-pass plan S1): a copy that kept it must
     // not decode its frames onto every visitor's page.
     for (const entry of entriesForVisitor(current.entries, ctx.scanEntries)) {
@@ -410,6 +425,7 @@ export function wireArchiveOpen(deps: {
     }
     const generation = ++ctx.openGeneration;
     opening = true;
+    markReadiness("opening");
     dom.errorBox.textContent = "";
     dom.fileStatus.hidden = true;
     dom.tourTrust.hidden = true;
@@ -453,7 +469,7 @@ export function wireArchiveOpen(deps: {
       // it back, so a re-measure never drops what an earlier session placed.
       // A broken manifest is an error the creator must see (the framework's
       // rule for this file), not a silently empty tour.
-      void opened.loadTourManifest().then(
+      const manifestDone = opened.loadTourManifest().then(
         (manifest) => {
           if (ctx.session !== opened) return;
           ctx.tourManifest = manifest;
@@ -485,23 +501,25 @@ export function wireArchiveOpen(deps: {
             opened.archive.dispose();
           }
           // The gallery waits for the manifest, which says what it shows.
-          void fillGallery(opened);
+          const filled = fillGallery(opened);
           // Only now can a draft be judged: "already hosted" is a question
           // about this manifest.
           hooks.presentDraftForTour(tourKeyOf(source, opened));
           hooks.renderAuthorReadout();
           hooks.tryPlaceTour(); // a visitor's content may now be placeable
+          return filled;
         },
         (err: unknown) => {
           if (ctx.session !== opened) return;
           // The finish step refuses on "broken" (M3 review #5): it must not
           // overwrite a placement it could not read.
           ctx.tourManifestStatus = "broken";
-          void fillGallery(opened);
+          const filled = fillGallery(opened);
           dom.errorBox.textContent = `Reading the tour's content list (tour.json) failed: ${
             err instanceof Error ? err.message : String(err)
           }`;
           hooks.renderAuthorReadout();
+          return filled;
         },
       );
       // A tour opened INTO a running session gets its own gate (M5 review
@@ -509,7 +527,7 @@ export function wireArchiveOpen(deps: {
       hooks.startScanGate();
       // The authored levels ride the same zip; a newer open's guard keeps a
       // slow load from installing a closed tour's levels.
-      void opened
+      const levelsDone = opened
         .loadQrLevels()
         .then((levels) => {
           if (ctx.session !== opened) return;
@@ -541,10 +559,16 @@ export function wireArchiveOpen(deps: {
           // its own line names the failure inside the overlay.
           hooks.reconsiderScanGate("unavailable");
         });
+      // Settled once this open's own work has run - never by an older open
+      // after a newer one began.
+      void Promise.allSettled([manifestDone, levelsDone]).then(() => {
+        if (ctx.session === opened) markReadiness("settled");
+      });
       reportEarlyFailure(opened);
       return { kind: "opened" };
     } catch (err) {
       if (generation !== ctx.openGeneration) return { kind: "superseded" };
+      markReadiness("failed");
       const cause =
         err instanceof OpenRemoteArchiveError ? err.rejectCause : "other";
       dom.errorBox.textContent = describeOpenError(

@@ -47,9 +47,13 @@ test("opens a tour zip from the device through the file chooser", async ({
   await page.getByTestId("open-file-button").click();
   await (await chooser).setFiles(file);
 
-  await expect(page.getByTestId("gallery").locator("img")).toHaveCount(8, {
-    timeout: 15000,
-  });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-tour-open",
+    "settled",
+    {
+      timeout: 15000,
+    },
+  );
   await expect(page.getByTestId("file-status")).toContainText("tour (1).zip");
   // A file has no link: the print step asks for one instead of showing a
   // made-up address.

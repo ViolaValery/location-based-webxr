@@ -808,6 +808,7 @@ const archive = wireArchiveOpen({
     errorBox,
     linkStatus: element("link-status"),
     gallery: element("gallery"),
+    readiness: document.body,
     storagePanel: element("storage-panel"),
     clearCacheButton: element("clear-cache"),
   },
