@@ -13,7 +13,10 @@ no session field holds any of them); its inside is the code book
 
 ## Public API
 
-- `wireCreatorCodes({ ctx }): CreatorCodes`
+- `wireCreatorCodes({ ctx, onIdsChanged? }): CreatorCodes` - `onIdsChanged`
+  runs whenever the set of code ids changes (a code measured, a draft's
+  codes restored), from the book's one write: the print step re-reads the
+  codes then, so its numbering continues past them (follow-up F16).
 - The code in hand (the one-code view today's callers need):
   - `inHand()`, `measurement()`, `sighting()`;
   - `setInHand(level, measurement)` (a measurement, or a kept stored

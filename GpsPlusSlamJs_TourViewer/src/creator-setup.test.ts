@@ -283,6 +283,8 @@ function wire(
     placeable?: boolean;
     /** Turn the world group about +Y (up) by this many degrees. */
     worldGroupYawDeg?: number;
+    /** The page hears the set of codes changed (follow-up F16). */
+    onCodesChanged?: () => void;
   } = {},
 ) {
   let opens = 0;
@@ -305,6 +307,9 @@ function wire(
   const setup = wireCreatorSetup({
     ctx,
     mode: "creator",
+    ...(options.onCodesChanged === undefined
+      ? {}
+      : { onCodesChanged: options.onCodesChanged }),
     arStore: arStore as never,
     arController: {
       getState: () => ({
@@ -1565,6 +1570,36 @@ describe("the order of the draft's writes (M4 review #1, #2 and #7)", () => {
       files.has(objectKey(id)),
       "the delete must land after the write it follows",
     ).toBe(false);
+  });
+});
+
+describe("the print step hears codes a draft restores (follow-up F16)", () => {
+  // Why this test matters: the print panel continues the numbering after
+  // the tour's codes, but read them once per open; a draft's codes restored
+  // afterwards left the next poster's number behind, so it could repeat one.
+  it("tells the page when a restored draft brings codes back", async () => {
+    const a = { id: "aaaaaaaaaaa1", json: '{"a":1}' };
+    const { store } = memoryStore({
+      [META_KEY]: JSON.stringify({
+        tourUrl: TOUR,
+        sizeM: 0.16,
+        level: a,
+        levels: [a],
+      }),
+    });
+    let heard = 0;
+    const { dom, setup } = wire(store, {
+      onCodesChanged: () => {
+        heard += 1;
+      },
+    });
+    setup.presentDraftForTour(TOUR);
+    await settle();
+    expect(heard).toBe(0);
+    dom.draftRestore.click();
+    await settle();
+    expect(heard).toBeGreaterThan(0);
+    expect(setup.measuredCodeIds()).toContain(a.id);
   });
 });
 

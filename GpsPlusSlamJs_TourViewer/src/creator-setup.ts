@@ -208,6 +208,8 @@ export interface CreatorSetup {
 export function wireCreatorSetup(deps: {
   ctx: TourViewerSession;
   mode: ViewerMode;
+  /** The set of codes changed: the print step re-reads them (F16). */
+  onCodesChanged?: () => void;
   arStore: TourViewerStore;
   arController: ArController;
   seams: TourViewerSeams;
@@ -258,7 +260,10 @@ export function wireCreatorSetup(deps: {
    *  which restarts at 0 on every load (`newVisitId`). */
   const pageId = newObjectId();
   /** The one owner of the codes (`creator-codes.ts`, plan M4a). */
-  const codes = wireCreatorCodes({ ctx });
+  const codes = wireCreatorCodes({
+    ctx,
+    onIdsChanged: () => deps.onCodesChanged?.(),
+  });
   /** The running visit's per-moment alignments (owner decision D33,
    *  `creator-alignment-picks.ts`). */
   const alignmentPicks = wireCreatorAlignmentPicks({

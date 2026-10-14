@@ -105,6 +105,9 @@ listed in `index.html.md`. The concerns and their modules:
   kit plan K0: the print step keeps asking for a link and a creator's
   wizard opens step 3, or stays in step 5, without remembering a link;
   and `presentUnverifiedLink` - step 2's link printed unverified;
+  and `presentTourCodes` - the print step re-reads the codes, when the
+  tour's arrive and whenever the creator setup's set of codes changes
+  (follow-up F16);
   and, for a visitor only, `presentTourInfo` - `visitor-start.ts`'s
   page, with `URL.createObjectURL` and `pictureProblem` for the cover),
   and callers read the hooks at call time - which

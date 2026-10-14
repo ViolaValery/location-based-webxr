@@ -129,6 +129,9 @@ export interface CreatorCodes {
 
 export function wireCreatorCodes(deps: {
   ctx: TourViewerSession;
+  /** The set of code ids changed (a code measured, a draft restored):
+   *  the print panel re-reads them for its numbering (follow-up F16). */
+  onIdsChanged?: () => void;
 }): CreatorCodes {
   const { ctx } = deps;
   /**
@@ -168,10 +171,17 @@ export function wireCreatorCodes(deps: {
    * holds it (code book plan M5d-2, the review's #1).
    */
   function setBook(next: CodeBook): void {
+    const before = book;
     book =
       hand === null || next.get(hand.id)?.saved === hand.json
         ? next
         : withReference(withSaved(next, hand), hand.id);
+    if (
+      book.size !== before.size ||
+      [...book.keys()].some((id) => !before.has(id))
+    ) {
+      deps.onIdsChanged?.();
+    }
   }
 
   /** The book with the hosted texts filled in (the Finish's baseline). */

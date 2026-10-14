@@ -477,6 +477,12 @@ if (mode === "creator") {
 const setup = wireCreatorSetup({
   ctx,
   mode,
+  // A code measured or restored from a draft after the open: the print
+  // step continues the numbering past it (follow-up F16). Through the
+  // hook, which the print panel fills in once it is wired.
+  onCodesChanged: () => {
+    hooks.presentTourCodes();
+  },
   renderArEntry: () => {
     hooks.renderArEntry();
   },

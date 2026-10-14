@@ -62,7 +62,9 @@ were here. What stays is the Finish's side:
 
 ## Public API
 
-- `wireCreatorSetup({ ctx, mode, arStore, arController, seams, wizard, dom, openDraftStore?, codeTour?, summary?, host? }): CreatorSetup`
+- `wireCreatorSetup({ ctx, mode, arStore, arController, seams, wizard, dom, openDraftStore?, codeTour?, summary?, host?, onCodesChanged? }): CreatorSetup`
+  - `onCodesChanged` - the set of codes changed (`creator-codes.ts`'s
+    `onIdsChanged`): `main.ts` re-presents the print step's codes (F16).
   - `host()` - the host chosen in step 1, handed to the hand-off for step
     6's replace steps (polish round M2).
   - `openDraftStore(key)` resolves this tour's draft namespace, or
