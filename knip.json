@@ -33,13 +33,12 @@
     },
     "KmlEditor": {
       "entry": [
-        "demos/**/*.html",
-        "presentation.html",
+        "src/**/*.ts",
         "tests/**/*.test.ts",
-        "vite.config.ts"
+        "demos/**/*.html",
+        "presentation.html"
       ],
-      "project": ["src/**/*.ts", "tests/**/*.ts", "vite.config.ts"],
-      "ignoreDependencies": ["@types/node"]
+      "project": ["src/**/*.ts", "tests/**/*.ts"]
     },
     "GpsPlusSlamJs_AppFramework": {
       "entry": [

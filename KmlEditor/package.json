@@ -13,7 +13,8 @@
     "dev:editor": "vite --open /demos/editor-demo/",
     "dev:persistence": "vite --open /demos/persistence-demo/",
     "dev:renderers": "vite --open /demos/renderers-demo/",
-    "test": "vitest run",
+    "test": "node ../scripts/test-timing/run-gate.mjs",
+    "test:unit": "node ../scripts/test-timing/timed-stage.mjs test:unit",
     "test:watch": "vitest"
   },
   "devDependencies": {
