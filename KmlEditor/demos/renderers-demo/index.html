@@ -323,10 +323,13 @@
     <script type="module">
       import * as THREE from 'three';
       import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+      import { guardSlidersIn } from 'gps-plus-slam-app-framework/utils/slider-scroll-guard';
       import {
         RendererFactory,
         TexturePromiseCache
       } from '../../src/renderers/index.ts';
+
+      guardSlidersIn(document);
 
       // 1. Basic COLLADA DAE XML string defining a simple 3D cube model (self-contained asset)
       const mockCubeDae = `<?xml version="1.0" encoding="utf-8"?>

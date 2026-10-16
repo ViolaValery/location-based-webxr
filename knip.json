@@ -28,7 +28,18 @@
     },
     ".": {
       "entry": ["tests/**/*.test.js"],
-      "project": ["tests/**/*.js"]
+      "project": ["tests/**/*.js"],
+      "ignoreDependencies": ["@playwright/test", "yaml"]
+    },
+    "KmlEditor": {
+      "entry": [
+        "demos/**/*.html",
+        "presentation.html",
+        "tests/**/*.test.ts",
+        "vite.config.ts"
+      ],
+      "project": ["src/**/*.ts", "tests/**/*.ts", "vite.config.ts"],
+      "ignoreDependencies": ["@types/node"]
     },
     "GpsPlusSlamJs_AppFramework": {
       "entry": [
